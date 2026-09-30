@@ -1,0 +1,250 @@
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('./assets/fonts/IBMPlexSans-variable.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./assets/fonts/IBMPlexMono-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./assets/fonts/IBMPlexMono-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #15171a;
+  --surface: #1b1e22;
+  --surface-2: #20242a;
+  --border: #34393f;
+  --text: #e9e7e1;
+  --text-muted: #8f949c;
+  --accent: #ff9f1c;
+  --accent-ink: #1a1200;
+  --error: #e5484d;
+  --warning: #d9a441;
+
+  --font-ui: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Code', Consolas, monospace;
+
+  color-scheme: dark;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+  background-color: var(--bg);
+}
+
+.app {
+  width: 100%;
+  padding: 1.5rem 2rem 3rem;
+  box-sizing: border-box;
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* Barra de pestañas (nav principal, pestañas de Biblioteca): segmented control */
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin-bottom: 1rem;
+}
+
+.tabs button {
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 0.45rem 0.9rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.tabs button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.tabs button:disabled {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  cursor: default;
+  opacity: 1;
+}
+
+/* Fila de controles suelta (rutas, botones de acción, campos de un conector) */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.status {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+.findings {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.finding {
+  padding: 0.5rem 0.75rem;
+  border-radius: 2px;
+  border-left: 3px solid;
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.finding-error {
+  border-color: var(--error);
+}
+
+.finding-warning {
+  border-color: var(--warning);
+}
+
+.hint {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  max-width: 60ch;
+  margin: -0.3rem 0 0.8rem;
+}
+
+section {
+  margin-bottom: 2rem;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+}
+
+th {
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+td {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.tree {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1em;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+}
+
+.query-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.75em 1em;
+}
+
+/* Controles sueltos (fuera de una tabla): look técnico, plano, con borde */
+input,
+select,
+button {
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  padding: 0.4em 0.7em;
+  font-size: 0.86rem;
+  font-family: var(--font-ui);
+  color: var(--text);
+  background-color: var(--surface-2);
+}
+
+button {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Controles dentro de una tabla: se leen como celda, no como formulario web */
+table input,
+table select {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.1rem 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+table input:hover,
+table select:hover {
+  background: var(--surface-2);
+}
+
+table input:focus,
+table select:focus {
+  outline: none;
+  background: var(--surface-2);
+  box-shadow: inset 0 -1.5px 0 var(--accent);
+}

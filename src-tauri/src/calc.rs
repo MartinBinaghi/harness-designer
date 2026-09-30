@@ -1,0 +1,816 @@
+//! Largo de corte, diámetro de bundle, BOM y costos. Ver ../../CLAUDE.md
+//! secciones 5 y 8.
+//!
+//! Sin módulo concéntrico (etapa 7, opcional) no sabemos en qué capa va cada
+//! cable, así que el diámetro de hélice `D` del factor de trenzado (5.1) se
+//! aproxima al `D_bundle` del segmento entero: es el "peor caso" que el plan
+//! ya pide usar mientras no haya construcción concéntrica cargada.
+
+use crate::model::library::{Library, WireDef};
+use crate::model::project::{ConnectorInstance, Project, ProjectData, WireInstance};
+use crate::topology::wire_route;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+fn wire_def_of<'a>(library: &'a Library, wire: &WireInstance) -> Option<&'a WireDef> {
+    library.wire_defs.iter().find(|w| w.part_id == wire.library_part_id)
+}
+
+fn twist_group_of_wire(data: &ProjectData) -> HashMap<i64, i64> {
+    let mut map = HashMap::new();
+    for group in &data.twist_groups {
+        for &wire_id in &group.wire_instance_ids {
+            map.insert(wire_id, group.id);
+        }
+    }
+    map
+}
+
+/// Diámetro de cada elemento del bundle en un segmento: cables sueltos por su
+/// propio `WireDef`, y cada grupo de trenzado colapsado a un solo elemento
+/// (mismo cálculo `sqrt(Σd²/f)` aplicado a sus miembros presentes en el tramo).
+fn segment_element_diameters(data: &ProjectData, library: &Library, segment_id: i64) -> Vec<f64> {
+    let group_of = twist_group_of_wire(data);
+    let mut loose = Vec::new();
+    let mut group_members: HashMap<i64, Vec<f64>> = HashMap::new();
+
+    for wire in &data.wire_instances {
+        let Some(route) = wire_route(data, wire.id) else { continue };
+        if !route.contains(&segment_id) {
+            continue;
+        }
+        let Some(def) = wire_def_of(library, wire) else { continue };
+        match group_of.get(&wire.id) {
+            Some(&group_id) => group_members.entry(group_id).or_default().push(def.outer_diameter_mm),
+            None => loose.push(def.outer_diameter_mm),
+        }
+    }
+
+    let mut elements = loose;
+    for diameters in group_members.into_values() {
+        elements.push(bundle_diameter(&diameters, data.project.fill_factor));
+    }
+    elements
+}
+
+fn bundle_diameter(element_diameters_mm: &[f64], fill_factor: f64) -> f64 {
+    let sum_sq: f64 = element_diameters_mm.iter().map(|d| d * d).sum();
+    (sum_sq / fill_factor).sqrt()
+}
+
+/// `D_bundle = √(Σdᵢ²/f)` del segmento (plan 5.2). `0.0` si no pasa ningún cable.
+pub fn bundle_diameter_mm(data: &ProjectData, library: &Library, segment_id: i64) -> f64 {
+    let elements = segment_element_diameters(data, library, segment_id);
+    if elements.is_empty() {
+        return 0.0;
+    }
+    bundle_diameter(&elements, data.project.fill_factor)
+}
+
+/// Margen del suministrado del termo sobre `D_bundle` (plan 9.2): el plan no fija
+/// un número (sección 14, pendiente calibrar con el uso) — arranca en 10%, igual
+/// al margen de corte por defecto del proyecto.
+const DEFAULT_COVERING_SUPPLIED_MARGIN_PCT: f64 = 10.0;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CoveringFit {
+    pub library_part_id: i64,
+    pub supplied_diameter_mm: f64,
+    pub shrunk_diameter_mm: f64,
+    pub fits: bool,
+}
+
+/// Termos de la biblioteca contra un diámetro dado (plan 9.2): el contraído
+/// tiene que apretar (`shrunk ≤ max_shrunk_mm`) y el suministrado tiene que
+/// entrar (`supplied ≥ min_supplied_mm`). Ordenados de más chico a más grande
+/// de suministrado — el primero que cumple es el sugerido.
+fn coverings_fitting(library: &Library, max_shrunk_mm: f64, min_supplied_mm: f64) -> Vec<CoveringFit> {
+    let mut fits: Vec<CoveringFit> = library
+        .covering_defs
+        .iter()
+        .map(|c| CoveringFit {
+            library_part_id: c.part_id,
+            supplied_diameter_mm: c.supplied_diameter_mm,
+            shrunk_diameter_mm: c.shrunk_diameter_mm,
+            fits: c.shrunk_diameter_mm <= max_shrunk_mm && c.supplied_diameter_mm >= min_supplied_mm,
+        })
+        .collect();
+    fits.sort_by(|a, b| a.supplied_diameter_mm.total_cmp(&b.supplied_diameter_mm));
+    fits
+}
+
+/// Termos que sirven para el bundle de un segmento (plan 9.2).
+pub fn coverings_for_segment(data: &ProjectData, library: &Library, segment_id: i64) -> Vec<CoveringFit> {
+    let d_bundle = bundle_diameter_mm(data, library, segment_id);
+    coverings_fitting(library, d_bundle, d_bundle * (1.0 + DEFAULT_COVERING_SUPPLIED_MARGIN_PCT / 100.0))
+}
+
+/// Diámetro final del segmento con su cobertura aplicada (plan 5.2): el termo
+/// rodea el bundle, así que suma dos veces el espesor de pared contraído.
+pub fn segment_final_diameter_mm(data: &ProjectData, library: &Library, segment_id: i64) -> f64 {
+    let d_bundle = bundle_diameter_mm(data, library, segment_id);
+    let wall = data
+        .segments
+        .iter()
+        .find(|s| s.id == segment_id)
+        .and_then(|s| s.covering_library_part_id)
+        .and_then(|id| library.covering_defs.iter().find(|c| c.part_id == id))
+        .map(|c| c.shrunk_wall_thickness_mm)
+        .unwrap_or(0.0);
+    d_bundle + 2.0 * wall
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BootFit {
+    pub library_part_id: i64,
+    pub connector_compatible: bool,
+    pub cable_side_ok: bool,
+    pub fits: bool,
+}
+
+/// Diámetro de bundle a la salida de un conector: el del segmento conectado a
+/// su nodo (un `connector_end` tiene un solo segmento). `0.0` si no hay ninguno.
+fn connector_outlet_diameter_mm(data: &ProjectData, library: &Library, connector: &ConnectorInstance) -> f64 {
+    data.segments
+        .iter()
+        .find(|s| s.node_a_id == connector.node_id || s.node_b_id == connector.node_id)
+        .map(|s| bundle_diameter_mm(data, library, s.id))
+        .unwrap_or(0.0)
+}
+
+/// Boots de la biblioteca contra un conector (plan 9.3): compatibles con su
+/// serie/carcasa, y el diámetro de bundle a la salida dentro del rango del
+/// lado cable.
+pub fn boots_for_connector(data: &ProjectData, library: &Library, connector_instance_id: i64) -> Vec<BootFit> {
+    let Some(connector) = data.connector_instances.iter().find(|c| c.id == connector_instance_id) else {
+        return Vec::new();
+    };
+    let connector_def = library.connector_defs.iter().find(|d| d.part_id == connector.library_part_id);
+    let outlet_diameter = connector_outlet_diameter_mm(data, library, connector);
+
+    library
+        .accessory_defs
+        .iter()
+        .map(|accessory| {
+            let connector_compatible = connector_def.is_some_and(|def| {
+                accessory.compatible_connectors.iter().any(|m| {
+                    def.series.as_deref() == Some(m.series.as_str())
+                        && def.shell_size.as_deref() == Some(m.shell_size.as_str())
+                })
+            });
+            let cable_side_ok = outlet_diameter >= accessory.cable_side_min_diameter_mm
+                && outlet_diameter <= accessory.cable_side_max_diameter_mm;
+            BootFit {
+                library_part_id: accessory.part_id,
+                connector_compatible,
+                cable_side_ok,
+                fits: connector_compatible && cable_side_ok,
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TMoldLegFit {
+    pub segment_id: i64,
+    pub diameter_mm: f64,
+    pub fits: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TMoldFit {
+    pub library_part_id: i64,
+    pub leg_fits: Vec<TMoldLegFit>,
+    /// `false` también si la cantidad de segmentos conectados no es 3 (una pata por segmento).
+    pub fits: bool,
+}
+
+/// Calce de los moldes en T de la biblioteca contra los segmentos conectados a
+/// un breakout (plan 9.4). El catálogo no distingue una pata "de entrada": se
+/// empareja el segmento más grueso con la pata de mayor rango, y así sucesivamente.
+pub fn t_mold_fits_for_node(data: &ProjectData, library: &Library, node_id: i64) -> Vec<TMoldFit> {
+    let mut segment_diameters: Vec<(i64, f64)> = data
+        .segments
+        .iter()
+        .filter(|s| s.node_a_id == node_id || s.node_b_id == node_id)
+        .map(|s| (s.id, segment_final_diameter_mm(data, library, s.id)))
+        .collect();
+    segment_diameters.sort_by(|a, b| b.1.total_cmp(&a.1));
+
+    library
+        .t_mold_defs
+        .iter()
+        .map(|t_mold| {
+            let mut legs = t_mold.legs.clone();
+            legs.sort_by(|a, b| b.max_diameter_mm.total_cmp(&a.max_diameter_mm));
+
+            let leg_fits: Vec<TMoldLegFit> = segment_diameters
+                .iter()
+                .zip(legs.iter())
+                .map(|(&(segment_id, diameter_mm), leg)| TMoldLegFit {
+                    segment_id,
+                    diameter_mm,
+                    fits: diameter_mm >= leg.min_diameter_mm && diameter_mm <= leg.max_diameter_mm,
+                })
+                .collect();
+
+            let fits = segment_diameters.len() == legs.len() && leg_fits.iter().all(|f| f.fits);
+            TMoldFit { library_part_id: t_mold.part_id, leg_fits, fits }
+        })
+        .collect()
+}
+
+fn twist_factor(bundle_diameter_mm: f64, pitch_mm: f64) -> f64 {
+    if pitch_mm <= 0.0 {
+        return 1.0;
+    }
+    (1.0 + (std::f64::consts::PI * bundle_diameter_mm / pitch_mm).powi(2)).sqrt()
+}
+
+fn effective_pitch_mm(project: &Project, segment_twist_pitch_mm: Option<f64>, bundle_diameter_mm: f64) -> f64 {
+    segment_twist_pitch_mm.unwrap_or(project.default_twist_pitch_factor * bundle_diameter_mm)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WireCutLength {
+    pub wire_id: i64,
+    pub length_with_twist_mm: f64,
+    pub margin_pct: f64,
+    /// Mínimo margen que impone el trenzado del tramo más exigente de este cable.
+    pub twist_min_margin_pct: f64,
+    pub cut_length_mm: f64,
+}
+
+/// Largo de corte de un cable (plan 5.1): recorre sus segmentos aplicando el
+/// factor de trenzado de cada uno, y le suma el margen de seguridad (cascada
+/// manual → `WireDef` → proyecto). `None` si el cable no tiene recorrido
+/// resoluble (extremo sin ubicación, plan 4.3).
+pub fn wire_cut_length(data: &ProjectData, library: &Library, wire_id: i64) -> Option<WireCutLength> {
+    let wire = data.wire_instances.iter().find(|w| w.id == wire_id)?;
+    let route = wire_route(data, wire_id)?;
+
+    let mut length_with_twist_mm = 0.0;
+    let mut worst_factor: f64 = 1.0;
+    for segment_id in &route {
+        let segment = data.segments.iter().find(|s| s.id == *segment_id)?;
+        let d_bundle = bundle_diameter_mm(data, library, *segment_id);
+        let pitch = effective_pitch_mm(&data.project, segment.twist_pitch_mm, d_bundle);
+        let factor = twist_factor(d_bundle, pitch);
+        length_with_twist_mm += segment.length_mm * factor;
+        worst_factor = worst_factor.max(factor);
+    }
+
+    let margin_pct = wire
+        .manual_cut_margin_pct
+        .or_else(|| wire_def_of(library, wire).and_then(|d| d.default_cut_margin_pct))
+        .unwrap_or(data.project.default_cut_margin_pct);
+
+    Some(WireCutLength {
+        wire_id,
+        length_with_twist_mm,
+        margin_pct,
+        twist_min_margin_pct: (worst_factor - 1.0) * 100.0,
+        cut_length_mm: length_with_twist_mm * (1.0 + margin_pct / 100.0),
+    })
+}
+
+/// Lista de corte completa: un renglón por cable con recorrido resoluble.
+pub fn cut_list(data: &ProjectData, library: &Library) -> Vec<WireCutLength> {
+    data.wire_instances
+        .iter()
+        .filter_map(|w| wire_cut_length(data, library, w.id))
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BomRow {
+    pub library_part_id: i64,
+    pub category: String,
+    pub part_number: String,
+    /// Cantidad usada: unidades, o metros para partes de tipo "wire".
+    pub quantity_needed: f64,
+    pub unit: String,
+    /// Redondeada hacia arriba al múltiplo de `qty_per_pack`.
+    pub quantity_to_buy: f64,
+    pub unit_price_usd: Option<f64>,
+    /// Costo sobre lo usado (`quantity_needed × precio`), no sobre lo comprado.
+    pub subtotal_usd: Option<f64>,
+    pub price_date: Option<String>,
+}
+
+fn round_up_to_pack(quantity_needed: f64, qty_per_pack: f64) -> f64 {
+    if qty_per_pack <= 0.0 {
+        return quantity_needed;
+    }
+    (quantity_needed / qty_per_pack).ceil() * qty_per_pack
+}
+
+fn bom_row(library: &Library, part_id: i64, quantity_needed: f64) -> Option<BomRow> {
+    let part = library.parts.iter().find(|p| p.id == part_id)?;
+    Some(BomRow {
+        library_part_id: part_id,
+        category: part.category.clone(),
+        part_number: part.part_number.clone(),
+        quantity_needed,
+        unit: part.purchase_unit.clone(),
+        quantity_to_buy: round_up_to_pack(quantity_needed, part.qty_per_pack),
+        unit_price_usd: part.price_usd,
+        subtotal_usd: part.price_usd.map(|price| price * quantity_needed),
+        price_date: part.price_date.clone(),
+    })
+}
+
+/// BOM agrupado por parte de biblioteca (plan 8.2). Repuesto por categoría
+/// queda en 0% por ahora (sección 14: pendiente calibrar con el uso).
+pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
+    let mut quantities: HashMap<i64, f64> = HashMap::new();
+
+    for connector in &data.connector_instances {
+        *quantities.entry(connector.library_part_id).or_default() += 1.0;
+        if let Some(id) = connector.backshell_library_part_id {
+            *quantities.entry(id).or_default() += 1.0;
+        }
+        for cavity in &connector.cavities {
+            if let Some(id) = cavity.contact_library_part_id {
+                *quantities.entry(id).or_default() += 1.0;
+            }
+            if let Some(id) = cavity.seal_plug_library_part_id {
+                *quantities.entry(id).or_default() += 1.0;
+            }
+        }
+    }
+    for ground in &data.ground_points {
+        if let Some(id) = ground.terminal_library_part_id {
+            *quantities.entry(id).or_default() += 1.0;
+        }
+    }
+    for splice in &data.splice_instances {
+        *quantities.entry(splice.library_part_id).or_default() += 1.0;
+    }
+    for component in &data.component_instances {
+        *quantities.entry(component.library_part_id).or_default() += 1.0;
+    }
+    for cut in cut_list(data, library) {
+        let Some(wire) = data.wire_instances.iter().find(|w| w.id == cut.wire_id) else { continue };
+        *quantities.entry(wire.library_part_id).or_default() += cut.cut_length_mm / 1000.0;
+    }
+
+    let mut rows: Vec<BomRow> = quantities
+        .into_iter()
+        .filter_map(|(part_id, qty)| bom_row(library, part_id, qty))
+        .collect();
+    rows.sort_by(|a, b| a.category.cmp(&b.category).then(a.part_number.cmp(&b.part_number)));
+    rows
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CostSummary {
+    pub materials_usd: f64,
+    pub labor_usd: f64,
+    pub markup_usd: f64,
+    pub total_usd: f64,
+}
+
+/// Costos totales (plan 8.3): materiales sobre lo usado + mano de obra +
+/// markup opcional (0% por defecto), todo en USD.
+pub fn cost_summary(project: &Project, bom: &[BomRow]) -> CostSummary {
+    let materials_usd: f64 = bom.iter().filter_map(|r| r.subtotal_usd).sum();
+    let labor_usd = project.labor_hours * project.labor_rate_usd;
+    let markup_usd = (materials_usd + labor_usd) * project.markup_pct / 100.0;
+    CostSummary {
+        materials_usd,
+        labor_usd,
+        markup_usd,
+        total_usd: materials_usd + labor_usd + markup_usd,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SegmentDiameterInfo {
+    pub segment_id: i64,
+    pub bundle_diameter_mm: f64,
+    pub final_diameter_mm: f64,
+    pub covering_options: Vec<CoveringFit>,
+}
+
+/// Diámetros y termo sugerido por segmento (plan 9.5), para los segmentos que
+/// tienen al menos un cable.
+pub fn segment_diameters(data: &ProjectData, library: &Library) -> Vec<SegmentDiameterInfo> {
+    data.segments
+        .iter()
+        .filter(|s| bundle_diameter_mm(data, library, s.id) > 0.0)
+        .map(|s| SegmentDiameterInfo {
+            segment_id: s.id,
+            bundle_diameter_mm: bundle_diameter_mm(data, library, s.id),
+            final_diameter_mm: segment_final_diameter_mm(data, library, s.id),
+            covering_options: coverings_for_segment(data, library, s.id),
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConnectorTerminationInfo {
+    pub connector_instance_id: i64,
+    pub boot_options: Vec<BootFit>,
+}
+
+/// Boots sugeridos por conector (plan 9.5), para los conectores con terminación boot.
+pub fn connector_terminations(data: &ProjectData, library: &Library) -> Vec<ConnectorTerminationInfo> {
+    data.connector_instances
+        .iter()
+        .filter(|c| matches!(c.termination.as_deref(), Some("boot_straight") | Some("boot_90")))
+        .map(|c| ConnectorTerminationInfo { connector_instance_id: c.id, boot_options: boots_for_connector(data, library, c.id) })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BreakoutTerminationInfo {
+    pub node_id: i64,
+    pub t_mold_options: Vec<TMoldFit>,
+}
+
+/// Moldes en T sugeridos por breakout (plan 9.5), para los nodos con terminación t_mold.
+pub fn breakout_terminations(data: &ProjectData, library: &Library) -> Vec<BreakoutTerminationInfo> {
+    data.nodes
+        .iter()
+        .filter(|n| n.termination.as_deref() == Some("t_mold"))
+        .map(|n| BreakoutTerminationInfo { node_id: n.id, t_mold_options: t_mold_fits_for_node(data, library, n.id) })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CostReport {
+    pub cut_list: Vec<WireCutLength>,
+    pub bom: Vec<BomRow>,
+    pub cost_summary: CostSummary,
+    pub segment_diameters: Vec<SegmentDiameterInfo>,
+    pub connector_terminations: Vec<ConnectorTerminationInfo>,
+    pub breakout_terminations: Vec<BreakoutTerminationInfo>,
+}
+
+pub fn compute_cost_report(data: &ProjectData, library: &Library) -> CostReport {
+    let bom = bill_of_materials(data, library);
+    let cost_summary = cost_summary(&data.project, &bom);
+    CostReport {
+        cut_list: cut_list(data, library),
+        bom,
+        cost_summary,
+        segment_diameters: segment_diameters(data, library),
+        connector_terminations: connector_terminations(data, library),
+        breakout_terminations: breakout_terminations(data, library),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::library::{AccessoryDef, CoveringDef, Part};
+    use crate::model::project::{CavityAssignment, ConnectorInstance, Node, Segment, TwistGroup, WireEnd};
+
+    fn wire_def(part_id: i64, outer_diameter_mm: f64, default_cut_margin_pct: Option<f64>) -> WireDef {
+        WireDef {
+            part_id,
+            gauge: "22 AWG".into(),
+            spec: None,
+            color: None,
+            outer_diameter_mm,
+            default_cut_margin_pct,
+            conductors: vec![],
+        }
+    }
+
+    fn part(id: i64, category: &str, qty_per_pack: f64, price_usd: Option<f64>) -> Part {
+        Part {
+            id,
+            part_number: format!("P{id}"),
+            manufacturer: None,
+            description: None,
+            category: category.into(),
+            purchase_unit: if category == "wire" { "meter".into() } else { "unit".into() },
+            qty_per_pack,
+            price_usd,
+            price_date: price_usd.map(|_| "2026-01-01".into()),
+        }
+    }
+
+    fn cavity_end(id: i64) -> WireEnd {
+        WireEnd { kind: "cavity".into(), cavity_assignment_id: Some(id), splice_id: None, ground_point_id: None, component_instance_id: None }
+    }
+
+    /// Dos nodos, un segmento de 1000 mm entre ellos, y un cable de X1:1 a X2:1.
+    fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -> ProjectData {
+        ProjectData {
+            project: Project {
+                name: "T".into(),
+                harness_code: "T-01".into(),
+                client: None,
+                revision: None,
+                format_version: 1,
+                main_connector_instance_id: None,
+                markup_pct: 0.0,
+                default_cut_margin_pct: 10.0,
+                default_twist_pitch_factor: 8.0,
+                fill_factor: 0.75,
+                labor_hours: 0.0,
+                labor_rate_usd: 0.0,
+            },
+            device_instances: vec![],
+            nodes: vec![
+                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+                Node { id: 2, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+            ],
+            segments: vec![Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm, twist_pitch_mm, covering_library_part_id: None }],
+            connector_instances: vec![
+                ConnectorInstance {
+                    id: 1, short_id: "X1".into(), name: "A".into(), library_part_id: 10, device_instance_id: None,
+                    node_id: 1, termination: None, termination_library_part_id: None, backshell_library_part_id: None, status: "complete".into(),
+                    is_interconnect: false, mates_with: None,
+                    cavities: vec![CavityAssignment { id: 1, cavity_id: "1".into(), contact_library_part_id: None, seal_plug_library_part_id: None, external_reference: None }],
+                },
+                ConnectorInstance {
+                    id: 2, short_id: "X2".into(), name: "B".into(), library_part_id: 10, device_instance_id: None,
+                    node_id: 2, termination: None, termination_library_part_id: None, backshell_library_part_id: None, status: "complete".into(),
+                    is_interconnect: false, mates_with: None,
+                    cavities: vec![CavityAssignment { id: 2, cavity_id: "1".into(), contact_library_part_id: None, seal_plug_library_part_id: None, external_reference: None }],
+                },
+            ],
+            ground_points: vec![],
+            splice_instances: vec![],
+            component_instances: vec![],
+            wire_instances: vec![WireInstance {
+                id: 1, short_id: "W001".into(), library_part_id: 100, color: None, signal_type_id: None,
+                specific_name: None, manual_cut_margin_pct: None, label: None,
+                end_a: cavity_end(1), end_b: cavity_end(2),
+            }],
+            twist_groups: vec![],
+        }
+    }
+
+    #[test]
+    fn bundle_diameter_matches_the_plan_formula() {
+        // Dos cables de 6mm cada uno, f=0.75 -> sqrt((6^2+6^2)/0.75) = sqrt(96) ≈ 9.798
+        let diameters = [6.0, 6.0];
+        let d = bundle_diameter(&diameters, 0.75);
+        assert!((d - 9.798).abs() < 0.001, "got {d}");
+    }
+
+    #[test]
+    fn default_pitch_factor_of_8_gives_the_plans_worked_outer_layer_margin() {
+        // pitch = 8 * D_bundle -> factor = sqrt(1 + (pi/8)^2) ≈ 1.0744, independiente de D.
+        let factor = twist_factor(10.0, 8.0 * 10.0);
+        assert!((factor - 1.0744).abs() < 0.001, "got {factor}");
+    }
+
+    #[test]
+    fn default_pitch_factor_of_16_gives_the_plans_worked_outer_layer_margin() {
+        let factor = twist_factor(10.0, 16.0 * 10.0);
+        assert!((factor - 1.0191).abs() < 0.001, "got {factor}");
+    }
+
+    #[test]
+    fn cut_length_applies_twist_factor_then_margin_cascade() {
+        let data = one_segment_project(1000.0, Some(120.0));
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 9.0, None));
+
+        let cut = wire_cut_length(&data, &library, 1).unwrap();
+        // D_bundle de un solo cable de 9mm con f=0.75: sqrt(81/0.75) ≈ 10.392
+        let expected_d_bundle = (81.0f64 / 0.75).sqrt();
+        let expected_factor = twist_factor(expected_d_bundle, 120.0);
+        let expected_length = 1000.0 * expected_factor;
+        assert!((cut.length_with_twist_mm - expected_length).abs() < 0.001);
+        assert_eq!(cut.margin_pct, 10.0); // cae al default del proyecto
+        assert!((cut.cut_length_mm - expected_length * 1.10).abs() < 0.001);
+    }
+
+    #[test]
+    fn manual_margin_wins_over_wire_def_and_project_defaults() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0)); // pitch enorme -> factor ~1
+        data.wire_instances[0].manual_cut_margin_pct = Some(25.0);
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 2.0, Some(15.0)));
+
+        let cut = wire_cut_length(&data, &library, 1).unwrap();
+        assert_eq!(cut.margin_pct, 25.0);
+    }
+
+    #[test]
+    fn wire_def_margin_wins_over_project_default_when_no_manual_margin() {
+        let data = one_segment_project(1000.0, Some(1_000_000.0));
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 2.0, Some(15.0)));
+
+        let cut = wire_cut_length(&data, &library, 1).unwrap();
+        assert_eq!(cut.margin_pct, 15.0);
+    }
+
+    #[test]
+    fn twist_group_members_collapse_to_one_bundle_element() {
+        let mut data = one_segment_project(1000.0, Some(120.0));
+        // Segundo cable en el mismo tramo, mismo grupo de trenzado que W001.
+        data.wire_instances.push(WireInstance {
+            id: 2, short_id: "W002".into(), library_part_id: 100, color: None, signal_type_id: None,
+            specific_name: None, manual_cut_margin_pct: None, label: None,
+            end_a: cavity_end(1), end_b: cavity_end(2),
+        });
+        data.connector_instances[0].cavities.push(CavityAssignment { id: 3, cavity_id: "2".into(), contact_library_part_id: None, seal_plug_library_part_id: None, external_reference: None });
+        data.connector_instances[1].cavities.push(CavityAssignment { id: 4, cavity_id: "2".into(), contact_library_part_id: None, seal_plug_library_part_id: None, external_reference: None });
+        data.wire_instances[1].end_a = cavity_end(3);
+        data.wire_instances[1].end_b = cavity_end(4);
+        data.twist_groups.push(TwistGroup { id: 1, name: "twist I".into(), shielded: false, drain: false, wire_instance_ids: vec![1, 2] });
+
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None));
+
+        let grouped = bundle_diameter_mm(&data, &library, 1);
+        // El grupo colapsa a un solo elemento con su propio diámetro sqrt((6^2+6^2)/0.75);
+        // ese elemento pasa de nuevo por la fórmula del segmento (es el único elemento presente).
+        let group_diameter = bundle_diameter(&[6.0, 6.0], 0.75);
+        let expected = bundle_diameter(&[group_diameter], 0.75);
+        assert!((grouped - expected).abs() < 0.001);
+    }
+
+    #[test]
+    fn bom_counts_connectors_contacts_and_wire_meterage() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        data.connector_instances[0].cavities[0].contact_library_part_id = Some(200);
+
+        let mut library = Library::default();
+        library.parts = vec![
+            part(10, "connector", 1.0, Some(5.0)),
+            part(100, "wire", 100.0, Some(0.5)),
+            part(200, "contact", 50.0, Some(0.2)),
+        ];
+        library.wire_defs.push(wire_def(100, 2.0, None));
+
+        let bom = bill_of_materials(&data, &library);
+
+        let connector_row = bom.iter().find(|r| r.library_part_id == 10).unwrap();
+        assert_eq!(connector_row.quantity_needed, 2.0); // X1 y X2 usan la misma parte
+        assert_eq!(connector_row.quantity_to_buy, 2.0);
+
+        let contact_row = bom.iter().find(|r| r.library_part_id == 200).unwrap();
+        assert_eq!(contact_row.quantity_needed, 1.0);
+        assert_eq!(contact_row.quantity_to_buy, 50.0); // redondeado al pack
+
+        let wire_row = bom.iter().find(|r| r.library_part_id == 100).unwrap();
+        assert!(wire_row.quantity_needed > 1.0); // 1000mm + 10% margen, en metros
+        assert!(wire_row.subtotal_usd.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn cost_summary_adds_labor_and_optional_markup() {
+        let project = Project {
+            name: "T".into(), harness_code: "T-01".into(), client: None, revision: None, format_version: 1,
+            main_connector_instance_id: None, markup_pct: 20.0, default_cut_margin_pct: 10.0,
+            default_twist_pitch_factor: 8.0, fill_factor: 0.75, labor_hours: 2.0, labor_rate_usd: 25.0,
+        };
+        let bom = vec![BomRow {
+            library_part_id: 1, category: "wire".into(), part_number: "P1".into(), quantity_needed: 10.0,
+            unit: "meter".into(), quantity_to_buy: 10.0, unit_price_usd: Some(1.0), subtotal_usd: Some(10.0), price_date: None,
+        }];
+
+        let summary = cost_summary(&project, &bom);
+        assert_eq!(summary.materials_usd, 10.0);
+        assert_eq!(summary.labor_usd, 50.0);
+        assert_eq!(summary.markup_usd, 12.0); // 20% de (10 + 50)
+        assert_eq!(summary.total_usd, 72.0);
+    }
+
+    fn covering(part_id: i64, supplied: f64, shrunk: f64, wall: f64) -> CoveringDef {
+        CoveringDef { part_id, supplied_diameter_mm: supplied, shrunk_diameter_mm: shrunk, shrunk_wall_thickness_mm: wall, has_adhesive: true }
+    }
+
+    #[test]
+    fn suggests_the_smallest_covering_that_fits_and_flags_the_ones_that_dont() {
+        let data = one_segment_project(1000.0, Some(1_000_000.0)); // pitch enorme -> factor ~1, D_bundle solo depende del cable
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None));
+        // D_bundle de un cable de 6mm con f=0.75: sqrt(36/0.75) ≈ 6.928
+        let d_bundle = (36.0f64 / 0.75).sqrt();
+        library.covering_defs = vec![
+            covering(1, d_bundle * 0.5, d_bundle * 0.5, 0.3), // contraído no aprieta lo suficiente igual sirve (shrunk<=d_bundle) pero suministrado no entra
+            covering(2, d_bundle * 1.2, d_bundle * 0.8, 0.4), // sirve: shrunk<=d_bundle y supplied>=d_bundle*1.1
+            covering(3, d_bundle * 2.0, d_bundle * 1.5, 0.5), // shrunk > d_bundle: no aprieta
+        ];
+
+        let fits = coverings_for_segment(&data, &library, 1);
+        assert_eq!(fits.len(), 3);
+        assert!(!fits.iter().find(|f| f.library_part_id == 1).unwrap().fits);
+        assert!(fits.iter().find(|f| f.library_part_id == 2).unwrap().fits);
+        assert!(!fits.iter().find(|f| f.library_part_id == 3).unwrap().fits);
+
+        let final_diameter = segment_final_diameter_mm(&data, &library, 1);
+        assert!((final_diameter - d_bundle).abs() < 0.001); // sin covering asignado al segmento, no suma pared
+    }
+
+    #[test]
+    fn segment_final_diameter_adds_the_shrunk_wall_of_the_assigned_covering() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        data.segments[0].covering_library_part_id = Some(1);
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None));
+        library.covering_defs.push(covering(1, 20.0, 10.0, 0.5));
+
+        let d_bundle = bundle_diameter_mm(&data, &library, 1);
+        let final_diameter = segment_final_diameter_mm(&data, &library, 1);
+        assert!((final_diameter - (d_bundle + 1.0)).abs() < 0.001); // +2×0.5mm de pared
+    }
+
+    fn connector_def_with_series(part_id: i64, series: &str, shell_size: &str) -> crate::model::library::ConnectorDef {
+        crate::model::library::ConnectorDef {
+            part_id,
+            gender: "female".into(),
+            series: Some(series.into()),
+            shell_size: Some(shell_size.into()),
+            cavity_count: 2,
+            counterpart_id: None,
+            back_diameter_mm: None,
+            suggested_termination: None,
+            image_side_path: None,
+            image_front_path: None,
+            image_back_path: None,
+            cavities: vec![],
+        }
+    }
+
+    fn accessory(part_id: i64, min_d: f64, max_d: f64, series: &str, shell_size: &str) -> AccessoryDef {
+        AccessoryDef {
+            part_id,
+            orientation: "straight".into(),
+            cable_side_min_diameter_mm: min_d,
+            cable_side_max_diameter_mm: max_d,
+            leg_length_mm: 30.0,
+            overlap_mm: 15.0,
+            compatible_connectors: vec![crate::model::library::AccessoryDefConnectorMatch {
+                series: series.into(),
+                shell_size: shell_size.into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn boot_fit_checks_both_connector_compatibility_and_cable_side_diameter() {
+        let data = one_segment_project(1000.0, Some(1_000_000.0));
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None));
+        library.connector_defs.push(connector_def_with_series(10, "AMP", "CE"));
+        let d_bundle = bundle_diameter_mm(&data, &library, 1);
+        library.accessory_defs = vec![
+            accessory(1, d_bundle - 1.0, d_bundle + 1.0, "AMP", "CE"), // compatible y en rango
+            accessory(2, d_bundle - 1.0, d_bundle + 1.0, "DT", "06"),  // rango ok, serie no compatible
+            accessory(3, d_bundle + 5.0, d_bundle + 10.0, "AMP", "CE"), // compatible, fuera de rango
+        ];
+
+        let fits = boots_for_connector(&data, &library, 1); // connector X1, library_part_id 10
+        let by_id = |id: i64| fits.iter().find(|f| f.library_part_id == id).unwrap();
+        assert!(by_id(1).fits);
+        assert!(!by_id(2).connector_compatible);
+        assert!(by_id(3).connector_compatible && !by_id(3).cable_side_ok);
+    }
+
+    fn t_mold(part_id: i64, legs: &[(f64, f64)]) -> crate::model::library::TMoldDef {
+        crate::model::library::TMoldDef {
+            part_id,
+            overlap_mm: 20.0,
+            legs: legs
+                .iter()
+                .map(|&(min, max)| crate::model::library::TMoldLeg { min_diameter_mm: min, max_diameter_mm: max, leg_length_mm: 30.0 })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn t_mold_fit_pairs_segments_and_legs_by_size_descending() {
+        // Breakout (node 2) con 3 patas: segmento 1 (grueso, ya cargado por y_shaped-like setup)
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        // Reutilizamos el nodo 2 como breakout con dos segmentos más, de distinto diámetro.
+        data.nodes.push(Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None });
+        data.nodes.push(Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None });
+        data.segments.push(Segment { id: 2, node_a_id: 2, node_b_id: 3, length_mm: 500.0, twist_pitch_mm: Some(1_000_000.0), covering_library_part_id: None });
+        data.segments.push(Segment { id: 3, node_a_id: 2, node_b_id: 4, length_mm: 500.0, twist_pitch_mm: Some(1_000_000.0), covering_library_part_id: None });
+
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None)); // solo el segmento 1 tiene cable -> D_bundle > 0; los otros dos dan 0.0
+        let d1 = bundle_diameter_mm(&data, &library, 1); // ~6.93mm
+        // Patas: una que cubre d1 (grande), y dos que cubren 0.0 (chicas) -> las 3 calzan.
+        library.t_mold_defs = vec![t_mold(50, &[(0.0, 1.0), (0.0, 1.0), (d1 - 1.0, d1 + 1.0)])];
+
+        let fits = t_mold_fits_for_node(&data, &library, 2);
+        assert_eq!(fits.len(), 1);
+        assert!(fits[0].fits);
+        assert_eq!(fits[0].leg_fits.len(), 3);
+    }
+
+    #[test]
+    fn t_mold_does_not_fit_when_leg_count_does_not_match_segment_count() {
+        let data = one_segment_project(1000.0, Some(1_000_000.0)); // solo 1 segmento en el nodo 1 (no es un breakout de 3)
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None));
+        library.t_mold_defs = vec![t_mold(50, &[(0.0, 100.0), (0.0, 100.0), (0.0, 100.0)])];
+
+        let fits = t_mold_fits_for_node(&data, &library, 1); // nodo 1 solo tiene 1 segmento conectado
+        assert_eq!(fits.len(), 1);
+        assert!(!fits[0].fits);
+    }
+}
