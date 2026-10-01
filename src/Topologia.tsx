@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { Node, ProjectData, Segment } from "./types";
+import type { Node, ProjectData, Segment, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import { buildTreeText } from "./tree";
+import { FolderIcon, SaveIcon } from "./icons";
 
 const NODE_KIND_LABELS: Record<Node["kind"], string> = {
   connector_end: "Connector end",
@@ -28,9 +29,11 @@ interface Props {
   filePath: string;
   setFilePath: (p: string) => void;
   library: Library;
+  selection: Selection;
+  onSelect: (s: Selection) => void;
 }
 
-export default function Topologia({ project, setProject, filePath, setFilePath, library }: Props) {
+export default function Topologia({ project, setProject, filePath, setFilePath, library, selection, onSelect }: Props) {
   const [status, setStatus] = useState("");
   const [selectedWireId, setSelectedWireId] = useState<number | null>(null);
   const [route, setRoute] = useState<number[] | null>(null);
@@ -132,12 +135,14 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
 
   return (
     <>
-      <h2>Topology</h2>
-
       <section className="toolbar">
         <input value={filePath} onChange={(e) => setFilePath(e.currentTarget.value)} placeholder="file path" />
-        <button onClick={openProject}>Open</button>
-        <button onClick={saveProject} disabled={!project}>Save</button>
+        <button className="icon-button" onClick={openProject} title="Open" aria-label="Open project file">
+          <FolderIcon />
+        </button>
+        <button className="icon-button" onClick={saveProject} disabled={!project} title="Save" aria-label="Save project file">
+          <SaveIcon />
+        </button>
         <button onClick={loadDemo}>Load sample</button>
         {status && <span className="status">{status}</span>}
       </section>
@@ -162,7 +167,11 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
               </thead>
               <tbody>
                 {project.nodes.map((node) => (
-                  <tr key={node.id}>
+                  <tr
+                    key={node.id}
+                    className={`selectable-row${selection?.kind === "node" && selection.id === node.id ? " selected-row" : ""}`}
+                    onClick={() => onSelect({ kind: "node", id: node.id })}
+                  >
                     <td>{node.id}</td>
                     <td>
                       <select value={node.kind} onChange={(e) => updateNode(node.id, { kind: e.currentTarget.value as Node["kind"] })}>
@@ -213,7 +222,11 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
               </thead>
               <tbody>
                 {project.segments.map((segment) => (
-                  <tr key={segment.id}>
+                  <tr
+                    key={segment.id}
+                    className={`selectable-row${selection?.kind === "segment" && selection.id === segment.id ? " selected-row" : ""}`}
+                    onClick={() => onSelect({ kind: "segment", id: segment.id })}
+                  >
                     <td>{segment.id}</td>
                     <td>
                       <select value={segment.node_a_id} onChange={(e) => updateSegment(segment.id, { node_a_id: Number(e.currentTarget.value) })}>

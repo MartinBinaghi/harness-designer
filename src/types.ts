@@ -121,6 +121,22 @@ export interface TwistGroup {
   wire_instance_ids: number[];
 }
 
+/** Espejo de checks::Finding (src-tauri). */
+export interface Finding {
+  severity: "error" | "warning";
+  message: string;
+}
+
+/** Elemento seleccionado, compartido entre el árbol, el inspector y las tablas de cada pantalla. */
+export type Selection =
+  | { kind: "node"; id: number }
+  | { kind: "segment"; id: number }
+  | { kind: "connector"; id: number }
+  | { kind: "ground"; id: number }
+  | { kind: "splice"; id: number }
+  | { kind: "wire"; id: number }
+  | null;
+
 export interface ProjectData {
   project: Project;
   device_instances: DeviceInstance[];

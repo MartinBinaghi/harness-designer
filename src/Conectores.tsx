@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CavityAssignment, ConnectorInstance, ProjectData } from "./types";
 import type { Library } from "./libraryTypes";
+import { ChevronIcon, TrashIcon } from "./icons";
 
 function nextId(ids: number[]): number {
   return ids.length === 0 ? 1 : Math.max(...ids) + 1;
@@ -39,12 +40,22 @@ export default function Conectores({ project, setProject, library }: Props) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [nodeFilter, setNodeFilter] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   if (!project) {
     return <p>Open or load a project first (Topology tab).</p>;
   }
   if (project.nodes.length === 0) {
     return <p>This project has no nodes yet. Create at least one in the Topology tab.</p>;
+  }
+
+  function toggleExpanded(id: number) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   function update(id: number, patch: Partial<ConnectorInstance>) {
@@ -98,6 +109,7 @@ export default function Conectores({ project, setProject, library }: Props) {
       cavities: cavitiesFromDef(project, connectorDef.part_id, library),
     };
     setProject({ ...project, connector_instances: [...project.connector_instances, newConnector] });
+    setExpandedIds((prev) => new Set(prev).add(id));
   }
 
   const visibleConnectors = project.connector_instances.filter((connector) => {
@@ -112,8 +124,6 @@ export default function Conectores({ project, setProject, library }: Props) {
 
   return (
     <>
-      <h2>Connectors</h2>
-
       <div className="toolbar">
         <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search id, name, mates with…" style={{ width: "16em" }} />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.currentTarget.value)}>
@@ -128,108 +138,150 @@ export default function Conectores({ project, setProject, library }: Props) {
         <span className="status">{visibleConnectors.length} of {project.connector_instances.length} connectors</span>
       </div>
 
-      {visibleConnectors.map((connector) => (
-        <div key={connector.id} className="query-result" style={{ marginBottom: "1rem" }}>
-          <div className="toolbar">
-            <input value={connector.short_id} onChange={(e) => update(connector.id, { short_id: e.currentTarget.value })} placeholder="X1" style={{ width: "5em" }} />
-            <input value={connector.name} onChange={(e) => update(connector.id, { name: e.currentTarget.value })} placeholder="descriptive name" />
-
-            <select value={connector.library_part_id} onChange={(e) => changeConnectorDef(connector, Number(e.currentTarget.value))}>
-              {library.connector_defs.map((cd) => (
-                <option key={cd.part_id} value={cd.part_id}>{partLabel(library, cd.part_id)}</option>
-              ))}
-            </select>
-
-            <select value={connector.node_id} onChange={(e) => update(connector.id, { node_id: Number(e.currentTarget.value) })}>
-              {project.nodes.map((n) => <option key={n.id} value={n.id}>node {n.id}</option>)}
-            </select>
-
-            <select value={connector.device_instance_id ?? ""} onChange={(e) => update(connector.id, { device_instance_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-              <option value="">no device</option>
-              {project.device_instances.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-
-            <select value={connector.termination ?? ""} onChange={(e) => update(connector.id, { termination: e.currentTarget.value || null, termination_library_part_id: null })}>
-              <option value="">termination: —</option>
-              <option value="boot_straight">Straight boot</option>
-              <option value="boot_90">90° boot</option>
-              <option value="adhesive_heatshrink">Adhesive heat-shrink</option>
-              <option value="none">None</option>
-            </select>
-
-            {(connector.termination === "boot_straight" || connector.termination === "boot_90") && (
-              <select value={connector.termination_library_part_id ?? ""} onChange={(e) => update(connector.id, { termination_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-                <option value="">boot: —</option>
-                {library.accessory_defs.map((ad) => {
-                  const part = library.parts.find((p) => p.id === ad.part_id);
-                  return <option key={ad.part_id} value={ad.part_id}>{part?.part_number ?? `#${ad.part_id}`}</option>;
-                })}
-              </select>
-            )}
-            {connector.termination === "adhesive_heatshrink" && (
-              <select value={connector.termination_library_part_id ?? ""} onChange={(e) => update(connector.id, { termination_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-                <option value="">covering: —</option>
-                {library.covering_defs.map((cd) => {
-                  const part = library.parts.find((p) => p.id === cd.part_id);
-                  return <option key={cd.part_id} value={cd.part_id}>{part?.part_number ?? `#${cd.part_id}`}</option>;
-                })}
-              </select>
-            )}
-
-            <select value={connector.status} onChange={(e) => update(connector.id, { status: e.currentTarget.value as ConnectorInstance["status"] })}>
-              <option value="complete">Complete</option>
-              <option value="pending">Pending</option>
-            </select>
-
-            <label style={{ fontSize: "0.9em" }}>
-              <input type="checkbox" checked={connector.is_interconnect} onChange={(e) => update(connector.id, { is_interconnect: e.currentTarget.checked })} />
-              interconnect
-            </label>
-            {connector.is_interconnect && (
-              <input value={connector.mates_with ?? ""} onChange={(e) => update(connector.id, { mates_with: e.currentTarget.value || null })} placeholder="mates with…" />
-            )}
-
-            <button onClick={() => remove(connector.id)}>delete connector</button>
-          </div>
-
-          <table>
-            <thead><tr><th>Cavity</th><th>Contact</th><th>Seal plug</th><th>External reference</th></tr></thead>
-            <tbody>
-              {connector.cavities.map((cav) => (
-                <tr key={cav.id}>
-                  <td>{cav.cavity_id}</td>
-                  <td>
-                    <select
-                      value={cav.contact_library_part_id ?? ""}
-                      onChange={(e) => updateCavity(connector, cav.id, { contact_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null, seal_plug_library_part_id: null })}
-                    >
-                      <option value="">—</option>
-                      {library.contact_defs.map((cd) => <option key={cd.part_id} value={cd.part_id}>{partLabel(library, cd.part_id)}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <select
-                      value={cav.seal_plug_library_part_id ?? ""}
-                      onChange={(e) => updateCavity(connector, cav.id, { seal_plug_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null, contact_library_part_id: null })}
-                    >
-                      <option value="">—</option>
-                      {library.seal_plug_defs.map((sp) => <option key={sp.part_id} value={sp.part_id}>{partLabel(library, sp.part_id)}</option>)}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      value={cav.external_reference ?? ""}
-                      onChange={(e) => updateCavity(connector, cav.id, { external_reference: e.currentTarget.value || null })}
-                      placeholder="what's on the other side"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="connector-table">
+        <div className="connector-row connector-row-head">
+          <div></div>
+          <div>ID</div>
+          <div>Name</div>
+          <div>Node</div>
+          <div>Status</div>
+          <div></div>
         </div>
-      ))}
-      <button onClick={add}>+ connector</button>
+
+        {visibleConnectors.map((connector) => {
+          const isOpen = expandedIds.has(connector.id);
+          const currentDefMatches = library.connector_defs.some((cd) => cd.part_id === connector.library_part_id);
+          return (
+            <div key={connector.id} className="connector-group">
+              <div className={`connector-row${isOpen ? " connector-row-open" : ""}`}>
+                <button className="chevron-button" onClick={() => toggleExpanded(connector.id)} aria-label={isOpen ? "Collapse details" : "Expand details"} title={isOpen ? "Collapse" : "Expand"}>
+                  <ChevronIcon open={isOpen} />
+                </button>
+                <input value={connector.short_id} onChange={(e) => update(connector.id, { short_id: e.currentTarget.value })} placeholder="X1" />
+                <input value={connector.name} onChange={(e) => update(connector.id, { name: e.currentTarget.value })} placeholder="descriptive name" />
+                <select value={connector.node_id} onChange={(e) => update(connector.id, { node_id: Number(e.currentTarget.value) })}>
+                  {project.nodes.map((n) => <option key={n.id} value={n.id}>node {n.id}</option>)}
+                </select>
+                <select value={connector.status} onChange={(e) => update(connector.id, { status: e.currentTarget.value as ConnectorInstance["status"] })}>
+                  <option value="complete">Complete</option>
+                  <option value="pending">Pending</option>
+                </select>
+                <button className="icon-button" onClick={() => remove(connector.id)} title="Delete connector" aria-label="Delete connector">
+                  <TrashIcon />
+                </button>
+              </div>
+
+              {isOpen && (
+                <div className="connector-detail">
+                  <div className="connector-detail-fields">
+                    <div>
+                      <div className="field-label">Part</div>
+                      <select value={connector.library_part_id} onChange={(e) => changeConnectorDef(connector, Number(e.currentTarget.value))}>
+                        {!currentDefMatches && <option value={connector.library_part_id}>{partLabel(library, connector.library_part_id)}</option>}
+                        {library.connector_defs.map((cd) => (
+                          <option key={cd.part_id} value={cd.part_id}>{partLabel(library, cd.part_id)}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="field-label">Device</div>
+                      <select value={connector.device_instance_id ?? ""} onChange={(e) => update(connector.id, { device_instance_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+                        <option value="">—</option>
+                        {project.device_instances.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="field-label">Termination</div>
+                      <select value={connector.termination ?? ""} onChange={(e) => update(connector.id, { termination: e.currentTarget.value || null, termination_library_part_id: null })}>
+                        <option value="">—</option>
+                        <option value="boot_straight">Straight boot</option>
+                        <option value="boot_90">90° boot</option>
+                        <option value="adhesive_heatshrink">Adhesive heat-shrink</option>
+                        <option value="none">None</option>
+                      </select>
+                    </div>
+
+                    {(connector.termination === "boot_straight" || connector.termination === "boot_90") && (
+                      <div>
+                        <div className="field-label">Boot</div>
+                        <select value={connector.termination_library_part_id ?? ""} onChange={(e) => update(connector.id, { termination_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+                          <option value="">—</option>
+                          {library.accessory_defs.map((ad) => {
+                            const part = library.parts.find((p) => p.id === ad.part_id);
+                            return <option key={ad.part_id} value={ad.part_id}>{part?.part_number ?? `#${ad.part_id}`}</option>;
+                          })}
+                        </select>
+                      </div>
+                    )}
+                    {connector.termination === "adhesive_heatshrink" && (
+                      <div>
+                        <div className="field-label">Covering</div>
+                        <select value={connector.termination_library_part_id ?? ""} onChange={(e) => update(connector.id, { termination_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+                          <option value="">—</option>
+                          {library.covering_defs.map((cd) => {
+                            const part = library.parts.find((p) => p.id === cd.part_id);
+                            return <option key={cd.part_id} value={cd.part_id}>{part?.part_number ?? `#${cd.part_id}`}</option>;
+                          })}
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="field-label">Interconnect</div>
+                      <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.86rem" }}>
+                        <input type="checkbox" checked={connector.is_interconnect} onChange={(e) => update(connector.id, { is_interconnect: e.currentTarget.checked })} />
+                        {connector.is_interconnect && (
+                          <input value={connector.mates_with ?? ""} onChange={(e) => update(connector.id, { mates_with: e.currentTarget.value || null })} placeholder="mates with…" style={{ flex: 1 }} />
+                        )}
+                      </label>
+                    </div>
+                  </div>
+
+                  <table>
+                    <thead><tr><th>Cavity</th><th>Contact</th><th>Seal plug</th><th>External reference</th></tr></thead>
+                    <tbody>
+                      {connector.cavities.map((cav) => (
+                        <tr key={cav.id}>
+                          <td>{cav.cavity_id}</td>
+                          <td>
+                            <select
+                              value={cav.contact_library_part_id ?? ""}
+                              onChange={(e) => updateCavity(connector, cav.id, { contact_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null, seal_plug_library_part_id: null })}
+                            >
+                              <option value="">—</option>
+                              {library.contact_defs.map((cd) => <option key={cd.part_id} value={cd.part_id}>{partLabel(library, cd.part_id)}</option>)}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={cav.seal_plug_library_part_id ?? ""}
+                              onChange={(e) => updateCavity(connector, cav.id, { seal_plug_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null, contact_library_part_id: null })}
+                            >
+                              <option value="">—</option>
+                              {library.seal_plug_defs.map((sp) => <option key={sp.part_id} value={sp.part_id}>{partLabel(library, sp.part_id)}</option>)}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              value={cav.external_reference ?? ""}
+                              onChange={(e) => updateCavity(connector, cav.id, { external_reference: e.currentTarget.value || null })}
+                              placeholder="what's on the other side"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button className="button-ghost-accent" onClick={add} style={{ marginTop: "0.75rem" }}>+ New</button>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProjectData } from "./types";
+import type { ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
 import { endLabel } from "./Cables";
@@ -8,9 +8,11 @@ import { endLabel } from "./Cables";
 interface Props {
   project: ProjectData | null;
   library: Library;
+  selection: Selection;
+  onSelect: (s: Selection) => void;
 }
 
-export default function Costs({ project, library }: Props) {
+export default function Costs({ project, library, selection, onSelect }: Props) {
   const [report, setReport] = useState<CostReport | null>(null);
 
   if (!project) {
@@ -47,9 +49,8 @@ export default function Costs({ project, library }: Props) {
 
   return (
     <>
-      <h2>Costs</h2>
       <div className="toolbar">
-        <button onClick={run}>Compute</button>
+        <button className="button-primary" onClick={run}>Compute</button>
         {report && (
           <span className="status">
             {report.cut_list.length} wires · {report.bom.length} parts · total ${report.cost_summary.total_usd.toFixed(2)}
@@ -70,7 +71,11 @@ export default function Costs({ project, library }: Props) {
                   const [from, to] = wireFromTo(cut.wire_id);
                   const belowMinimum = cut.margin_pct < cut.twist_min_margin_pct;
                   return (
-                    <tr key={cut.wire_id}>
+                    <tr
+                      key={cut.wire_id}
+                      className={`selectable-row${selection?.kind === "wire" && selection.id === cut.wire_id ? " selected-row" : ""}`}
+                      onClick={() => onSelect({ kind: "wire", id: cut.wire_id })}
+                    >
                       <td>{wireLabel(cut.wire_id)}</td>
                       <td>{from}</td>
                       <td>{to}</td>

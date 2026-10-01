@@ -1,6 +1,7 @@
 import { useState } from "react";
-import type { ProjectData, WireEnd, WireInstance } from "./types";
+import type { ProjectData, Selection, WireEnd, WireInstance } from "./types";
 import type { Library } from "./libraryTypes";
+import { TrashIcon } from "./icons";
 
 function nextId(ids: number[]): number {
   return ids.length === 0 ? 1 : Math.max(...ids) + 1;
@@ -66,7 +67,7 @@ function EndEditor({ end, project, onChange }: { end: WireEnd; project: ProjectD
   }
 
   return (
-    <span className="toolbar" style={{ display: "inline-flex" }}>
+    <span style={{ display: "flex", flexDirection: "column", width: "100%", gap: "2px" }}>
       <select value={end.kind} onChange={(e) => setKind(e.currentTarget.value as WireEnd["kind"])}>
         <option value="cavity">cavity</option>
         <option value="splice">splice</option>
@@ -109,9 +110,11 @@ interface Props {
   project: ProjectData | null;
   setProject: (p: ProjectData) => void;
   library: Library;
+  selection: Selection;
+  onSelect: (s: Selection) => void;
 }
 
-export default function Cables({ project, setProject, library }: Props) {
+export default function Cables({ project, setProject, library, selection, onSelect }: Props) {
   const [search, setSearch] = useState("");
   const [connectorFilter, setConnectorFilter] = useState("");
   const [gaugeFilter, setGaugeFilter] = useState("");
@@ -185,8 +188,6 @@ export default function Cables({ project, setProject, library }: Props) {
 
   return (
     <>
-      <h2>Wires</h2>
-
       <div className="toolbar">
         <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search id, name, color, endpoint…" style={{ width: "16em" }} />
         <select value={connectorFilter} onChange={(e) => setConnectorFilter(e.currentTarget.value)}>
@@ -206,7 +207,11 @@ export default function Cables({ project, setProject, library }: Props) {
         </thead>
         <tbody>
           {visibleWires.map((wire) => (
-            <tr key={wire.id}>
+            <tr
+              key={wire.id}
+              className={`selectable-row${selection?.kind === "wire" && selection.id === wire.id ? " selected-row" : ""}`}
+              onClick={() => onSelect({ kind: "wire", id: wire.id })}
+            >
               <td><input value={wire.short_id} onChange={(e) => update(wire.id, { short_id: e.currentTarget.value })} style={{ width: "5em" }} /></td>
               <td>
                 <select value={wire.library_part_id} onChange={(e) => update(wire.id, { library_part_id: Number(e.currentTarget.value) })}>
@@ -228,12 +233,16 @@ export default function Cables({ project, setProject, library }: Props) {
               <td><input value={wire.specific_name ?? ""} onChange={(e) => update(wire.id, { specific_name: e.currentTarget.value || null })} /></td>
               <td><EndEditor end={wire.end_a} project={project} onChange={(end_a) => update(wire.id, { end_a })} /></td>
               <td><EndEditor end={wire.end_b} project={project} onChange={(end_b) => update(wire.id, { end_b })} /></td>
-              <td><button onClick={() => remove(wire.id)}>delete</button></td>
+              <td>
+                <button className="icon-button" onClick={() => remove(wire.id)} title="Delete wire" aria-label="Delete wire">
+                  <TrashIcon />
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <button onClick={add}>+ wire</button>
+      <button className="button-ghost-accent" onClick={add} style={{ marginTop: "0.75rem" }}>+ New</button>
     </>
   );
 }

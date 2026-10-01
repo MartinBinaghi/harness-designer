@@ -20,6 +20,7 @@ import type {
   TMoldLeg,
   WireDef,
 } from "./libraryTypes";
+import { FolderIcon, SaveIcon } from "./icons";
 
 const TABS = [
   "Connectors",
@@ -177,12 +178,14 @@ export default function LibraryScreen({ library, setLibrary, filePath, setFilePa
 
   return (
     <>
-      <h2>Library</h2>
-
       <section className="toolbar">
         <input value={filePath} onChange={(e) => setFilePath(e.currentTarget.value)} placeholder="file path" />
-        <button onClick={openLibrary}>Open</button>
-        <button onClick={saveLibrary}>Save</button>
+        <button className="icon-button" onClick={openLibrary} title="Open" aria-label="Open library file">
+          <FolderIcon />
+        </button>
+        <button className="icon-button" onClick={saveLibrary} title="Save" aria-label="Save library file">
+          <SaveIcon />
+        </button>
         <button onClick={loadDemo}>Load sample</button>
         {status && <span className="status">{status}</span>}
       </section>
