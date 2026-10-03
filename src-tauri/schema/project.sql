@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS nodes (
     termination                 TEXT CHECK (termination IN ('t_mold', 'adhesive_heatshrink', 'none')),
     -- solo tiene sentido con termination = 'adhesive_heatshrink' (covering_defs);
     -- 't_mold' todavía no elige una parte específica de biblioteca.
-    termination_library_part_id INTEGER
+    termination_library_part_id INTEGER,
+    -- posición en el diagrama de armado (no escalado); NULL hasta acomodarlo
+    diagram_x                   REAL,
+    diagram_y                   REAL
 );
 
 CREATE TABLE IF NOT EXISTS segments (

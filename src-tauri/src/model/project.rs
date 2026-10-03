@@ -38,6 +38,10 @@ pub struct Node {
     /// Solo tiene sentido con `termination = "adhesive_heatshrink"` (referencia a
     /// un `CoveringDef`); "t_mold" todavía no elige una parte específica.
     pub termination_library_part_id: Option<i64>,
+    /// Posición en el diagrama de armado (no escalado, plan 10.2). `None` hasta
+    /// que se acomoda a mano o con el layout automático.
+    pub diagram_x: Option<f64>,
+    pub diagram_y: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -201,7 +205,8 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         })?
         .collect::<Result<Vec<_>>>()?;
 
-    let mut nodes_stmt = conn.prepare("SELECT id, kind, termination, termination_library_part_id FROM nodes")?;
+    let mut nodes_stmt =
+        conn.prepare("SELECT id, kind, termination, termination_library_part_id, diagram_x, diagram_y FROM nodes")?;
     let nodes = nodes_stmt
         .query_map([], |row| {
             Ok(Node {
@@ -209,6 +214,8 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 kind: row.get(1)?,
                 termination: row.get(2)?,
                 termination_library_part_id: row.get(3)?,
+                diagram_x: row.get(4)?,
+                diagram_y: row.get(5)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -253,7 +260,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
     for connector_instance in &mut connector_instances {
         let mut cavities_stmt = conn.prepare(
-            "SELECT id, cavity_id, contact_library_part_id, seal_plug_library_part_id, external_reference FROM cavity_assignments WHERE connector_instance_id = ?1",
+            "SELECT id, cavity_id, contact_library_part_id, seal_plug_library_part_id, external_reference FROM cavity_assignments WHERE connector_instance_id = ?1 ORDER BY rowid",
         )?;
         connector_instance.cavities = cavities_stmt
             .query_map(params![connector_instance.id], |row| {
@@ -354,7 +361,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
     for group in &mut twist_groups {
         let mut members_stmt =
-            conn.prepare("SELECT wire_instance_id FROM twist_group_wires WHERE twist_group_id = ?1")?;
+            conn.prepare("SELECT wire_instance_id FROM twist_group_wires WHERE twist_group_id = ?1 ORDER BY rowid")?;
         group.wire_instance_ids = members_stmt
             .query_map(params![group.id], |row| row.get::<_, i64>(0))?
             .collect::<Result<Vec<_>>>()?;
@@ -424,8 +431,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for n in &data.nodes {
         tx.execute(
-            "INSERT INTO nodes (id, kind, termination, termination_library_part_id) VALUES (?1, ?2, ?3, ?4)",
-            params![n.id, n.kind, n.termination, n.termination_library_part_id],
+            "INSERT INTO nodes (id, kind, termination, termination_library_part_id, diagram_x, diagram_y) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![n.id, n.kind, n.termination, n.termination_library_part_id, n.diagram_x, n.diagram_y],
         )?;
     }
 
@@ -583,9 +590,9 @@ mod tests {
                 library_part_id: Some(2),
             }],
             nodes: vec![
-                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-                Node { id: 2, kind: "breakout".into(), termination: Some("t_mold".into()), termination_library_part_id: None },
-                Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+                Node { id: 2, kind: "breakout".into(), termination: Some("t_mold".into()), termination_library_part_id: None, diagram_x: Some(120.5), diagram_y: Some(-40.0) },
+                Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
             ],
             segments: vec![Segment {
                 id: 1,

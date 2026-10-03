@@ -1,3 +1,4 @@
+mod base_library;
 mod calc;
 mod checks;
 mod db;
@@ -144,6 +145,20 @@ fn wire_net(project: ProjectData, wire_id: i64) -> Vec<i64> {
     topology::net_of_wire(&project, wire_id)
 }
 
+/// Distancia acumulada desde un nodo a cada nodo alcanzable (mm). Las claves
+/// de un HashMap<i64, _> se serializan como texto en JSON.
+#[tauri::command]
+fn node_distances(project: ProjectData, from_node_id: i64) -> std::collections::HashMap<i64, f64> {
+    topology::distances_from_node(&project, from_node_id)
+}
+
+/// La biblioteca recibida + las partes de la biblioteca base que le faltan.
+/// No toca AppState: el frontend lo aplica como una edición (con su undo).
+#[tauri::command]
+fn merge_base_library(library: Library) -> Library {
+    base_library::merge_base_library(&library)
+}
+
 #[tauri::command]
 fn run_checks(project: ProjectData, library: Library) -> Vec<checks::Finding> {
     checks::run_checks(&project, &library)
@@ -177,6 +192,8 @@ pub fn run() {
             library_status,
             wire_route,
             wire_net,
+            node_distances,
+            merge_base_library,
             run_checks,
             compute_costs
         ])

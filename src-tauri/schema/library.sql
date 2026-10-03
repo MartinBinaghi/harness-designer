@@ -22,9 +22,13 @@ CREATE TABLE IF NOT EXISTS connector_defs (
     gender                  TEXT NOT NULL CHECK (gender IN ('male', 'female')),
     series                  TEXT,
     shell_size              TEXT,
-    cavity_count            INTEGER NOT NULL,
     counterpart_id          INTEGER REFERENCES connector_defs(part_id),
+    -- parte trasera (por donde tiene que pasar el termo con adhesivo):
+    -- redonda -> back_diameter_mm; rectangular -> back_width_mm x back_height_mm
+    back_shape              TEXT CHECK (back_shape IN ('round', 'rectangular')),
     back_diameter_mm        REAL,
+    back_width_mm           REAL,
+    back_height_mm          REAL,
     suggested_termination   TEXT CHECK (suggested_termination IN ('boot', 'adhesive_heatshrink', 'none')),
     image_side_path         TEXT,
     image_front_path        TEXT,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import Topologia from "./Topologia";
+import Diagrama from "./Diagrama";
 import LibraryScreen from "./Library";
 import Conectores from "./Conectores";
 import Cables from "./Cables";
@@ -16,7 +17,7 @@ import type { Library } from "./libraryTypes";
 import { emptyLibrary } from "./libraryTypes";
 import "./App.css";
 
-const SECTIONS = ["Library", "Topology", "Connectors", "Wires", "Checks", "Costs"] as const;
+const SECTIONS = ["Library", "Topology", "Diagram", "Connectors", "Wires", "Checks", "Costs"] as const;
 type Section = (typeof SECTIONS)[number];
 
 export default function App() {
@@ -209,7 +210,7 @@ export default function App() {
       <div className="shell">
         {showPanels && treeOpen && <Tree project={project} selection={selection} onSelect={setSelection} />}
 
-        <div className="screen">
+        <div className={`screen${section === "Diagram" ? " screen-canvas" : ""}`}>
           {section === "Library" && (
             <LibraryScreen
               library={library}
@@ -231,6 +232,16 @@ export default function App() {
               filePath={projectPath}
               setFilePath={setProjectPath}
               library={library}
+              selection={selection}
+              onSelect={setSelection}
+            />
+          )}
+          {section === "Diagram" && (
+            <Diagrama
+              project={project}
+              setProject={setProject}
+              library={library}
+              findings={findings}
               selection={selection}
               onSelect={setSelection}
             />

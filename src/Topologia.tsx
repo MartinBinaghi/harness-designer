@@ -97,7 +97,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
   function addNode() {
     if (!project) return;
     const id = nextId(project.nodes.map((n) => n.id));
-    setProject({ ...project, nodes: [...project.nodes, { id, kind: "breakout", termination: null, termination_library_part_id: null }] });
+    setProject({ ...project, nodes: [...project.nodes, { id, kind: "breakout", termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null }] });
   }
 
   function removeNode(id: number) {

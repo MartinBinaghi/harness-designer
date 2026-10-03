@@ -2,7 +2,7 @@
 //! La topología es un árbol (nodos + segmentos): entre dos nodos hay un único
 //! camino, se calcula recorriendo el árbol (sin loops posibles por diseño).
 
-use crate::model::project::{ProjectData, WireEnd};
+use crate::model::project::{ProjectData, Segment, WireEnd};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Punto donde dos o más cables pueden estar unidos: misma cavidad (varios
@@ -33,17 +33,7 @@ pub fn path_between_nodes(data: &ProjectData, from: i64, to: i64) -> Option<Vec<
         return Some(Vec::new());
     }
 
-    let mut adjacency: HashMap<i64, Vec<(i64, i64)>> = HashMap::new();
-    for segment in &data.segments {
-        adjacency
-            .entry(segment.node_a_id)
-            .or_default()
-            .push((segment.node_b_id, segment.id));
-        adjacency
-            .entry(segment.node_b_id)
-            .or_default()
-            .push((segment.node_a_id, segment.id));
-    }
+    let adjacency = adjacency(data);
 
     let mut visited: HashSet<i64> = HashSet::from([from]);
     let mut queue: VecDeque<i64> = VecDeque::from([from]);
@@ -60,15 +50,44 @@ pub fn path_between_nodes(data: &ProjectData, from: i64, to: i64) -> Option<Vec<
             segments.reverse();
             return Some(segments);
         }
-        for &(neighbor, segment_id) in adjacency.get(&current).into_iter().flatten() {
+        for &(neighbor, segment) in adjacency.get(&current).into_iter().flatten() {
             if visited.insert(neighbor) {
-                came_from.insert(neighbor, (current, segment_id));
+                came_from.insert(neighbor, (current, segment.id));
                 queue.push_back(neighbor);
             }
         }
     }
 
     None
+}
+
+/// Vecinos de cada nodo, con el segmento que los une.
+fn adjacency(data: &ProjectData) -> HashMap<i64, Vec<(i64, &Segment)>> {
+    let mut adjacency: HashMap<i64, Vec<(i64, &Segment)>> = HashMap::new();
+    for segment in &data.segments {
+        adjacency.entry(segment.node_a_id).or_default().push((segment.node_b_id, segment));
+        adjacency.entry(segment.node_b_id).or_default().push((segment.node_a_id, segment));
+    }
+    adjacency
+}
+
+/// Distancia acumulada (suma de largos de segmento, en mm) desde `from` hasta
+/// cada nodo alcanzable — para marcar en la mesa de armado desde un único punto
+/// de referencia (plan 10.2). Los nodos en ramas desconectadas no aparecen.
+pub fn distances_from_node(data: &ProjectData, from: i64) -> HashMap<i64, f64> {
+    let adjacency = adjacency(data);
+    let mut distances = HashMap::from([(from, 0.0)]);
+    let mut queue = VecDeque::from([from]);
+    while let Some(current) = queue.pop_front() {
+        let here = distances[&current];
+        for &(neighbor, segment) in adjacency.get(&current).into_iter().flatten() {
+            if !distances.contains_key(&neighbor) {
+                distances.insert(neighbor, here + segment.length_mm);
+                queue.push_back(neighbor);
+            }
+        }
+    }
+    distances
 }
 
 /// Resuelve un extremo de cable al nodo donde está físicamente ubicado.
@@ -196,10 +215,10 @@ mod tests {
             project: empty_project(),
             device_instances: vec![],
             nodes: vec![
-                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-                Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None },
-                Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-                Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+                Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+                Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+                Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
             ],
             segments: vec![
                 Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
@@ -222,6 +241,18 @@ mod tests {
         assert_eq!(path_between_nodes(&data, 1, 4), Some(vec![1, 3]));
         assert_eq!(path_between_nodes(&data, 3, 4), Some(vec![2, 3]));
         assert_eq!(path_between_nodes(&data, 1, 1), Some(vec![]));
+    }
+
+    #[test]
+    fn accumulates_distances_from_a_reference_node() {
+        let data = y_shaped_topology();
+        let from_1 = distances_from_node(&data, 1);
+        assert_eq!(from_1.get(&1), Some(&0.0));
+        assert_eq!(from_1.get(&2), Some(&100.0));
+        assert_eq!(from_1.get(&3), Some(&300.0));
+        assert_eq!(from_1.get(&4), Some(&150.0));
+        // Desde una hoja, el camino a la otra hoja pasa por el breakout.
+        assert_eq!(distances_from_node(&data, 3).get(&4), Some(&250.0));
     }
 
     #[test]

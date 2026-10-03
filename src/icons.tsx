@@ -35,6 +35,14 @@ export function MaximizeIcon() {
   );
 }
 
+export function PencilIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+      <path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4" />
+    </svg>
+  );
+}
+
 export function TrashIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">

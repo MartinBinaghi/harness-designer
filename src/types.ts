@@ -27,6 +27,9 @@ export interface Node {
   termination: "t_mold" | "adhesive_heatshrink" | "none" | null;
   /** Solo tiene sentido con termination = "adhesive_heatshrink" (un CoveringDef). */
   termination_library_part_id: number | null;
+  /** Posición en el diagrama de armado; null hasta acomodarlo (a mano o con el layout automático). */
+  diagram_x: number | null;
+  diagram_y: number | null;
 }
 
 export interface Segment {

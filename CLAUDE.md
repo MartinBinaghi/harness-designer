@@ -41,7 +41,7 @@ Uso inicial: personal. A futuro, posibilidad de venderlo, así que las decisione
 | Stack | Tauri (frontend web + núcleo Rust) con SQLite. |
 | Portabilidad | No usar APIs exclusivas de Windows (rutas fijas, registro, etc.) para que el paso a Mac/Linux sea compilar y probar. |
 | Archivos | Un archivo por proyecto (arnés), copiable y respaldable. El archivo guarda la **versión del formato** para poder migrar archivos viejos. |
-| Biblioteca de partes | Separada de los proyectos. Exportable/importable, para poder distribuir una biblioteca base a futuro. Incluye imágenes de conectores. |
+| Biblioteca de partes | Separada de los proyectos. Exportable/importable. Incluye imágenes de conectores. Hay una **biblioteca base** de conectores estandarizados (DT/DTM/DTP, Superseal 1.5) que se suma con un botón; sus datos están marcados como no verificados hasta confirmarlos con el datasheet. |
 | Configuración | Nada específico del taller en el código: moneda, markup, márgenes, unidades, valor hora, prefijos de nomenclatura, colores por tipo de señal, etc. van en configuración. |
 | Moneda | Precios en USD, con fecha de actualización de cada precio. |
 | Deshacer/rehacer | Contemplarlo desde el inicio en la arquitectura. |
@@ -78,10 +78,10 @@ Cada tipo de parte extiende `Part`:
 **ConnectorDef**
 - **género** (macho/hembra)
 - tamaño de carcasa, cantidad de vías
-- lista de cavidades: identificador tal cual el fabricante (1, 2… / A, B… / a, b…, **distinguiendo mayúsculas y minúsculas**) y tamaño de contacto que acepta
+- lista de cavidades (la cantidad de vías es el largo de la lista, no un campo aparte): identificador tal cual el fabricante (1, 2… / A, B… / a, b…, **distinguiendo mayúsculas y minúsculas**) y tamaño de contacto que acepta
 - **imágenes**: vista lateral, frontal y trasera, con numeración de pines. Cada ConnectorDef guarda su propia vista frontal (la numeración de macho y hembra está espejada; no se deriva de la contraparte)
 - contraparte (opcional): el ConnectorDef con el que enchufa
-- **diámetro de la parte trasera** (necesario para dimensionar termo con adhesivo que pasa por encima del conector)
+- **parte trasera**, redonda (Ø) o rectangular (ancho × alto; se usa la diagonal): necesaria para dimensionar termo con adhesivo que pasa por encima del conector
 - **terminación sugerida**: boot / termo con adhesivo / nada (ej. Amphenol de interconexión → boot; DTM → termo con adhesivo)
 - los terminales sueltos (ej. AMP 6.3, ojales) se modelan como conector de una sola cavidad
 
@@ -384,12 +384,13 @@ El gráfico es **otra vista de los mismos datos**. Editar en el gráfico actuali
 
 ### 10.2 Diagrama de armado (vista física)
 El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho a mano). Este diagrama lo reemplaza.
-- **No escalado**: esquema libre, acomodado a gusto (estilo el croquis de la hoja WRC).
+- **No escalado por defecto**: esquema libre, acomodado a gusto (estilo el croquis de la hoja WRC).
+- **Opción "a escala"**: cada segmento se dibuja proporcional a su largo real; al mover un nodo gira alrededor del nodo del que cuelga sin cambiar la distancia, y su rama lo acompaña.
 - Conectores como bloques con ID, nombre y **símbolo según género**.
 - Breakouts como nodos chicos, con indicador de molde en T / termo con adhesivo.
 - Segmentos como líneas con **largo** y diámetro estimado.
 - Splices (en su posición sobre el segmento), masas y componentes con símbolo propio.
-- **Distancia acumulada opcional** desde el conector principal hasta cada breakout (ej. "a 450 mm de X1"), para marcar en la mesa desde un único punto de referencia.
+- **Distancia acumulada opcional** desde el conector principal hasta cada breakout, conector y masa (ej. "a 450 mm de X1"), para marcar en la mesa desde un único punto de referencia.
 - Conectores pendientes y elementos con errores, resaltados.
 - Imprimible en A4/A3 ajustado a la hoja (hoja de armado, etapa 6).
 
@@ -404,10 +405,11 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Clic en un segmento → cables que pasan y diámetro.
 - Doble clic en un conector → vista frontal (imagen de la biblioteca) + tabla de pinout. La vista frontal no se muestra en el dibujo general.
 - **Layout automático** del árbol cuando el arnés se cargó por tablas; después se acomoda a mano.
+- La posición de cada elemento se guarda en su `Node` (`diagram_x`/`diagram_y`); sin posición, se ubica con el layout automático. Al primer arrastre se fijan todas.
 
 ### 10.5 Tecnología
 - **React Flow** para el editor de nodos/conexiones (arrastrar, conectar, zoom, selección; renderiza en SVG, facilita exportar/imprimir).
-- **elkjs** o **dagre** para el layout automático.
+- Layout automático propio de árbol (una columna por nivel, una fila por rama final), sin librería: elkjs se probó y se descartó (ver bitácora).
 - Segmentos como líneas rectas o quebradas; curvas a mano quedan para después.
 
 ---

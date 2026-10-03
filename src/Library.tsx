@@ -20,7 +20,8 @@ import type {
   TMoldLeg,
   WireDef,
 } from "./libraryTypes";
-import { FolderIcon, SaveIcon, TrashIcon } from "./icons";
+import { FolderIcon, PencilIcon, SaveIcon, TrashIcon } from "./icons";
+import milStd1560 from "./data/mil-std-1560.json";
 
 const TABS = [
   "Connectors",
@@ -181,6 +182,15 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
     setStatus("Sample library loaded (not saved to disk yet).");
   }
 
+  // Suma las partes estandarizadas que falten (DT/DTM/DTP, Superseal, M22759/32) como
+  // una edición más: se puede deshacer, y no toca lo que ya estaba cargado.
+  async function addBaseParts() {
+    const merged = await invoke<Library>("merge_base_library", { library });
+    const added = merged.parts.length - library.parts.length;
+    setLibrary(merged);
+    setStatus(added > 0 ? `Added ${added} standard parts (connectors unverified — check each datasheet).` : "Standard parts already in the library.");
+  }
+
   function partById(partId: number): Part | undefined {
     return library.parts.find((p) => p.id === partId);
   }
@@ -196,6 +206,9 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
           <SaveIcon />
         </button>
         <button onClick={loadDemo}>Load sample</button>
+        <button onClick={() => void addBaseParts()} title="Deutsch DT/DTM/DTP and TE Superseal 1.5 housings, M22759/32 wire 26–12 AWG. No prices.">
+          Add standard parts
+        </button>
         {status && <span className="status">{status}</span>}
       </section>
 
@@ -774,21 +787,193 @@ function SignalTypesTab({ library, setLibrary }: { library: Library; setLibrary:
   );
 }
 
+const numberOrNull = (text: string) => (text === "" ? null : Number(text));
+
+/** Parte trasera del conector: redonda (Ø) o rectangular (ancho × alto, el programa usa la diagonal). */
+function BackSizeFields({ cd, onChange }: { cd: ConnectorDef; onChange: (patch: Partial<ConnectorDef>) => void }) {
+  return (
+    <span className="back-size">
+      <select
+        value={cd.back_shape ?? ""}
+        onChange={(e) => onChange({ back_shape: (e.currentTarget.value || null) as ConnectorDef["back_shape"] })}
+        aria-label="Back shape"
+      >
+        <option value="">—</option>
+        <option value="round">Round</option>
+        <option value="rectangular">Rect.</option>
+      </select>
+      {cd.back_shape === "round" && (
+        <input type="number" value={cd.back_diameter_mm ?? ""} onChange={(e) => onChange({ back_diameter_mm: numberOrNull(e.currentTarget.value) })} placeholder="Ø" aria-label="Back diameter (mm)" />
+      )}
+      {cd.back_shape === "rectangular" && (
+        <>
+          <input type="number" value={cd.back_width_mm ?? ""} onChange={(e) => onChange({ back_width_mm: numberOrNull(e.currentTarget.value) })} placeholder="W" aria-label="Back width (mm)" />
+          ×
+          <input type="number" value={cd.back_height_mm ?? ""} onChange={(e) => onChange({ back_height_mm: numberOrNull(e.currentTarget.value) })} placeholder="H" aria-label="Back height (mm)" />
+        </>
+      )}
+    </span>
+  );
+}
+
+type Numbering = "numbers" | "upper" | "lower";
+const NUMBERING_LABELS: Record<Numbering, string> = { numbers: "1, 2, 3…", upper: "A, B, C…", lower: "a, b, c…" };
+
+// ponytail: letras solo A–Z / a–z (26 vías); conectores con más vías por letra
+// (MIL que saltean I/O/Q, etc.) se cargan con "Edit individually".
+function cavityIds(count: number, numbering: Numbering): string[] {
+  return Array.from({ length: count }, (_, i) =>
+    numbering === "numbers" ? String(i + 1) : String.fromCharCode((numbering === "upper" ? 65 : 97) + i),
+  );
+}
+
+/** Resumen legible de tamaños de contacto: "20" si son todos iguales, "20 ×4, 16 ×2" si no. */
+function contactSizeSummary(cavities: ConnectorDef["cavities"]): string {
+  const counts = new Map<string, number>();
+  for (const c of cavities) counts.set(c.contact_size || "—", (counts.get(c.contact_size || "—") ?? 0) + 1);
+  if (counts.size === 1) return `contact size ${[...counts.keys()][0]}`;
+  return `contact sizes ${[...counts].map(([size, n]) => `${size} ×${n}`).join(", ")}`;
+}
+
+/** Arreglos de inserto MIL-DTL-38999 (MIL-STD-1560): "13-35" -> [[id, tamaño], ...]. */
+const MIL_INSERTS: Record<string, string[][]> = milStd1560.arrangements;
+
+function insertLabel(code: string): string {
+  const counts = new Map<string, number>();
+  for (const [, size] of MIL_INSERTS[code]) counts.set(size, (counts.get(size) ?? 0) + 1);
+  return `${code} · ${[...counts].map(([size, n]) => `${n} × ${size}`).join(", ")}`;
+}
+
+/**
+ * Vías del conector: un generador (cantidad + numeración + tamaño de contacto)
+ * para el caso normal, un arreglo de inserto MIL-STD-1560 para los circulares
+ * militares, y edición una por una solo para conectores mixtos.
+ */
+function generatorDefaults(cavities: ConnectorDef["cavities"]) {
+  const first = cavities[0]?.cavity_id ?? "";
+  return {
+    count: cavities.length || 1,
+    numbering: (/^[A-Z]$/.test(first) ? "upper" : /^[a-z]$/.test(first) ? "lower" : "numbers") as Numbering,
+    size: cavities[0]?.contact_size ?? "",
+  };
+}
+
+function CavityEditor({ cd, onChange: onPatch }: { cd: ConnectorDef; onChange: (patch: Partial<ConnectorDef>) => void }) {
+  const onChange = (cavities: ConnectorDef["cavities"]) => onPatch({ cavities });
+  const initial = generatorDefaults(cd.cavities);
+  const [count, setCount] = useState(initial.count);
+  const [numbering, setNumbering] = useState<Numbering>(initial.numbering);
+  const [size, setSize] = useState(initial.size);
+  // Con vías ya cargadas se muestra solo el resumen; el lápiz abre la edición.
+  const [editing, setEditing] = useState(false);
+  const open = editing || cd.cavities.length === 0;
+  const maxCount = numbering === "numbers" ? 200 : 26;
+
+  function startEditing() {
+    const d = generatorDefaults(cd.cavities);
+    setCount(d.count);
+    setNumbering(d.numbering);
+    setSize(d.size);
+    setEditing(true);
+  }
+  function generate() {
+    onChange(cavityIds(Math.min(count, maxCount), numbering).map((id) => ({ cavity_id: id, contact_size: size })));
+  }
+  function updateCavity(index: number, patch: Partial<ConnectorDef["cavities"][number]>) {
+    onChange(cd.cavities.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  }
+
+  return (
+    <div className="cavity-editor">
+      <div className="field-label">Cavities</div>
+      {cd.cavities.length > 0 && (
+        <div className="cavity-summary">
+          <span>
+            {cd.cavities.length} cavit{cd.cavities.length === 1 ? "y" : "ies"} · {cd.cavities[0].cavity_id}–{cd.cavities[cd.cavities.length - 1].cavity_id} ·{" "}
+            {contactSizeSummary(cd.cavities)}
+          </span>
+          {editing ? (
+            <button className="link-button" onClick={() => setEditing(false)}>Done</button>
+          ) : (
+            <button className="icon-button" onClick={startEditing} title="Edit cavities" aria-label="Edit cavities">
+              <PencilIcon />
+            </button>
+          )}
+        </div>
+      )}
+      {open && (
+        <>
+          <div className="cavity-generator">
+            <label>
+              Ways <input type="number" min={1} max={maxCount} value={count} onChange={(e) => setCount(Math.max(1, Number(e.currentTarget.value) || 1))} />
+            </label>
+            <label>
+              Numbering{" "}
+              <select value={numbering} onChange={(e) => setNumbering(e.currentTarget.value as Numbering)}>
+                {Object.entries(NUMBERING_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Contact size <input value={size} onChange={(e) => setSize(e.currentTarget.value)} placeholder="e.g. 20" />
+            </label>
+            <button onClick={generate} title={cd.cavities.length > 0 ? "Replaces the current cavity list (can be undone)" : undefined}>
+              {cd.cavities.length > 0 ? "Regenerate" : "Generate"}
+            </button>
+            <label title="Circular MIL-DTL-38999 connectors: shell size + insert arrangement, from MIL-STD-1560C. Replaces the current cavity list.">
+              or MIL-STD-1560 insert{" "}
+              <select
+                value=""
+                onChange={(e) => {
+                  const code = e.currentTarget.value;
+                  if (!code) return;
+                  onPatch({
+                    shell_size: code.split("-")[0],
+                    cavities: MIL_INSERTS[code].map(([id, size]) => ({ cavity_id: id, contact_size: size })),
+                  });
+                }}
+              >
+                <option value="">choose…</option>
+                {Object.keys(MIL_INSERTS).map((code) => (
+                  <option key={code} value={code}>{insertLabel(code)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {cd.cavities.length > 0 && (
+            <>
+              <table className="compact-table">
+                <thead><tr><th>ID</th><th>Contact size</th><th></th></tr></thead>
+                <tbody>
+                  {cd.cavities.map((cav, i) => (
+                    <tr key={i}>
+                      <td><input value={cav.cavity_id} onChange={(e) => updateCavity(i, { cavity_id: e.currentTarget.value })} /></td>
+                      <td><input value={cav.contact_size} onChange={(e) => updateCavity(i, { contact_size: e.currentTarget.value })} /></td>
+                      <td>
+                        <button className="icon-button" onClick={() => onChange(cd.cavities.filter((_, j) => j !== i))} title="Delete" aria-label="Delete cavity">
+                          <TrashIcon />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button onClick={() => onChange([...cd.cavities, { cavity_id: "", contact_size: size }])}>+ cavity</button>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
   const [search, setSearch] = useState("");
   const [genderFilter, setGenderFilter] = useState("");
 
   function updateCd(partId: number, patch: Partial<ConnectorDef>) {
     setLibrary(updateSubtype<"connector_defs", ConnectorDef>(library, "connector_defs", partId, patch));
-  }
-  function addCavity(cd: ConnectorDef) {
-    updateCd(cd.part_id, { cavities: [...cd.cavities, { cavity_id: "", contact_size: "" }] });
-  }
-  function updateCavity(cd: ConnectorDef, index: number, patch: Partial<ConnectorDef["cavities"][number]>) {
-    updateCd(cd.part_id, { cavities: cd.cavities.map((c, i) => (i === index ? { ...c, ...patch } : c)) });
-  }
-  function removeCavity(cd: ConnectorDef, index: number) {
-    updateCd(cd.part_id, { cavities: cd.cavities.filter((_, i) => i !== index) });
   }
 
   const visible = library.connector_defs.filter((cd) => {
@@ -813,7 +998,7 @@ function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
           <div key={cd.part_id} className="query-result" style={{ marginBottom: "1rem" }}>
             <table>
               <thead>
-                <tr><th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gender</th><th>Series</th><th>Shell size</th><th>Back Ø (mm)</th><th>Suggested termination</th><th></th></tr>
+                <tr><th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gender</th><th>Series</th><th>Shell size</th><th title="Rear of the connector, where adhesive heat-shrink has to pass over">Back (mm)</th><th>Suggested termination</th><th></th></tr>
               </thead>
               <tbody>
                 <tr>
@@ -827,11 +1012,7 @@ function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
                   <td><input value={cd.series ?? ""} onChange={(e) => updateCd(cd.part_id, { series: e.currentTarget.value || null })} placeholder="e.g. DT, DTM, DTP, Metri-Pack" /></td>
                   <td><input value={cd.shell_size ?? ""} onChange={(e) => updateCd(cd.part_id, { shell_size: e.currentTarget.value || null })} placeholder="e.g. 12, 20" /></td>
                   <td>
-                    <input
-                      type="number"
-                      value={cd.back_diameter_mm ?? ""}
-                      onChange={(e) => updateCd(cd.part_id, { back_diameter_mm: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) })}
-                    />
+                    <BackSizeFields cd={cd} onChange={(patch) => updateCd(cd.part_id, patch)} />
                   </td>
                   <td>
                     <select
@@ -853,24 +1034,7 @@ function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
               </tbody>
             </table>
 
-            <strong>Cavities</strong>
-            <table>
-              <thead><tr><th>ID</th><th>Contact size</th><th></th></tr></thead>
-              <tbody>
-                {cd.cavities.map((cav, i) => (
-                  <tr key={i}>
-                    <td><input value={cav.cavity_id} onChange={(e) => updateCavity(cd, i, { cavity_id: e.currentTarget.value })} /></td>
-                    <td><input value={cav.contact_size} onChange={(e) => updateCavity(cd, i, { contact_size: e.currentTarget.value })} /></td>
-                    <td>
-                      <button className="icon-button" onClick={() => removeCavity(cd, i)} title="Delete" aria-label="Delete cavity">
-                        <TrashIcon />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <button onClick={() => addCavity(cd)}>+ cavity</button>
+            <CavityEditor cd={cd} onChange={(patch) => updateCd(cd.part_id, patch)} />
           </div>
         );
       })}
@@ -882,9 +1046,11 @@ function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
               gender: "female",
               series: null,
               shell_size: null,
-              cavity_count: 0,
               counterpart_id: null,
+              back_shape: null,
               back_diameter_mm: null,
+              back_width_mm: null,
+              back_height_mm: null,
               suggested_termination: null,
               image_side_path: null,
               image_front_path: null,

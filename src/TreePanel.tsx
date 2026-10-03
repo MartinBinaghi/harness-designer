@@ -7,7 +7,7 @@ interface EntryInfo {
   dotClass: string;
 }
 
-function infoFor(project: ProjectData, nodeId: number): EntryInfo {
+export function infoFor(project: ProjectData, nodeId: number): EntryInfo {
   const node = project.nodes.find((n) => n.id === nodeId);
   const connector = project.connector_instances.find((c) => c.node_id === nodeId);
   if (connector) {

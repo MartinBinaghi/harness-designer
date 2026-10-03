@@ -267,7 +267,7 @@ fn check_adhesive_heatshrink_connector_without_back_diameter(data: &ProjectData,
         .filter(|c| c.termination.as_deref() == Some("adhesive_heatshrink"))
         .filter(|c| {
             let def = library.connector_defs.iter().find(|d| d.part_id == c.library_part_id);
-            !def.is_some_and(|d| d.back_diameter_mm.is_some())
+            !def.is_some_and(|d| d.back_clearance_mm().is_some())
         })
         .map(|c| warning(format!("Connector {} uses adhesive heat-shrink but its part has no back diameter loaded", c.short_id)).at(FindingTarget::Connector { id: c.id }))
         .collect()
@@ -441,9 +441,9 @@ mod tests {
     fn flags_a_loop_in_the_topology() {
         let mut data = empty_project();
         data.nodes = vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-            Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None },
-            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
         ];
         data.segments = vec![
             Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
@@ -459,9 +459,9 @@ mod tests {
     fn a_tree_has_no_loop_findings() {
         let mut data = empty_project();
         data.nodes = vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-            Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None },
-            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
         ];
         data.segments = vec![
             Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn flags_a_pending_connector() {
         let mut data = empty_project();
-        data.nodes = vec![Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None }];
+        data.nodes = vec![Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None }];
         data.connector_instances = vec![ConnectorInstance {
             id: 1,
             short_id: "X1".into(),
@@ -674,8 +674,8 @@ mod tests {
     fn segment_with_one_wire() -> ProjectData {
         let mut data = empty_project();
         data.nodes = vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-            Node { id: 2, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 2, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
         ];
         data.segments = vec![Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 500.0, twist_pitch_mm: Some(1_000_000.0), covering_library_part_id: None }];
         data.connector_instances = vec![
@@ -748,7 +748,7 @@ mod tests {
     fn flags_adhesive_heatshrink_connector_without_a_back_diameter() {
         let mut data = segment_with_one_wire();
         data.connector_instances[0].termination = Some("adhesive_heatshrink".into());
-        let library = library_with_wire_def(6.0); // sin connector_defs -> sin back_diameter_mm
+        let library = library_with_wire_def(6.0); // sin connector_defs -> sin medida trasera
         let findings = check_adhesive_heatshrink_connector_without_back_diameter(&data, &library);
         assert_eq!(findings.len(), 1);
         assert!(findings[0].message.contains("X1"));
@@ -762,7 +762,7 @@ mod tests {
         let mut library = library_with_wire_def(6.0);
         library.connector_defs = vec![crate::model::library::ConnectorDef {
             part_id: 10, gender: "female".into(), series: Some("AMP".into()), shell_size: Some("CE".into()),
-            cavity_count: 2, counterpart_id: None, back_diameter_mm: None, suggested_termination: None,
+            counterpart_id: None, back_shape: None, back_diameter_mm: None, back_width_mm: None, back_height_mm: None, suggested_termination: None,
             image_side_path: None, image_front_path: None, image_back_path: None, cavities: vec![],
         }];
         library.accessory_defs = vec![crate::model::library::AccessoryDef {

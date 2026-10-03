@@ -579,8 +579,8 @@ mod tests {
             },
             device_instances: vec![],
             nodes: vec![
-                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-                Node { id: 2, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
+                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+                Node { id: 2, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
             ],
             segments: vec![Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm, twist_pitch_mm, covering_library_part_id: None }],
             connector_instances: vec![
@@ -820,9 +820,11 @@ mod tests {
             gender: "female".into(),
             series: Some(series.into()),
             shell_size: Some(shell_size.into()),
-            cavity_count: 2,
             counterpart_id: None,
+            back_shape: None,
             back_diameter_mm: None,
+            back_width_mm: None,
+            back_height_mm: None,
             suggested_termination: None,
             image_side_path: None,
             image_front_path: None,
@@ -882,8 +884,8 @@ mod tests {
         // Breakout (node 2) con 3 patas: segmento 1 (grueso, ya cargado por y_shaped-like setup)
         let mut data = one_segment_project(1000.0, Some(1_000_000.0));
         // Reutilizamos el nodo 2 como breakout con dos segmentos más, de distinto diámetro.
-        data.nodes.push(Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None });
-        data.nodes.push(Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None });
+        data.nodes.push(Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None });
+        data.nodes.push(Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None });
         data.segments.push(Segment { id: 2, node_a_id: 2, node_b_id: 3, length_mm: 500.0, twist_pitch_mm: Some(1_000_000.0), covering_library_part_id: None });
         data.segments.push(Segment { id: 3, node_a_id: 2, node_b_id: 4, length_mm: 500.0, twist_pitch_mm: Some(1_000_000.0), covering_library_part_id: None });
 

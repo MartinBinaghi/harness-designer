@@ -33,14 +33,31 @@ pub struct ConnectorDef {
     pub gender: String,
     pub series: Option<String>,
     pub shell_size: Option<String>,
-    pub cavity_count: i64,
     pub counterpart_id: Option<i64>,
+    /// Forma de la parte trasera: "round" (usa `back_diameter_mm`) o
+    /// "rectangular" (usa `back_width_mm` × `back_height_mm`).
+    pub back_shape: Option<String>,
     pub back_diameter_mm: Option<f64>,
+    pub back_width_mm: Option<f64>,
+    pub back_height_mm: Option<f64>,
     pub suggested_termination: Option<String>,
     pub image_side_path: Option<String>,
     pub image_front_path: Option<String>,
     pub image_back_path: Option<String>,
     pub cavities: Vec<ConnectorDefCavity>,
+}
+
+impl ConnectorDef {
+    /// Diámetro mínimo que tiene que tener un termo para pasar por la parte
+    /// trasera del conector (plan 9.3): el diámetro si es redonda, la diagonal
+    /// si es rectangular. `None` si falta el dato.
+    pub fn back_clearance_mm(&self) -> Option<f64> {
+        match self.back_shape.as_deref() {
+            Some("round") => self.back_diameter_mm,
+            Some("rectangular") => Some(self.back_width_mm?.hypot(self.back_height_mm?)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -214,7 +231,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut connector_defs_stmt = conn.prepare(
-        "SELECT part_id, gender, series, shell_size, cavity_count, counterpart_id, back_diameter_mm, suggested_termination, image_side_path, image_front_path, image_back_path FROM connector_defs",
+        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side_path, image_front_path, image_back_path FROM connector_defs",
     )?;
     let mut connector_defs = connector_defs_stmt
         .query_map([], |row| {
@@ -223,20 +240,22 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 gender: row.get(1)?,
                 series: row.get(2)?,
                 shell_size: row.get(3)?,
-                cavity_count: row.get(4)?,
-                counterpart_id: row.get(5)?,
+                counterpart_id: row.get(4)?,
+                back_shape: row.get(5)?,
                 back_diameter_mm: row.get(6)?,
-                suggested_termination: row.get(7)?,
-                image_side_path: row.get(8)?,
-                image_front_path: row.get(9)?,
-                image_back_path: row.get(10)?,
+                back_width_mm: row.get(7)?,
+                back_height_mm: row.get(8)?,
+                suggested_termination: row.get(9)?,
+                image_side_path: row.get(10)?,
+                image_front_path: row.get(11)?,
+                image_back_path: row.get(12)?,
                 cavities: Vec::new(),
             })
         })?
         .collect::<Result<Vec<_>>>()?;
     for connector_def in &mut connector_defs {
         let mut cavities_stmt = conn.prepare(
-            "SELECT cavity_id, contact_size FROM connector_def_cavities WHERE connector_def_id = ?1",
+            "SELECT cavity_id, contact_size FROM connector_def_cavities WHERE connector_def_id = ?1 ORDER BY rowid",
         )?;
         connector_def.cavities = cavities_stmt
             .query_map(params![connector_def.part_id], |row| {
@@ -255,7 +274,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
     let mut device_defs = Vec::new();
     for part_id in device_def_ids {
         let mut connectors_stmt = conn.prepare(
-            "SELECT id, label, connector_def_id FROM device_def_connectors WHERE device_def_id = ?1",
+            "SELECT id, label, connector_def_id FROM device_def_connectors WHERE device_def_id = ?1 ORDER BY rowid",
         )?;
         let mut connectors = connectors_stmt
             .query_map(params![part_id], |row| {
@@ -269,7 +288,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
             .collect::<Result<Vec<_>>>()?;
         for connector in &mut connectors {
             let mut pins_stmt = conn.prepare(
-                "SELECT id, cavity_id, name, function FROM device_def_pins WHERE device_def_connector_id = ?1",
+                "SELECT id, cavity_id, name, function FROM device_def_pins WHERE device_def_connector_id = ?1 ORDER BY rowid",
             )?;
             connector.pins = pins_stmt
                 .query_map(params![connector.id], |row| {
@@ -284,7 +303,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         }
 
         let mut pin_groups_stmt =
-            conn.prepare("SELECT id, name FROM device_def_pin_groups WHERE device_def_id = ?1")?;
+            conn.prepare("SELECT id, name FROM device_def_pin_groups WHERE device_def_id = ?1 ORDER BY rowid")?;
         let mut pin_groups = pin_groups_stmt
             .query_map(params![part_id], |row| {
                 Ok(DeviceDefPinGroup {
@@ -296,7 +315,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
             .collect::<Result<Vec<_>>>()?;
         for group in &mut pin_groups {
             let mut members_stmt = conn
-                .prepare("SELECT pin_id FROM device_def_pin_group_members WHERE group_id = ?1")?;
+                .prepare("SELECT pin_id FROM device_def_pin_group_members WHERE group_id = ?1 ORDER BY rowid")?;
             group.pin_ids = members_stmt
                 .query_map(params![group.id], |row| row.get::<_, i64>(0))?
                 .collect::<Result<Vec<_>>>()?;
@@ -351,7 +370,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
     for wire_def in &mut wire_defs {
         let mut conductors_stmt = conn.prepare(
-            "SELECT id, label, gauge, color, is_shield FROM wire_def_conductors WHERE wire_def_id = ?1",
+            "SELECT id, label, gauge, color, is_shield FROM wire_def_conductors WHERE wire_def_id = ?1 ORDER BY rowid",
         )?;
         wire_def.conductors = conductors_stmt
             .query_map(params![wire_def.part_id], |row| {
@@ -425,7 +444,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
     for accessory_def in &mut accessory_defs {
         let mut matches_stmt = conn.prepare(
-            "SELECT series, shell_size FROM accessory_def_connector_matches WHERE accessory_def_id = ?1",
+            "SELECT series, shell_size FROM accessory_def_connector_matches WHERE accessory_def_id = ?1 ORDER BY rowid",
         )?;
         accessory_def.compatible_connectors = matches_stmt
             .query_map(params![accessory_def.part_id], |row| {
@@ -480,6 +499,10 @@ pub fn load(conn: &Connection) -> Result<Library> {
 /// personal, no miles de partes) es más simple que diffear contra lo existente.
 pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     let tx = conn.transaction()?;
+    // Los conectores se referencian entre sí (contraparte): al insertar el
+    // macho, la hembra todavía no está. Las claves foráneas se validan al
+    // hacer commit, cuando ya están todas las filas.
+    tx.pragma_update(None, "defer_foreign_keys", true)?;
     for table in [
         "device_def_pin_group_members",
         "device_def_pin_groups",
@@ -525,16 +548,18 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
 
     for connector_def in &library.connector_defs {
         tx.execute(
-            "INSERT INTO connector_defs (part_id, gender, series, shell_size, cavity_count, counterpart_id, back_diameter_mm, suggested_termination, image_side_path, image_front_path, image_back_path)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side_path, image_front_path, image_back_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 connector_def.part_id,
                 connector_def.gender,
                 connector_def.series,
                 connector_def.shell_size,
-                connector_def.cavity_count,
                 connector_def.counterpart_id,
+                connector_def.back_shape,
                 connector_def.back_diameter_mm,
+                connector_def.back_width_mm,
+                connector_def.back_height_mm,
                 connector_def.suggested_termination,
                 connector_def.image_side_path,
                 connector_def.image_front_path,
@@ -705,6 +730,35 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn back_clearance_is_the_diameter_or_the_diagonal() {
+        let mut cd = ConnectorDef {
+            part_id: 1,
+            gender: "female".into(),
+            series: Some("DTM".into()),
+            shell_size: None,
+            counterpart_id: None,
+            back_shape: Some("rectangular".into()),
+            back_diameter_mm: None,
+            back_width_mm: Some(12.0),
+            back_height_mm: Some(9.5),
+            suggested_termination: None,
+            image_side_path: None,
+            image_front_path: None,
+            image_back_path: None,
+            cavities: vec![],
+        };
+        // Rectangular 12 × 9.5 mm -> diagonal ≈ 15.31 mm.
+        assert!((cd.back_clearance_mm().unwrap() - 15.305).abs() < 0.01);
+        cd.back_height_mm = None;
+        assert_eq!(cd.back_clearance_mm(), None);
+        cd.back_shape = Some("round".into());
+        cd.back_diameter_mm = Some(18.0);
+        assert_eq!(cd.back_clearance_mm(), Some(18.0));
+        cd.back_shape = None;
+        assert_eq!(cd.back_clearance_mm(), None);
+    }
     use crate::db;
 
     #[test]
@@ -786,9 +840,11 @@ mod tests {
                 gender: "female".into(),
                 series: Some("MS".into()),
                 shell_size: Some("20".into()),
-                cavity_count: 41,
                 counterpart_id: None,
-                back_diameter_mm: Some(18.0),
+                back_shape: Some("rectangular".into()),
+                back_diameter_mm: None,
+                back_width_mm: Some(12.0),
+                back_height_mm: Some(9.5),
                 suggested_termination: Some("boot".into()),
                 image_side_path: None,
                 image_front_path: None,

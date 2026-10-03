@@ -279,7 +279,9 @@ h1, h2, h3 {
   color: var(--text);
 }
 
-.tabs button:disabled {
+/* La pestaña activa es un botón deshabilitado; los íconos de la misma barra
+   (paneles, Undo/Redo) quedan fuera para no parecer pestañas activas. */
+.tabs button:disabled:not(.icon-button) {
   background: transparent;
   color: var(--text);
   font-weight: 600;
@@ -706,4 +708,315 @@ table select:focus {
 
 .status-dot-warning {
   background: var(--warning);
+}
+
+/* ---------------------------------------------------------------------------
+   Diagrama de armado (pestaña Diagram, plan 10.2). Mismo lenguaje que el resto:
+   bloques planos con borde de 1px, IDs en mono, azul solo para lo seleccionado
+   o resaltado, error/warning como punto de color. */
+
+.screen-canvas {
+  padding: 0;
+  overflow: hidden;
+}
+
+.diagram-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.diagram-toolbar {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  margin: 0;
+}
+
+.diagram-toolbar label {
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.diagram-canvas {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.dg-block {
+  min-width: 130px;
+  max-width: 220px;
+  padding: 0.35rem 0.55rem;
+  background: var(--surface);
+  border: 1px solid var(--text-muted);
+  border-radius: 3px;
+  cursor: grab;
+}
+
+.dg-ground {
+  min-width: 0;
+}
+
+.dg-pending {
+  border-style: dashed;
+  border-color: var(--warning);
+}
+
+.dg-selected.dg-block {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+.dg-block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dg-id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.dg-name {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Género: macho relleno, hembra hueco (se leen distinto aun sin la letra). */
+.dg-gender {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 2px;
+  border: 1px solid var(--text);
+}
+
+.dg-gender-M {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.dg-gender-F {
+  color: var(--text);
+}
+
+.dg-gender-\? {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.dg-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.dg-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+.dg-tag-warning {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+/* Breakouts y puntos sin conector: un punto chico con sus notas debajo. */
+.dg-point {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--text-muted);
+  box-sizing: border-box;
+  cursor: grab;
+}
+
+.dg-point.dg-selected {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.dg-point-labels {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+  /* Fondo del lienzo para que un segmento que pase por debajo no tape el texto. */
+  background: var(--bg);
+  padding: 0 3px;
+}
+
+.dg-distance {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.dg-edge-label {
+  position: absolute;
+  pointer-events: all;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 1px 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dg-edge-label:hover,
+.dg-edge-label-selected {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dg-muted {
+  color: var(--text-muted);
+}
+
+/* Splice/componente sobre un segmento, en su posición real. */
+.dg-marker {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.dg-marker-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.dg-marker-label {
+  position: absolute;
+  left: 12px;
+  top: -14px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* Controles de zoom de React Flow: sin sombra (Flat Plane Rule). */
+.react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+
+.react-flow__controls-button {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Nodo de conector/masa sin nada asignado: borde punteado neutro (no es un error, falta cargarlo). */
+.dg-missing {
+  border-style: dashed;
+  border-color: var(--text-muted);
+}
+
+.dg-missing .dg-id {
+  color: var(--text-muted);
+}
+
+/* Biblioteca de conectores: parte trasera (forma + medidas) y generador de vías. */
+.back-size {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.back-size select {
+  width: 5.5em;
+  flex: 0 0 auto;
+}
+
+.back-size input {
+  width: 4em;
+}
+
+.cavity-editor {
+  margin-top: 0.75rem;
+}
+
+.cavity-generator {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.cavity-generator label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}
+
+.cavity-generator input {
+  width: 6em;
+}
+
+.cavity-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+/* Tabla que ocupa solo lo que necesita (pocas columnas angostas). */
+table.compact-table {
+  width: auto;
+  min-width: 18rem;
+  margin: 0.5rem 0;
+}
+
+/* Acción secundaria con forma de enlace (no compite con los botones de la barra). */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.dg-block .dg-distance {
+  font-size: 0.72rem;
 }

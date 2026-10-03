@@ -49,11 +49,11 @@ pub fn sample_project() -> ProjectData {
             library_part_id: None,
         }],
         nodes: vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-            Node { id: 2, kind: "breakout".into(), termination: Some("t_mold".into()), termination_library_part_id: Some(32) },
-            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-            Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None },
-            Node { id: 5, kind: "ground_point".into(), termination: None, termination_library_part_id: None },
+            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 2, kind: "breakout".into(), termination: Some("t_mold".into()), termination_library_part_id: Some(32), diagram_x: None, diagram_y: None },
+            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node { id: 5, kind: "ground_point".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
         ],
         segments: vec![
             Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 450.0, twist_pitch_mm: None, covering_library_part_id: Some(30) },

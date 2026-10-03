@@ -33,9 +33,12 @@ export interface ConnectorDef {
   gender: "male" | "female";
   series: string | null;
   shell_size: string | null;
-  cavity_count: number;
   counterpart_id: number | null;
+  /** Parte trasera, por donde pasa el termo con adhesivo: redonda (Ø) o rectangular (ancho × alto). */
+  back_shape: "round" | "rectangular" | null;
   back_diameter_mm: number | null;
+  back_width_mm: number | null;
+  back_height_mm: number | null;
   suggested_termination: "boot" | "adhesive_heatshrink" | "none" | null;
   image_side_path: string | null;
   image_front_path: string | null;
