@@ -51,6 +51,14 @@ impl<T: Clone> History<T> {
             None => false,
         }
     }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -82,5 +90,18 @@ mod tests {
         h.edit(5);
         assert!(!h.redo());
         assert_eq!(*h.get(), 5);
+    }
+
+    #[test]
+    fn can_undo_and_can_redo_reflect_stack_state() {
+        let mut h = History::new(0);
+        assert!(!h.can_undo());
+        assert!(!h.can_redo());
+        h.edit(1);
+        assert!(h.can_undo());
+        assert!(!h.can_redo());
+        h.undo();
+        assert!(!h.can_undo());
+        assert!(h.can_redo());
     }
 }

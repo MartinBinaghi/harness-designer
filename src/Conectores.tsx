@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CavityAssignment, ConnectorInstance, ProjectData } from "./types";
+import type { CavityAssignment, ConnectorInstance, ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import { ChevronIcon, TrashIcon } from "./icons";
 
@@ -34,9 +34,11 @@ interface Props {
   project: ProjectData | null;
   setProject: (p: ProjectData) => void;
   library: Library;
+  selection: Selection;
+  onSelect: (s: Selection) => void;
 }
 
-export default function Conectores({ project, setProject, library }: Props) {
+export default function Conectores({ project, setProject, library, selection, onSelect }: Props) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [nodeFilter, setNodeFilter] = useState("");
@@ -153,7 +155,10 @@ export default function Conectores({ project, setProject, library }: Props) {
           const currentDefMatches = library.connector_defs.some((cd) => cd.part_id === connector.library_part_id);
           return (
             <div key={connector.id} className="connector-group">
-              <div className={`connector-row${isOpen ? " connector-row-open" : ""}`}>
+              <div
+                className={`connector-row selectable-row${isOpen ? " connector-row-open" : ""}${selection?.kind === "connector" && selection.id === connector.id ? " selected-row" : ""}`}
+                onClick={() => onSelect({ kind: "connector", id: connector.id })}
+              >
                 <button className="chevron-button" onClick={() => toggleExpanded(connector.id)} aria-label={isOpen ? "Collapse details" : "Expand details"} title={isOpen ? "Collapse" : "Expand"}>
                   <ChevronIcon open={isOpen} />
                 </button>

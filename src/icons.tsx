@@ -43,6 +43,24 @@ export function TrashIcon() {
   );
 }
 
+export function UndoIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 14 4 9l5-5" />
+      <path d="M20 20v-7a4 4 0 00-4-4H4" />
+    </svg>
+  );
+}
+
+export function RedoIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 14l5-5-5-5" />
+      <path d="M4 20v-7a4 4 0 014-4h12" />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -55,6 +73,25 @@ export function ChevronIcon({ open }: { open: boolean }) {
       style={{ transform: open ? "rotate(90deg)" : undefined, transition: "transform 0.1s" }}
     >
       <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+/** Ventana con una franja lateral rellena: mostrar/ocultar el panel de ese lado. */
+export function PanelIcon({ side }: { side: "left" | "right" }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="4" width="18" height="16" rx="1" />
+      <path d={side === "left" ? "M9 4v16" : "M15 4v16"} />
+    </svg>
+  );
+}
+
+export function HelpIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 014.6 1.3c0 1.7-2.1 2-2.1 3.4M12 17.5h.01" />
     </svg>
   );
 }

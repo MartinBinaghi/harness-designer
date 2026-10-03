@@ -14,18 +14,25 @@ fn awg_to_mm2(awg: f64) -> f64 {
 /// Parsea un calibre en texto libre ("22 AWG", "22", "0.5mm²", "0.5 mm2") a
 /// mm² de sección, para poder comparar distintas notaciones entre sí.
 /// Devuelve `None` si no se puede interpretar (no se valida lo que no se
-/// puede parsear). No admite calibres AWG negativos (ej. "0000" para cable
-/// de batería) — caso de uso fuera del alcance de esta pasada.
+/// puede parsear). Admite los calibres gruesos de cable de batería en ambas
+/// notaciones: "0000" o "4/0" (= AWG −3), "00" o "2/0" (= AWG −1).
 pub fn gauge_to_mm2(text: &str) -> Option<f64> {
-    let lower = text.to_lowercase();
+    let lower = text.trim().to_lowercase();
     let digits: String = lower.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
-    let number: f64 = digits.parse().ok()?;
     if lower.contains("mm") {
-        Some(number)
-    } else {
-        // Número solo o con sufijo "AWG": American Wire Gauge, el default del taller.
-        Some(awg_to_mm2(number))
+        return digits.parse().ok();
     }
+    // Número solo o con sufijo "AWG": American Wire Gauge, el default del taller.
+    let rest = &lower[digits.len()..];
+    let awg = if rest.starts_with("/0") {
+        // "N/0" = N ceros = AWG 1 − N.
+        1.0 - digits.parse::<f64>().ok()?
+    } else if digits.len() >= 2 && digits.chars().all(|c| c == '0') {
+        1.0 - digits.len() as f64
+    } else {
+        digits.parse().ok()?
+    };
+    Some(awg_to_mm2(awg))
 }
 
 #[cfg(test)]
@@ -49,6 +56,17 @@ mod tests {
     #[test]
     fn a_lower_awg_number_is_a_thicker_wire() {
         assert!(gauge_to_mm2("10 AWG").unwrap() > gauge_to_mm2("22 AWG").unwrap());
+    }
+
+    #[test]
+    fn parses_battery_gauges_in_both_notations() {
+        let zeros = gauge_to_mm2("0000 AWG").unwrap();
+        let slash = gauge_to_mm2("4/0").unwrap();
+        assert!((zeros - slash).abs() < 1e-9);
+        assert!((zeros - 107.2).abs() < 0.5); // 4/0 AWG ≈ 107.2mm², tabla estándar
+        assert!((gauge_to_mm2("00").unwrap() - gauge_to_mm2("2/0").unwrap()).abs() < 1e-9);
+        assert!((gauge_to_mm2("0").unwrap() - 53.5).abs() < 0.5); // 1/0 AWG ≈ 53.5mm²
+        assert!(gauge_to_mm2("00").unwrap() > gauge_to_mm2("0").unwrap());
     }
 
     #[test]

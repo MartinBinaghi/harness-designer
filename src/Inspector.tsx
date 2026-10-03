@@ -8,10 +8,23 @@ function partNumber(library: Library, partId: number | null | undefined): string
   return library.parts.find((p) => p.id === partId)?.part_number ?? `#${partId}`;
 }
 
+/** Nodo y conector comparten "adhesive_heatshrink"/"none"; el conector suma los boots. */
+const TERMINATION_LABELS: Record<string, string> = {
+  t_mold: "T-mold",
+  adhesive_heatshrink: "Adhesive heat-shrink",
+  boot_straight: "Straight boot",
+  boot_90: "90° boot",
+  none: "None",
+};
+function terminationLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  return TERMINATION_LABELS[value] ?? value;
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="inspector-field">
-      <div className="inspector-field-label">{label}</div>
+      <div className="field-label">{label}</div>
       <div className="inspector-field-value">{children}</div>
     </div>
   );
@@ -43,7 +56,7 @@ export default function Inspector({ project, library, selection }: Props) {
       fields = (
         <>
           <Field label="Kind">{node.kind}</Field>
-          <Field label="Termination">{node.termination ?? "—"}</Field>
+          <Field label="Termination">{terminationLabel(node.termination)}</Field>
           {node.termination_library_part_id != null && <Field label="Part">{partNumber(library, node.termination_library_part_id)}</Field>}
         </>
       );
@@ -73,7 +86,7 @@ export default function Inspector({ project, library, selection }: Props) {
           <Field label="Part">{partNumber(library, c.library_part_id)}</Field>
           <Field label="Node">node {c.node_id}</Field>
           {device && <Field label="Device">{device.name}</Field>}
-          <Field label="Termination">{c.termination ?? "—"}</Field>
+          <Field label="Termination">{terminationLabel(c.termination)}</Field>
           <Field label="Status">{c.status}</Field>
           {c.is_interconnect && <Field label="Mates with">{c.mates_with ?? "—"}</Field>}
         </>

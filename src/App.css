@@ -359,11 +359,26 @@ h1, h2, h3 {
   font-size: 0.85em;
   color: var(--text-muted);
   max-width: 60ch;
-  margin: -0.3rem 0 0.8rem;
+  margin: 0 0 0.8rem;
 }
 
 section {
   margin-bottom: 2rem;
+}
+
+/* Título de sección: mismo lenguaje tipográfico que ya usan los
+   encabezados de columna de tabla y los field-label (mayúsculas,
+   trackeado, muted) con una línea inferior — así el título queda atado
+   a la tabla/lista que sigue en vez de flotar como un h3 suelto. */
+h3 {
+  margin: 0 0 0.7rem;
+  padding-bottom: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
 }
 
 table {
@@ -615,15 +630,6 @@ table select:focus {
   border-bottom: none;
 }
 
-.inspector-field-label {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 0.15rem;
-}
-
 .inspector-field-value {
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -656,6 +662,18 @@ table select:focus {
 
 .icon-button:hover:not(:disabled) {
   color: var(--accent);
+}
+
+/* Botón de alternar (paneles laterales): en azul mientras está activo. */
+.icon-button[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.tabs-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 0.3rem;
+  background: var(--border);
 }
 
 /* Barra de estado inferior, siempre visible, con el resumen global de

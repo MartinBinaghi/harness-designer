@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Node, ProjectData, Segment, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import { buildTreeText } from "./tree";
-import { FolderIcon, SaveIcon } from "./icons";
+import { FolderIcon, SaveIcon, TrashIcon } from "./icons";
 
 const NODE_KIND_LABELS: Record<Node["kind"], string> = {
   connector_end: "Connector end",
@@ -26,6 +26,12 @@ function nextId(ids: number[]): number {
 interface Props {
   project: ProjectData | null;
   setProject: (p: ProjectData | null) => void;
+  /** El backend ya tiene el proyecto nuevo (open_project/demo_project); esto solo refleja el espejo local. */
+  loadProject: (p: ProjectData) => void;
+  /** Descarta cualquier edición pendiente antes de reemplazar el documento entero. */
+  cancelProjectEdits: () => void;
+  /** Manda cualquier edición pendiente al backend ya, sin esperar la pausa de tipeo. */
+  flushProjectEdits: () => Promise<void>;
   filePath: string;
   setFilePath: (p: string) => void;
   library: Library;
@@ -33,7 +39,7 @@ interface Props {
   onSelect: (s: Selection) => void;
 }
 
-export default function Topologia({ project, setProject, filePath, setFilePath, library, selection, onSelect }: Props) {
+export default function Topologia({ project, setProject, loadProject, cancelProjectEdits, flushProjectEdits, filePath, setFilePath, library, selection, onSelect }: Props) {
   const [status, setStatus] = useState("");
   const [selectedWireId, setSelectedWireId] = useState<number | null>(null);
   const [route, setRoute] = useState<number[] | null>(null);
@@ -48,17 +54,19 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
   }, [project]);
 
   async function loadDemo() {
+    cancelProjectEdits();
     const data = await invoke<ProjectData>("demo_project");
-    setProject(data);
+    loadProject(data);
     setRoute(null);
     setNet(null);
     setStatus("Sample project loaded (not saved to disk yet).");
   }
 
   async function openProject() {
+    cancelProjectEdits();
     try {
       const data = await invoke<ProjectData>("open_project", { path: filePath });
-      setProject(data);
+      loadProject(data);
       setRoute(null);
       setNet(null);
       setStatus(`Opened: ${filePath}`);
@@ -70,7 +78,8 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
   async function saveProject() {
     if (!project) return;
     try {
-      await invoke("save_project", { path: filePath, project });
+      await flushProjectEdits();
+      await invoke("save_project", { path: filePath });
       setStatus(`Saved: ${filePath}`);
     } catch (err) {
       setStatus(`Error saving file: ${err}`);
@@ -152,15 +161,7 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
       ) : (
         <>
           <section>
-            <h3>{project.project.name} · {project.project.harness_code}</h3>
-          </section>
-
-          <section>
             <h3>Nodes</h3>
-            <p className="hint">
-              A node is a point on the harness&apos;s branching tree — where a connector sits, where the harness splits
-              (breakout), a splice, or a ground point. Segments below are the physical runs <em>between</em> two nodes.
-            </p>
             <table>
               <thead>
                 <tr><th>ID</th><th>Kind</th><th>Termination</th><th>T-mold</th><th></th></tr>
@@ -206,12 +207,16 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
                         </select>
                       )}
                     </td>
-                    <td><button onClick={() => removeNode(node.id)}>delete</button></td>
+                    <td>
+                      <button className="icon-button" onClick={() => removeNode(node.id)} title="Delete" aria-label="Delete node">
+                        <TrashIcon />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <button onClick={addNode}>+ node</button>
+            <button className="button-ghost-accent" onClick={addNode}>+ node</button>
           </section>
 
           <section>
@@ -265,12 +270,16 @@ export default function Topologia({ project, setProject, filePath, setFilePath, 
                         })}
                       </select>
                     </td>
-                    <td><button onClick={() => removeSegment(segment.id)}>delete</button></td>
+                    <td>
+                      <button className="icon-button" onClick={() => removeSegment(segment.id)} title="Delete" aria-label="Delete segment">
+                        <TrashIcon />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <button onClick={addSegment} disabled={project.nodes.length < 2}>+ segment</button>
+            <button className="button-ghost-accent" onClick={addSegment} disabled={project.nodes.length < 2}>+ segment</button>
           </section>
 
           <section>

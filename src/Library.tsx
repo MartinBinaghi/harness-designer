@@ -20,7 +20,7 @@ import type {
   TMoldLeg,
   WireDef,
 } from "./libraryTypes";
-import { FolderIcon, SaveIcon } from "./icons";
+import { FolderIcon, SaveIcon, TrashIcon } from "./icons";
 
 const TABS = [
   "Connectors",
@@ -139,18 +139,25 @@ function PartFields({ part, onChange }: { part: Part; onChange: (patch: Partial<
 interface ScreenProps {
   library: Library;
   setLibrary: (l: Library) => void;
+  /** El backend ya tiene la biblioteca nueva (open_library/demo_library); esto solo refleja el espejo local. */
+  loadLibrary: (l: Library) => void;
+  /** Descarta cualquier edición pendiente antes de reemplazar el documento entero. */
+  cancelLibraryEdits: () => void;
+  /** Manda cualquier edición pendiente al backend ya, sin esperar la pausa de tipeo. */
+  flushLibraryEdits: () => Promise<void>;
   filePath: string;
   setFilePath: (p: string) => void;
 }
 
-export default function LibraryScreen({ library, setLibrary, filePath, setFilePath }: ScreenProps) {
+export default function LibraryScreen({ library, setLibrary, loadLibrary, cancelLibraryEdits, flushLibraryEdits, filePath, setFilePath }: ScreenProps) {
   const [status, setStatus] = useState("");
   const [tab, setTab] = useState<Tab>("Connectors");
 
   async function openLibrary() {
+    cancelLibraryEdits();
     try {
       const data = await invoke<Library>("open_library", { path: filePath });
-      setLibrary(data);
+      loadLibrary(data);
       setStatus(`Opened: ${filePath}`);
     } catch (err) {
       setStatus(`Error opening file: ${err}`);
@@ -159,7 +166,8 @@ export default function LibraryScreen({ library, setLibrary, filePath, setFilePa
 
   async function saveLibrary() {
     try {
-      await invoke("save_library", { path: filePath, library });
+      await flushLibraryEdits();
+      await invoke("save_library", { path: filePath });
       setStatus(`Saved: ${filePath}`);
     } catch (err) {
       setStatus(`Error saving file: ${err}`);
@@ -167,8 +175,9 @@ export default function LibraryScreen({ library, setLibrary, filePath, setFilePa
   }
 
   async function loadDemo() {
+    cancelLibraryEdits();
     const data = await invoke<Library>("demo_library");
-    setLibrary(data);
+    loadLibrary(data);
     setStatus("Sample library loaded (not saved to disk yet).");
   }
 
@@ -276,13 +285,17 @@ function ContactDefsTab({ library, setLibrary, partById }: TabProps) {
                 <td><input value={cd.contact_size} onChange={(e) => setLibrary(updateSubtype<"contact_defs", ContactDef>(library, "contact_defs", cd.part_id, { contact_size: e.currentTarget.value }))} /></td>
                 <td><input value={cd.gauge_min ?? ""} onChange={(e) => setLibrary(updateSubtype<"contact_defs", ContactDef>(library, "contact_defs", cd.part_id, { gauge_min: e.currentTarget.value || null }))} /></td>
                 <td><input value={cd.gauge_max ?? ""} onChange={(e) => setLibrary(updateSubtype<"contact_defs", ContactDef>(library, "contact_defs", cd.part_id, { gauge_max: e.currentTarget.value || null }))} /></td>
-                <td><button onClick={() => setLibrary(removePart(library, "contact_defs", cd.part_id))}>delete</button></td>
+                <td>
+                  <button className="icon-button" onClick={() => setLibrary(removePart(library, "contact_defs", cd.part_id))} title="Delete" aria-label="Delete contact">
+                    <TrashIcon />
+                  </button>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <button onClick={() => setLibrary(addPart(library, "contact", "contact_defs", (partId) => ({ part_id: partId, gender: "male", contact_size: "", gauge_min: null, gauge_max: null })))}>+ contact</button>
+      <button className="button-ghost-accent" onClick={() => setLibrary(addPart(library, "contact", "contact_defs", (partId) => ({ part_id: partId, gender: "male", contact_size: "", gauge_min: null, gauge_max: null })))}>+ New</button>
     </section>
   );
 }
@@ -310,13 +323,17 @@ function SealPlugDefsTab({ library, setLibrary, partById }: TabProps) {
               <tr key={sp.part_id}>
                 <PartFields part={part} onChange={(patch) => setLibrary(updatePart(library, part.id, patch))} />
                 <td><input value={sp.contact_size} onChange={(e) => setLibrary(updateSubtype<"seal_plug_defs", SealPlugDef>(library, "seal_plug_defs", sp.part_id, { contact_size: e.currentTarget.value }))} /></td>
-                <td><button onClick={() => setLibrary(removePart(library, "seal_plug_defs", sp.part_id))}>delete</button></td>
+                <td>
+                  <button className="icon-button" onClick={() => setLibrary(removePart(library, "seal_plug_defs", sp.part_id))} title="Delete" aria-label="Delete seal plug">
+                    <TrashIcon />
+                  </button>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <button onClick={() => setLibrary(addPart(library, "seal_plug", "seal_plug_defs", (partId) => ({ part_id: partId, contact_size: "" })))}>+ seal plug</button>
+      <button className="button-ghost-accent" onClick={() => setLibrary(addPart(library, "seal_plug", "seal_plug_defs", (partId) => ({ part_id: partId, contact_size: "" })))}>+ New</button>
     </section>
   );
 }
@@ -369,7 +386,11 @@ function WireDefsTab({ library, setLibrary, partById }: TabProps) {
                     onChange={(e) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { default_cut_margin_pct: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) }))}
                   />
                 </td>
-                <td><button onClick={() => setLibrary(removePart(library, "wire_defs", wd.part_id))}>delete</button></td>
+                <td>
+                  <button className="icon-button" onClick={() => setLibrary(removePart(library, "wire_defs", wd.part_id))} title="Delete" aria-label="Delete wire">
+                    <TrashIcon />
+                  </button>
+                </td>
               </tr>
             );
           })}
@@ -389,8 +410,9 @@ function WireDefsTab({ library, setLibrary, partById }: TabProps) {
             })),
           )
         }
+        className="button-ghost-accent"
       >
-        + wire
+        + New
       </button>
     </section>
   );
@@ -427,13 +449,17 @@ function SpliceDefsTab({ library, setLibrary, partById }: TabProps) {
                     onChange={(e) => setLibrary(updateSubtype<"splice_defs", SpliceDef>(library, "splice_defs", sd.part_id, { max_wires: Number(e.currentTarget.value) }))}
                   />
                 </td>
-                <td><button onClick={() => setLibrary(removePart(library, "splice_defs", sd.part_id))}>delete</button></td>
+                <td>
+                  <button className="icon-button" onClick={() => setLibrary(removePart(library, "splice_defs", sd.part_id))} title="Delete" aria-label="Delete splice">
+                    <TrashIcon />
+                  </button>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <button onClick={() => setLibrary(addPart(library, "splice", "splice_defs", (partId) => ({ part_id: partId, gauge_min: null, gauge_max: null, max_wires: 2 })))}>+ splice</button>
+      <button className="button-ghost-accent" onClick={() => setLibrary(addPart(library, "splice", "splice_defs", (partId) => ({ part_id: partId, gauge_min: null, gauge_max: null, max_wires: 2 })))}>+ New</button>
     </section>
   );
 }
@@ -471,13 +497,17 @@ function ComponentDefsTab({ library, setLibrary, partById }: TabProps) {
                 <td><input value={cd.component_type} onChange={(e) => setLibrary(updateSubtype<"component_defs", ComponentDef>(library, "component_defs", cd.part_id, { component_type: e.currentTarget.value }))} /></td>
                 <td><input value={cd.value ?? ""} onChange={(e) => setLibrary(updateSubtype<"component_defs", ComponentDef>(library, "component_defs", cd.part_id, { value: e.currentTarget.value || null }))} /></td>
                 <td><input value={cd.package ?? ""} onChange={(e) => setLibrary(updateSubtype<"component_defs", ComponentDef>(library, "component_defs", cd.part_id, { package: e.currentTarget.value || null }))} /></td>
-                <td><button onClick={() => setLibrary(removePart(library, "component_defs", cd.part_id))}>delete</button></td>
+                <td>
+                  <button className="icon-button" onClick={() => setLibrary(removePart(library, "component_defs", cd.part_id))} title="Delete" aria-label="Delete component">
+                    <TrashIcon />
+                  </button>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <button onClick={() => setLibrary(addPart(library, "component", "component_defs", (partId) => ({ part_id: partId, component_type: "", value: null, package: null })))}>+ component</button>
+      <button className="button-ghost-accent" onClick={() => setLibrary(addPart(library, "component", "component_defs", (partId) => ({ part_id: partId, component_type: "", value: null, package: null })))}>+ New</button>
     </section>
   );
 }
@@ -508,7 +538,11 @@ function CoveringDefsTab({ library, setLibrary, partById }: TabProps) {
                 <td><input type="number" value={cd.shrunk_diameter_mm} onChange={(e) => setLibrary(updateSubtype<"covering_defs", CoveringDef>(library, "covering_defs", cd.part_id, { shrunk_diameter_mm: Number(e.currentTarget.value) }))} /></td>
                 <td><input type="number" value={cd.shrunk_wall_thickness_mm} onChange={(e) => setLibrary(updateSubtype<"covering_defs", CoveringDef>(library, "covering_defs", cd.part_id, { shrunk_wall_thickness_mm: Number(e.currentTarget.value) }))} /></td>
                 <td><input type="checkbox" checked={cd.has_adhesive} onChange={(e) => setLibrary(updateSubtype<"covering_defs", CoveringDef>(library, "covering_defs", cd.part_id, { has_adhesive: e.currentTarget.checked }))} /></td>
-                <td><button onClick={() => setLibrary(removePart(library, "covering_defs", cd.part_id))}>delete</button></td>
+                <td>
+                  <button className="icon-button" onClick={() => setLibrary(removePart(library, "covering_defs", cd.part_id))} title="Delete" aria-label="Delete covering">
+                    <TrashIcon />
+                  </button>
+                </td>
               </tr>
             );
           })}
@@ -526,8 +560,9 @@ function CoveringDefsTab({ library, setLibrary, partById }: TabProps) {
             })),
           )
         }
+        className="button-ghost-accent"
       >
-        + covering
+        + New
       </button>
     </section>
   );
@@ -581,7 +616,11 @@ function AccessoryDefsTab({ library, setLibrary, partById }: TabProps) {
                 <td><input type="number" value={ad.leg_length_mm} onChange={(e) => setLibrary(updateSubtype<"accessory_defs", AccessoryDef>(library, "accessory_defs", ad.part_id, { leg_length_mm: Number(e.currentTarget.value) }))} /></td>
                 <td><input type="number" value={ad.overlap_mm} onChange={(e) => setLibrary(updateSubtype<"accessory_defs", AccessoryDef>(library, "accessory_defs", ad.part_id, { overlap_mm: Number(e.currentTarget.value) }))} /></td>
                 <td><input value={matchesText(ad.compatible_connectors)} onChange={(e) => setLibrary(updateSubtype<"accessory_defs", AccessoryDef>(library, "accessory_defs", ad.part_id, { compatible_connectors: parseMatchesText(e.currentTarget.value) }))} style={{ width: "10em" }} /></td>
-                <td><button onClick={() => setLibrary(removePart(library, "accessory_defs", ad.part_id))}>delete</button></td>
+                <td>
+                  <button className="icon-button" onClick={() => setLibrary(removePart(library, "accessory_defs", ad.part_id))} title="Delete" aria-label="Delete boot">
+                    <TrashIcon />
+                  </button>
+                </td>
               </tr>
             );
           })}
@@ -601,8 +640,9 @@ function AccessoryDefsTab({ library, setLibrary, partById }: TabProps) {
             })),
           )
         }
+        className="button-ghost-accent"
       >
-        + boot
+        + New
       </button>
     </section>
   );
@@ -645,7 +685,11 @@ function TMoldDefsTab({ library, setLibrary, partById }: TabProps) {
                 <tr>
                   <PartFields part={part} onChange={(patch) => setLibrary(updatePart(library, part.id, patch))} />
                   <td><input type="number" value={td.overlap_mm} onChange={(e) => updateTd(td.part_id, { overlap_mm: Number(e.currentTarget.value) })} /></td>
-                  <td><button onClick={() => setLibrary(removePart(library, "t_mold_defs", td.part_id))}>delete T-mold</button></td>
+                  <td>
+                    <button className="icon-button" onClick={() => setLibrary(removePart(library, "t_mold_defs", td.part_id))} title="Delete" aria-label="Delete T-mold">
+                      <TrashIcon />
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -676,8 +720,9 @@ function TMoldDefsTab({ library, setLibrary, partById }: TabProps) {
             })),
           )
         }
+        className="button-ghost-accent"
       >
-        + T-mold
+        + New
       </button>
     </section>
   );
@@ -715,12 +760,16 @@ function SignalTypesTab({ library, setLibrary }: { library: Library; setLibrary:
             <tr key={st.id}>
               <td><input value={st.name} onChange={(e) => update(st.id, { name: e.currentTarget.value })} placeholder="e.g. 5V, GND, CAN" /></td>
               <td><input value={st.default_color} onChange={(e) => update(st.id, { default_color: e.currentTarget.value })} placeholder="e.g. violet" /></td>
-              <td><button onClick={() => remove(st.id)}>delete</button></td>
+              <td>
+                <button className="icon-button" onClick={() => remove(st.id)} title="Delete" aria-label="Delete color">
+                  <TrashIcon />
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <button onClick={add}>+ category</button>
+      <button className="button-ghost-accent" onClick={add}>+ New</button>
     </section>
   );
 }
@@ -795,7 +844,11 @@ function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
                       <option value="none">None</option>
                     </select>
                   </td>
-                  <td><button onClick={() => setLibrary(removePart(library, "connector_defs", cd.part_id))}>delete connector</button></td>
+                  <td>
+                    <button className="icon-button" onClick={() => setLibrary(removePart(library, "connector_defs", cd.part_id))} title="Delete" aria-label="Delete connector">
+                      <TrashIcon />
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -808,7 +861,11 @@ function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
                   <tr key={i}>
                     <td><input value={cav.cavity_id} onChange={(e) => updateCavity(cd, i, { cavity_id: e.currentTarget.value })} /></td>
                     <td><input value={cav.contact_size} onChange={(e) => updateCavity(cd, i, { contact_size: e.currentTarget.value })} /></td>
-                    <td><button onClick={() => removeCavity(cd, i)}>delete</button></td>
+                    <td>
+                      <button className="icon-button" onClick={() => removeCavity(cd, i)} title="Delete" aria-label="Delete cavity">
+                        <TrashIcon />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -836,8 +893,9 @@ function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
             })),
           )
         }
+        className="button-ghost-accent"
       >
-        + connector
+        + New
       </button>
     </section>
   );
@@ -923,7 +981,11 @@ function DeviceDefsTab({ library, setLibrary, partById }: TabProps) {
               <tbody>
                 <tr>
                   <PartFields part={part} onChange={(patch) => setLibrary(updatePart(library, part.id, patch))} />
-                  <td><button onClick={() => setLibrary(removePart(library, "device_defs", dd.part_id))}>delete device</button></td>
+                  <td>
+                    <button className="icon-button" onClick={() => setLibrary(removePart(library, "device_defs", dd.part_id))} title="Delete" aria-label="Delete device">
+                      <TrashIcon />
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -946,7 +1008,9 @@ function DeviceDefsTab({ library, setLibrary, partById }: TabProps) {
                       return <option key={cd.part_id} value={cd.part_id}>{cp?.part_number || `#${cd.part_id}`}</option>;
                     })}
                   </select>
-                  <button onClick={() => removeConnector(dd, connector.id)}>delete connector</button>
+                  <button className="icon-button" onClick={() => removeConnector(dd, connector.id)} title="Delete" aria-label="Delete device connector">
+                    <TrashIcon />
+                  </button>
                 </div>
 
                 <table>
@@ -957,7 +1021,11 @@ function DeviceDefsTab({ library, setLibrary, partById }: TabProps) {
                         <td><input value={pin.cavity_id} onChange={(e) => updatePin(dd, connector, pin.id, { cavity_id: e.currentTarget.value })} /></td>
                         <td><input value={pin.name} onChange={(e) => updatePin(dd, connector, pin.id, { name: e.currentTarget.value })} /></td>
                         <td><input value={pin.function ?? ""} onChange={(e) => updatePin(dd, connector, pin.id, { function: e.currentTarget.value || null })} /></td>
-                        <td><button onClick={() => removePin(dd, connector, pin.id)}>delete</button></td>
+                        <td>
+                          <button className="icon-button" onClick={() => removePin(dd, connector, pin.id)} title="Delete" aria-label="Delete pin">
+                            <TrashIcon />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -982,7 +1050,9 @@ function DeviceDefsTab({ library, setLibrary, partById }: TabProps) {
                       {pin.name || `#${pin.id}`}
                     </label>
                   ))}
-                  <button onClick={() => removePinGroup(dd, group.id)}>delete group</button>
+                  <button className="icon-button" onClick={() => removePinGroup(dd, group.id)} title="Delete" aria-label="Delete pin group">
+                    <TrashIcon />
+                  </button>
                 </div>
               ))}
               <button onClick={() => addPinGroup(dd)}>+ pin group</button>
@@ -994,8 +1064,9 @@ function DeviceDefsTab({ library, setLibrary, partById }: TabProps) {
         onClick={() =>
           setLibrary(addPart(library, "device", "device_defs", (partId) => ({ part_id: partId, connectors: [], pin_groups: [] })))
         }
+        className="button-ghost-accent"
       >
-        + device
+        + New
       </button>
     </section>
   );

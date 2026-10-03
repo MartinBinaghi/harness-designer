@@ -70,6 +70,18 @@ export interface BreakoutTerminationInfo {
   t_mold_options: TMoldFit[];
 }
 
+export interface SpliceOutputGaugeFit {
+  wire_def_part_id: number;
+  gauge: string;
+  fits: boolean;
+}
+
+export interface SpliceOutputGaugeInfo {
+  splice_instance_id: number;
+  combined_mm2: number;
+  options: SpliceOutputGaugeFit[];
+}
+
 export interface CostReport {
   cut_list: WireCutLength[];
   bom: BomRow[];
@@ -77,4 +89,5 @@ export interface CostReport {
   segment_diameters: SegmentDiameterInfo[];
   connector_terminations: ConnectorTerminationInfo[];
   breakout_terminations: BreakoutTerminationInfo[];
+  splice_output_gauges: SpliceOutputGaugeInfo[];
 }

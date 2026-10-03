@@ -121,10 +121,16 @@ export interface TwistGroup {
   wire_instance_ids: number[];
 }
 
-/** Espejo de checks::Finding (src-tauri). */
-export interface Finding {
-  severity: "error" | "warning";
-  message: string;
+/** Espejo de state::HistoryStatus / state::ProjectStatus (src-tauri). El
+ * historial de undo/redo vive en el backend; esto es lo que el frontend
+ * consulta para habilitar/deshabilitar los botones de Undo/Redo. */
+export interface HistoryStatus {
+  can_undo: boolean;
+  can_redo: boolean;
+}
+
+export interface ProjectStatus extends HistoryStatus {
+  loaded: boolean;
 }
 
 /** Elemento seleccionado, compartido entre el árbol, el inspector y las tablas de cada pantalla. */
@@ -136,6 +142,14 @@ export type Selection =
   | { kind: "splice"; id: number }
   | { kind: "wire"; id: number }
   | null;
+
+/** Espejo de checks::Finding (src-tauri). Clickear uno con `target` selecciona
+ * ese elemento, igual que clickear su fila en cualquier otra pantalla. */
+export interface Finding {
+  severity: "error" | "warning";
+  message: string;
+  target: NonNullable<Selection> | null;
+}
 
 export interface ProjectData {
   project: Project;

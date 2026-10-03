@@ -119,6 +119,9 @@ Radios mínimos: 2px en controles sueltos (input/select/button), 3px en paneles/
 - **Rows:** borde inferior 1px al 70% de opacidad; sin hover de fila (las celdas editables ya marcan su propio estado).
 - **Numeric columns:** alineadas a la derecha, `font-variant-numeric: tabular-nums`.
 
+### Section headings (`h3`)
+- **Style:** mismo tratamiento que un encabezado de columna de tabla — mayúsculas, 0.72rem, 700, 0.07em de tracking, `--text-muted`, con una línea inferior de 1px `--border`. El título queda atado a la tabla/lista que sigue (misma línea, mismo lenguaje) en vez de flotar como un heading suelto.
+
 ### Findings / alerts (chequeos DRC)
 - **Style:** lista dentro de un panel con borde 1px `--border`, cada ítem separado por una línea de 1px (no tarjetas individuales).
 - **Indicator:** punto circular de 7px (`--error` o `--warning`) antes del texto — nunca un borde de color a un costado del ítem.

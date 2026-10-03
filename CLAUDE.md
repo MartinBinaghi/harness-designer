@@ -332,7 +332,7 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 ### 8.2 BOM (lista de materiales)
 - Agrupado por categoría: conectores, contactos, tapones, splices, componentes, cables (m), coberturas (m), accesorios, etiquetas.
 - Por parte: cantidad necesaria, repuesto (% configurable), **cantidad a comprar redondeada al pack** (sirve para el pedido aunque no se cobre así), precio unitario, subtotal, fecha del precio.
-- Precios con más de X días se marcan como desactualizados.
+- Sin umbral automático de desactualización: la fecha del precio se muestra siempre, y Martin decide cuándo recotizar una parte (ver sección 13).
 
 ### 8.3 Costos y presupuesto
 - Materiales (sobre lo usado, u opcionalmente sobre lo comprado) + mano de obra (horas × valor hora) + markup opcional (0% por defecto).
@@ -434,7 +434,6 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Margen de corte menor al mínimo por trenzado.
 - Pin con varios destinos → **sugerir splice** (o validar que entren en el contacto).
 - Conectores o dispositivos en estado **pendiente**.
-- Precios desactualizados (más de X días).
 - Ningún termo, boot o molde de la biblioteca sirve para un segmento, conector o breakout.
 - Conector con termo con adhesivo sin diámetro trasero cargado en el ConnectorDef.
 
@@ -474,6 +473,8 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 | Solape | Termo con adhesivo 20–40 mm (defecto 30 mm); moldes, por parte. |
 | Paso de trenzado | A ojo en el taller; por defecto 8 × D_bundle (conservador), configurable. |
 | Concéntrico | Opcional, con y sin fillers. |
+| Precios desactualizados | Sin umbral automático por días: se muestra la fecha del precio y Martin decide cuándo recotizar. |
+| Calibre mínimo de salida de un splice | Suma de la sección (mm²) de los cables que entran, redondeada al calibre más fino del catálogo de cables que la cubre (no una fórmula AWG abstracta: solo calibres que existen en la biblioteca). |
 
 ---
 
@@ -482,7 +483,6 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 **Se definen con el uso (arrancan con valor por defecto):**
 - Calibrar el factor de llenado midiendo bundles reales (inicial 0,75).
 - Margen del suministrado del termo sobre el diámetro del bundle.
-- Días a partir de los cuales un precio se considera desactualizado.
 - Porcentaje de repuesto por categoría (contactos, etc.).
 - Solape de cada molde (se carga por parte).
 

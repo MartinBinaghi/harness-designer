@@ -47,6 +47,10 @@ export default function Costs({ project, library, selection, onSelect }: Props) 
     return project!.connector_instances.find((c) => c.id === id)?.short_id ?? `#${id}`;
   }
 
+  function spliceLabel(id: number): string {
+    return project!.splice_instances.find((s) => s.id === id)?.short_id ?? `#${id}`;
+  }
+
   return (
     <>
       <div className="toolbar">
@@ -191,6 +195,36 @@ export default function Costs({ project, library, selection, onSelect }: Props) 
                           {suggested?.leg_fits.map((lf) => `S${lf.segment_id}: ${lf.diameter_mm.toFixed(2)}`).join(", ") ?? "—"}
                         </td>
                         <td>{alternatives.map((a) => libraryPartNumber(a.library_part_id)).join(", ") || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          {report.splice_output_gauges.length > 0 && (
+            <section>
+              <h3>Splice output gauge</h3>
+              <p className="hint">
+                Sección combinada de los cables que entran a cada splice, y el calibre más fino del catálogo de cables que la cubre.
+              </p>
+              <table>
+                <thead>
+                  <tr><th>Splice</th><th>Combined (mm²)</th><th>Suggested gauge</th><th>Alternatives</th></tr>
+                </thead>
+                <tbody>
+                  {report.splice_output_gauges.map((s) => {
+                    const suggested = s.options.find((o) => o.fits);
+                    const alternatives = s.options.filter((o) => o.fits && o.gauge !== suggested?.gauge);
+                    return (
+                      <tr key={s.splice_instance_id}>
+                        <td>{spliceLabel(s.splice_instance_id)}</td>
+                        <td>{s.combined_mm2.toFixed(2)}</td>
+                        <td style={!suggested ? { color: "var(--warning)" } : undefined}>
+                          {suggested ? suggested.gauge : "no catalog gauge covers it"}
+                        </td>
+                        <td>{alternatives.map((a) => a.gauge).join(", ") || "—"}</td>
                       </tr>
                     );
                   })}
