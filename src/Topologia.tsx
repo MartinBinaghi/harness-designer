@@ -4,6 +4,8 @@ import type { Node, ProjectData, Segment, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import { buildTreeText } from "./tree";
 import { FolderIcon, SaveIcon, TrashIcon } from "./icons";
+import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "./fileDialogs";
+import { nextId } from "./projectEdit";
 
 const NODE_KIND_LABELS: Record<Node["kind"], string> = {
   connector_end: "Connector end",
@@ -19,9 +21,6 @@ const TERMINATION_LABELS: Record<NonNullable<Node["termination"]>, string> = {
 const NODE_KINDS = Object.keys(NODE_KIND_LABELS) as Node["kind"][];
 const TERMINATIONS = Object.keys(TERMINATION_LABELS) as NonNullable<Node["termination"]>[];
 
-function nextId(ids: number[]): number {
-  return ids.length === 0 ? 1 : Math.max(...ids) + 1;
-}
 
 interface Props {
   project: ProjectData | null;
@@ -59,28 +58,39 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     loadProject(data);
     setRoute(null);
     setNet(null);
+    setFilePath("");
     setStatus("Sample project loaded (not saved to disk yet).");
   }
 
   async function openProject() {
+    const path = await pickFileToOpen("project");
+    if (!path) return;
     cancelProjectEdits();
     try {
-      const data = await invoke<ProjectData>("open_project", { path: filePath });
+      const data = await invoke<ProjectData>("open_project", { path });
       loadProject(data);
+      setFilePath(path);
       setRoute(null);
       setNet(null);
-      setStatus(`Opened: ${filePath}`);
+      setStatus(`Opened ${fileName(path)}`);
     } catch (err) {
       setStatus(`Error opening file: ${err}`);
     }
   }
 
-  async function saveProject() {
+  // Guardar: al archivo abierto; si todavía no tiene (o es "Save as"), pregunta dónde.
+  async function saveProject(saveAs: boolean) {
     if (!project) return;
+    let path: string | null = filePath;
+    if (saveAs || !isChosenPath(filePath)) {
+      path = await pickFileToSave("project", `${project.project.harness_code || "project"}.harness.db`);
+      if (!path) return;
+    }
     try {
       await flushProjectEdits();
-      await invoke("save_project", { path: filePath });
-      setStatus(`Saved: ${filePath}`);
+      await invoke("save_project", { path });
+      setFilePath(path);
+      setStatus(`Saved ${fileName(path)}`);
     } catch (err) {
       setStatus(`Error saving file: ${err}`);
     }
@@ -97,7 +107,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
   function addNode() {
     if (!project) return;
     const id = nextId(project.nodes.map((n) => n.id));
-    setProject({ ...project, nodes: [...project.nodes, { id, kind: "breakout", termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null }] });
+    setProject({ ...project, nodes: [...project.nodes, { id, kind: "connector_end", termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null }] });
   }
 
   function removeNode(id: number) {
@@ -117,13 +127,22 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     });
   }
 
+  // El segmento nuevo cuelga un nodo suelto (sin segmentos) del conector
+  // principal; si no hay ninguno suelto, crea uno. Nunca arma un lazo: después
+  // se elige en "From" el nodo del que cuelga de verdad.
   function addSegment() {
-    if (!project || project.nodes.length < 2) return;
+    if (!project || project.nodes.length === 0) return;
+    const connected = new Set(project.segments.flatMap((s) => [s.node_a_id, s.node_b_id]));
+    const mainNode = project.connector_instances.find((c) => c.id === project.project.main_connector_instance_id)?.node_id;
+    const free = [...project.nodes].reverse().find((n) => !connected.has(n.id) && n.id !== mainNode && n.id !== project.nodes[0].id);
+    const nodes = free ? project.nodes : [...project.nodes, { id: nextId(project.nodes.map((n) => n.id)), kind: "connector_end" as const, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null }];
+    const to = free ?? nodes[nodes.length - 1];
+    const from = mainNode ?? project.nodes[0].id;
     const id = nextId(project.segments.map((s) => s.id));
-    const [a, b] = project.nodes;
     setProject({
       ...project,
-      segments: [...project.segments, { id, node_a_id: a.id, node_b_id: b.id, length_mm: 100, twist_pitch_mm: null, covering_library_part_id: null }],
+      nodes,
+      segments: [...project.segments, { id, node_a_id: from, node_b_id: to.id, length_mm: 100, twist_pitch_mm: null, covering_library_part_id: null }],
     });
   }
 
@@ -145,13 +164,14 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
   return (
     <>
       <section className="toolbar">
-        <input value={filePath} onChange={(e) => setFilePath(e.currentTarget.value)} placeholder="file path" />
-        <button className="icon-button" onClick={openProject} title="Open" aria-label="Open project file">
+        <span className="file-name" title={filePath || undefined}>{filePath ? fileName(filePath) : project ? "Not saved yet" : "No file"}</span>
+        <button className="icon-button" onClick={() => void openProject()} title="Open…" aria-label="Open project file">
           <FolderIcon />
         </button>
-        <button className="icon-button" onClick={saveProject} disabled={!project} title="Save" aria-label="Save project file">
+        <button className="icon-button" onClick={() => void saveProject(false)} disabled={!project} title="Save" aria-label="Save project file">
           <SaveIcon />
         </button>
+        <button onClick={() => void saveProject(true)} disabled={!project}>Save as…</button>
         <button onClick={loadDemo}>Load sample</button>
         {status && <span className="status">{status}</span>}
       </section>
@@ -279,7 +299,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
                 ))}
               </tbody>
             </table>
-            <button className="button-ghost-accent" onClick={addSegment} disabled={project.nodes.length < 2}>+ segment</button>
+            <button className="button-ghost-accent" onClick={addSegment} disabled={project.nodes.length === 0}>+ segment</button>
           </section>
 
           <section>

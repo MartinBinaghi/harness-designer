@@ -2,10 +2,8 @@ import { useState } from "react";
 import type { CavityAssignment, ConnectorInstance, ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import { ChevronIcon, TrashIcon } from "./icons";
+import { cavitiesFromDef, nextId } from "./projectEdit";
 
-function nextId(ids: number[]): number {
-  return ids.length === 0 ? 1 : Math.max(...ids) + 1;
-}
 
 function partLabel(library: Library, partId: number | null): string {
   if (partId === null) return "—";
@@ -13,22 +11,6 @@ function partLabel(library: Library, partId: number | null): string {
   return part ? part.part_number || `#${partId}` : `#${partId} (not in library)`;
 }
 
-function allCavityIds(project: ProjectData): number[] {
-  return project.connector_instances.flatMap((c) => c.cavities.map((cav) => cav.id));
-}
-
-function cavitiesFromDef(project: ProjectData, connectorDefId: number, library: Library): CavityAssignment[] {
-  const def = library.connector_defs.find((cd) => cd.part_id === connectorDefId);
-  if (!def) return [];
-  let nextCavityId = nextId(allCavityIds(project));
-  return def.cavities.map((cav) => ({
-    id: nextCavityId++,
-    cavity_id: cav.cavity_id,
-    contact_library_part_id: null,
-    seal_plug_library_part_id: null,
-    external_reference: null,
-  }));
-}
 
 interface Props {
   project: ProjectData | null;

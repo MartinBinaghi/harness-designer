@@ -18,7 +18,10 @@ fn awg_to_mm2(awg: f64) -> f64 {
 /// notaciones: "0000" o "4/0" (= AWG −3), "00" o "2/0" (= AWG −1).
 pub fn gauge_to_mm2(text: &str) -> Option<f64> {
     let lower = text.trim().to_lowercase();
-    let digits: String = lower.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    let digits: String = lower
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
     if lower.contains("mm") {
         return digits.parse().ok();
     }

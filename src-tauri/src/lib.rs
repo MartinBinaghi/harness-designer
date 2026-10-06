@@ -23,7 +23,7 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 fn open_library(path: String, state: State<AppState>) -> Result<Library, String> {
-    let conn = db::open_library(&path).map_err(|e| e.to_string())?;
+    let conn = db::open_existing_library(&path)?;
     let library = model::library::load(&conn).map_err(|e| e.to_string())?;
     *state.library.lock().unwrap() = History::new(library.clone());
     Ok(library)
@@ -31,14 +31,14 @@ fn open_library(path: String, state: State<AppState>) -> Result<Library, String>
 
 #[tauri::command]
 fn save_library(path: String, state: State<AppState>) -> Result<(), String> {
-    let mut conn = db::open_library(&path).map_err(|e| e.to_string())?;
+    let mut conn = db::create_or_open_library(&path).map_err(|e| e.to_string())?;
     let library = state.library.lock().unwrap();
     model::library::save(&mut conn, library.get()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn open_project(path: String, state: State<AppState>) -> Result<ProjectData, String> {
-    let conn = db::open_project(&path).map_err(|e| e.to_string())?;
+    let conn = db::open_existing_project(&path)?;
     let project = model::project::load(&conn).map_err(|e| e.to_string())?;
     *state.project.lock().unwrap() = Some(History::new(project.clone()));
     Ok(project)
@@ -48,7 +48,7 @@ fn open_project(path: String, state: State<AppState>) -> Result<ProjectData, Str
 fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
     let guard = state.project.lock().unwrap();
     let history = guard.as_ref().ok_or("no hay proyecto cargado")?;
-    let mut conn = db::open_project(&path).map_err(|e| e.to_string())?;
+    let mut conn = db::create_or_open_project(&path).map_err(|e| e.to_string())?;
     model::project::save(&mut conn, history.get()).map_err(|e| e.to_string())
 }
 
@@ -119,14 +119,21 @@ fn project_status(state: State<AppState>) -> ProjectStatus {
             can_undo: history.can_undo(),
             can_redo: history.can_redo(),
         },
-        None => ProjectStatus { loaded: false, can_undo: false, can_redo: false },
+        None => ProjectStatus {
+            loaded: false,
+            can_undo: false,
+            can_redo: false,
+        },
     }
 }
 
 #[tauri::command]
 fn library_status(state: State<AppState>) -> HistoryStatus {
     let history = state.library.lock().unwrap();
-    HistoryStatus { can_undo: history.can_undo(), can_redo: history.can_redo() }
+    HistoryStatus {
+        can_undo: history.can_undo(),
+        can_redo: history.can_redo(),
+    }
 }
 
 // Estas cuatro quedan como funciones puras sobre los datos que les pasa el
@@ -172,6 +179,7 @@ fn compute_costs(project: ProjectData, library: Library) -> calc::CostReport {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![

@@ -3,14 +3,21 @@
 //! (etapa 2). No se guarda solo: es punto de partida para "Nuevo".
 
 use crate::model::library::{
-    AccessoryDef, AccessoryDefConnectorMatch, ContactDef, CoveringDef, Library, Part, TMoldDef, TMoldLeg, WireDef,
+    AccessoryDef, AccessoryDefConnectorMatch, ContactDef, CoveringDef, Library, Part, TMoldDef,
+    TMoldLeg, WireDef,
 };
 use crate::model::project::{
     CavityAssignment, ComponentInstance, ConnectorInstance, DeviceInstance, GroundPoint, Node,
     Project, ProjectData, Segment, SpliceInstance, WireEnd, WireInstance,
 };
 
-fn end(kind: &str, cavity: Option<i64>, splice: Option<i64>, ground: Option<i64>, component: Option<i64>) -> WireEnd {
+fn end(
+    kind: &str,
+    cavity: Option<i64>,
+    splice: Option<i64>,
+    ground: Option<i64>,
+    component: Option<i64>,
+) -> WireEnd {
     WireEnd {
         kind: kind.into(),
         cavity_assignment_id: cavity,
@@ -49,17 +56,80 @@ pub fn sample_project() -> ProjectData {
             library_part_id: None,
         }],
         nodes: vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 2, kind: "breakout".into(), termination: Some("t_mold".into()), termination_library_part_id: Some(32), diagram_x: None, diagram_y: None },
-            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 5, kind: "ground_point".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node {
+                id: 1,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 2,
+                kind: "breakout".into(),
+                termination: Some("t_mold".into()),
+                termination_library_part_id: Some(32),
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 3,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 4,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 5,
+                kind: "ground_point".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
         ],
         segments: vec![
-            Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 450.0, twist_pitch_mm: None, covering_library_part_id: Some(30) },
-            Segment { id: 2, node_a_id: 2, node_b_id: 3, length_mm: 300.0, twist_pitch_mm: None, covering_library_part_id: None },
-            Segment { id: 3, node_a_id: 2, node_b_id: 4, length_mm: 200.0, twist_pitch_mm: None, covering_library_part_id: None },
-            Segment { id: 4, node_a_id: 2, node_b_id: 5, length_mm: 80.0, twist_pitch_mm: None, covering_library_part_id: None },
+            Segment {
+                id: 1,
+                node_a_id: 1,
+                node_b_id: 2,
+                length_mm: 450.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: Some(30),
+            },
+            Segment {
+                id: 2,
+                node_a_id: 2,
+                node_b_id: 3,
+                length_mm: 300.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            },
+            Segment {
+                id: 3,
+                node_a_id: 2,
+                node_b_id: 4,
+                length_mm: 200.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            },
+            Segment {
+                id: 4,
+                node_a_id: 2,
+                node_b_id: 5,
+                length_mm: 80.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            },
         ],
         connector_instances: vec![
             ConnectorInstance {
@@ -227,7 +297,14 @@ pub fn sample_project() -> ProjectData {
     }
 }
 
-fn part(id: i64, category: &str, part_number: &str, purchase_unit: &str, qty_per_pack: f64, price_usd: f64) -> Part {
+fn part(
+    id: i64,
+    category: &str,
+    part_number: &str,
+    purchase_unit: &str,
+    qty_per_pack: f64,
+    price_usd: f64,
+) -> Part {
     Part {
         id,
         part_number: part_number.into(),
@@ -321,9 +398,21 @@ pub fn sample_library() -> Library {
             part_id: 32,
             overlap_mm: 20.0,
             legs: vec![
-                TMoldLeg { min_diameter_mm: 0.0, max_diameter_mm: 5.0, leg_length_mm: 30.0 },
-                TMoldLeg { min_diameter_mm: 0.0, max_diameter_mm: 5.0, leg_length_mm: 30.0 },
-                TMoldLeg { min_diameter_mm: 0.0, max_diameter_mm: 5.0, leg_length_mm: 30.0 },
+                TMoldLeg {
+                    min_diameter_mm: 0.0,
+                    max_diameter_mm: 5.0,
+                    leg_length_mm: 30.0,
+                },
+                TMoldLeg {
+                    min_diameter_mm: 0.0,
+                    max_diameter_mm: 5.0,
+                    leg_length_mm: 30.0,
+                },
+                TMoldLeg {
+                    min_diameter_mm: 0.0,
+                    max_diameter_mm: 5.0,
+                    leg_length_mm: 30.0,
+                },
             ],
         }],
         ..Library::default()

@@ -21,7 +21,9 @@ import type {
   WireDef,
 } from "./libraryTypes";
 import { FolderIcon, PencilIcon, SaveIcon, TrashIcon } from "./icons";
+import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "./fileDialogs";
 import milStd1560 from "./data/mil-std-1560.json";
+import { nextId } from "./projectEdit";
 
 const TABS = [
   "Connectors",
@@ -38,9 +40,6 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
-function nextId(ids: number[]): number {
-  return ids.length === 0 ? 1 : Math.max(...ids) + 1;
-}
 
 function blankPart(id: number, category: PartCategory): Part {
   return {
@@ -155,21 +154,31 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
   const [tab, setTab] = useState<Tab>("Connectors");
 
   async function openLibrary() {
+    const path = await pickFileToOpen("library");
+    if (!path) return;
     cancelLibraryEdits();
     try {
-      const data = await invoke<Library>("open_library", { path: filePath });
+      const data = await invoke<Library>("open_library", { path });
       loadLibrary(data);
-      setStatus(`Opened: ${filePath}`);
+      setFilePath(path);
+      setStatus(`Opened ${fileName(path)}`);
     } catch (err) {
       setStatus(`Error opening file: ${err}`);
     }
   }
 
-  async function saveLibrary() {
+  // Guardar: al archivo abierto; si todavía no tiene (o es "Save as"), pregunta dónde.
+  async function saveLibrary(saveAs: boolean) {
+    let path: string | null = filePath;
+    if (saveAs || !isChosenPath(filePath)) {
+      path = await pickFileToSave("library", "library.db");
+      if (!path) return;
+    }
     try {
       await flushLibraryEdits();
-      await invoke("save_library", { path: filePath });
-      setStatus(`Saved: ${filePath}`);
+      await invoke("save_library", { path });
+      setFilePath(path);
+      setStatus(`Saved ${fileName(path)}`);
     } catch (err) {
       setStatus(`Error saving file: ${err}`);
     }
@@ -179,6 +188,7 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
     cancelLibraryEdits();
     const data = await invoke<Library>("demo_library");
     loadLibrary(data);
+    setFilePath("");
     setStatus("Sample library loaded (not saved to disk yet).");
   }
 
@@ -198,13 +208,14 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
   return (
     <>
       <section className="toolbar">
-        <input value={filePath} onChange={(e) => setFilePath(e.currentTarget.value)} placeholder="file path" />
-        <button className="icon-button" onClick={openLibrary} title="Open" aria-label="Open library file">
+        <span className="file-name" title={filePath || undefined}>{filePath ? fileName(filePath) : "Not saved yet"}</span>
+        <button className="icon-button" onClick={() => void openLibrary()} title="Open…" aria-label="Open library file">
           <FolderIcon />
         </button>
-        <button className="icon-button" onClick={saveLibrary} title="Save" aria-label="Save library file">
+        <button className="icon-button" onClick={() => void saveLibrary(false)} title="Save" aria-label="Save library file">
           <SaveIcon />
         </button>
+        <button onClick={() => void saveLibrary(true)}>Save as…</button>
         <button onClick={loadDemo}>Load sample</button>
         <button onClick={() => void addBaseParts()} title="Deutsch DT/DTM/DTP and TE Superseal 1.5 housings, M22759/32 wire 26–12 AWG. No prices.">
           Add standard parts

@@ -17,10 +17,13 @@ import {
   type EdgeProps,
   type NodeChange,
   type ReactFlowInstance,
+  type FinalConnectionState,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { infoFor } from "./TreePanel";
 import { constrainDrag, pxPerMm, rootedTree, scaledCenters } from "./diagramScale";
+import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, setSegmentLength, splitSegment } from "./projectEdit";
+import { endLabel } from "./Cables";
 import type { Finding, ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
@@ -29,7 +32,9 @@ import type { CostReport } from "./costTypes";
  * Diagrama de armado (plan 10.2): no escalado, con medidas. Es otra vista de
  * los mismos datos — mover un nodo guarda su posición en el proyecto (un paso
  * de undo), y la selección es la misma que usan el árbol, las tablas y el
- * inspector.
+ * inspector. También edita (plan 10.4): ramas nuevas arrastrando desde el "+"
+ * de un nodo, largo con doble click en la etiqueta, breakout en un segmento,
+ * Supr para borrar, doble click en un conector para asignarlo o ver su pinout.
  */
 
 type XY = { x: number; y: number };
@@ -149,13 +154,18 @@ interface HarnessNodeData extends Record<string, unknown> {
   issue: Issue | null;
 }
 
-/** Handle invisible en el centro: los segmentos van de centro a centro y el bloque tapa el tramo interior. */
+/**
+ * Handles invisibles en el centro (los segmentos van de centro a centro y el
+ * bloque tapa el tramo interior) + un "+" que aparece al pasar el mouse:
+ * arrastrarlo crea una rama nueva (ver onConnectEnd).
+ */
 function CenterHandles() {
   const style = { top: "50%", left: "50%", opacity: 0, pointerEvents: "none" as const };
   return (
     <>
-      <Handle type="target" position={Position.Top} style={style} isConnectable={false} />
-      <Handle type="source" position={Position.Top} style={style} isConnectable={false} />
+      <Handle id="c-t" type="target" position={Position.Top} style={style} isConnectable={false} />
+      <Handle id="c-s" type="source" position={Position.Top} style={style} isConnectable={false} />
+      <Handle id="branch" type="source" position={Position.Right} className="dg-branch-handle" title="Drag to add a branch" />
     </>
   );
 }
@@ -233,10 +243,13 @@ interface SegmentEdgeData extends Record<string, unknown> {
   diameter: string | null;
   /** Splices/componentes sobre el segmento: posición 0..1 desde el nodo A. */
   markers: { label: string; t: number }[];
+  lengthMm: number;
   highlight: "none" | "net" | "wire";
   selected: boolean;
   issue: Issue | null;
   onSelect: () => void;
+  onLengthChange: (mm: number) => void;
+  onSplit: () => void;
 }
 
 function SegmentEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps<Edge<SegmentEdgeData>>) {
@@ -245,19 +258,63 @@ function SegmentEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps
   const strong = d.selected || d.highlight !== "none";
   const stroke = strong ? "var(--accent)" : "var(--text-muted)";
   const strokeWidth = d.highlight === "wire" || d.selected ? 4 : d.highlight === "net" ? 3 : 2;
+  const [editing, setEditing] = useState(false);
+  // Enter o perder el foco confirman; un largo no válido (vacío, 0) se descarta.
+  function commitLength(text: string) {
+    if (!editing) return;
+    const mm = Number(text);
+    if (mm > 0 && mm !== d.lengthMm) d.onLengthChange(mm);
+    setEditing(false);
+  }
+  const labelStyle = { transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` };
   return (
     <>
       <BaseEdge id={id} path={path} style={{ stroke, strokeWidth }} interactionWidth={16} />
       <EdgeLabelRenderer>
-        <button
-          className={`dg-edge-label nodrag nopan${d.selected ? " dg-edge-label-selected" : ""}`}
-          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-          onClick={d.onSelect}
-        >
-          <IssueDot issue={d.issue} />
-          {d.label}
-          {d.diameter && <span className="dg-muted"> · Ø{d.diameter}</span>}
-        </button>
+        {editing ? (
+          <input
+            className="dg-edge-input nodrag nopan"
+            style={labelStyle}
+            type="number"
+            min={1}
+            defaultValue={d.lengthMm}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={(e) => commitLength(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitLength(e.currentTarget.value);
+              if (e.key === "Escape") setEditing(false);
+              e.stopPropagation();
+            }}
+            aria-label="Segment length (mm)"
+          />
+        ) : (
+          <div className="dg-edge-label-group nodrag nopan" style={labelStyle}>
+            <button
+              className={`dg-edge-label${d.selected ? " dg-edge-label-selected" : ""}`}
+              onClick={d.onSelect}
+              onDoubleClick={() => setEditing(true)}
+              title="Double-click to edit the length"
+            >
+              <IssueDot issue={d.issue} />
+              {d.label}
+              {d.diameter && <span className="dg-muted"> · Ø{d.diameter}</span>}
+            </button>
+            {d.selected && (
+              // stopPropagation: el label vive en otra capa (portal), pero el click igual
+              // sube por React hasta el segmento, que lo volvería a seleccionar.
+              <button
+                className="dg-edge-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  d.onSplit();
+                }}
+                title="Split this segment in two with a breakout in the middle">
+                + breakout
+              </button>
+            )}
+          </div>
+        )}
         {d.markers.map((m) => (
           <div
             key={m.label}
@@ -304,6 +361,15 @@ export default function Diagrama({ project, setProject, library, findings, selec
   const [sizeTick, setSizeTick] = useState(0);
   const flowNodesRef = useRef(flowNodes);
   flowNodesRef.current = flowNodes;
+  // Mensaje corto en la barra (p. ej. por qué no se pudo borrar algo).
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [notice]);
+  // Nodo abierto con doble click (asignar conector / ver pinout).
+  const [openNodeId, setOpenNodeId] = useState<number | null>(null);
 
   // Layout automático solo para los nodos sin posición guardada; se recalcula
   // cuando cambia la forma del árbol, no en cada edición de un campo.
@@ -377,6 +443,29 @@ export default function Diagrama({ project, setProject, library, findings, selec
     const fallback = project && isBlock(project, id) ? BLOCK_SIZE : POINT_SIZE;
     return { w: fallback.width, h: fallback.height };
   };
+
+  // Supr / Backspace borra el segmento o el nodo seleccionado (si se puede).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!project || !selection || (e.key !== "Delete" && e.key !== "Backspace")) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      let result: ProjectData | string | null = null;
+      if (selection.kind === "segment") result = deleteSegment(project, selection.id);
+      else if (selection.kind === "node") result = deleteNode(project, selection.id);
+      else if (selection.kind === "connector" || selection.kind === "ground" || selection.kind === "splice")
+        result = "Delete connectors, ground points and splices from their table (Connectors / Splices).";
+      if (result === null) return;
+      e.preventDefault();
+      if (typeof result === "string") setNotice(result);
+      else {
+        setProject(result);
+        onSelect(null);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [project, selection, setProject, onSelect]);
 
   // Nodos de React Flow: se reconstruyen desde el proyecto; mientras se
   // arrastra, React Flow mueve su copia local y al soltar se guarda.
@@ -484,19 +573,24 @@ export default function Diagrama({ project, setProject, library, findings, selec
         id: `s${s.id}`,
         source: String(s.node_a_id),
         target: String(s.node_b_id),
+        sourceHandle: "c-s",
+        targetHandle: "c-t",
         type: "segment",
         data: {
           label: `${s.length_mm} mm`,
+          lengthMm: s.length_mm,
           diameter: diameter && diameter > 0 ? diameter.toFixed(1) : null,
           markers,
           highlight: highlight.wire.has(s.id) ? "wire" : highlight.net.has(s.id) ? "net" : "none",
           selected: sameSelection(selection, { kind: "segment", id: s.id }),
           issue: issues.segments.get(s.id) ?? null,
           onSelect: () => onSelect({ kind: "segment", id: s.id }),
+          onLengthChange: (mm: number) => setProject(setSegmentLength(project, s.id, mm)),
+          onSplit: () => split(s.id),
         },
       };
     });
-  }, [project, report, highlight, selection, issues, onSelect]);
+  }, [project, report, highlight, selection, issues, onSelect]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!project) {
     return <p>Open or load a project first (Topology tab).</p>;
@@ -563,6 +657,43 @@ export default function Diagrama({ project, setProject, library, findings, selec
     });
   }
 
+  const centerOf = (id: number) => {
+    const n = flowNodesRef.current.find((x) => x.id === String(id));
+    const sz = sizeOf(id);
+    return n ? { x: n.position.x + sz.w / 2, y: n.position.y + sz.h / 2 } : { x: 0, y: 0 };
+  };
+
+  function split(segmentId: number) {
+    const seg = project!.segments.find((x) => x.id === segmentId);
+    if (!seg) return;
+    const a = centerOf(seg.node_a_id);
+    const b = centerOf(seg.node_b_id);
+    const result = splitSegment(project!, segmentId, { x: (a.x + b.x) / 2 - POINT_SIZE.width / 2, y: (a.y + b.y) / 2 - POINT_SIZE.height / 2 });
+    if (typeof result === "string") return setNotice(result);
+    setProject(result.project);
+    onSelect({ kind: "node", id: result.nodeId });
+  }
+
+  // Soltar el "+" de un nodo: sobre otro nodo, los une con un segmento; en un
+  // lugar vacío, crea una rama nueva (nodo de conector sin asignar) ahí.
+  function onConnectEnd(event: MouseEvent | TouchEvent, state: FinalConnectionState) {
+    const from = state.fromNode ? Number(state.fromNode.id) : null;
+    if (from === null || !flow) return;
+    const point = "changedTouches" in event ? event.changedTouches[0] : event;
+    const target = document.elementFromPoint(point.clientX, point.clientY)?.closest(".react-flow__node")?.getAttribute("data-id");
+    if (target && Number(target) !== from) {
+      const result = connectNodes(project!, from, Number(target));
+      if (typeof result === "string") return setNotice(result);
+      setProject(result);
+      return;
+    }
+    if (target) return;
+    const at = flow.screenToFlowPosition({ x: point.clientX, y: point.clientY });
+    const result = addBranch(project!, from, { x: at.x - BLOCK_SIZE.width / 2, y: at.y - BLOCK_SIZE.height / 2 });
+    setProject(result.project);
+    onSelect({ kind: "node", id: result.nodeId });
+  }
+
   return (
     <div className="diagram-screen">
       <div className="toolbar diagram-toolbar">
@@ -590,7 +721,11 @@ export default function Diagrama({ project, setProject, library, findings, selec
           To scale
         </label>
         <span style={{ flex: 1 }} />
-        <span className="hint" style={{ margin: 0 }}>{toScale ? "Segment lengths to scale" : "Not to scale · lengths in mm"}</span>
+        {notice ? (
+          <span className="diagram-notice" role="status">{notice}</span>
+        ) : (
+          <span className="hint" style={{ margin: 0 }}>{toScale ? "Segment lengths to scale" : "Not to scale · lengths in mm"}</span>
+        )}
       </div>
       <div className="diagram-canvas">
         {project.nodes.length === 0 ? (
@@ -604,9 +739,11 @@ export default function Diagrama({ project, setProject, library, findings, selec
             onNodesChange={onNodesChange}
             onNodeDragStop={(_e, _node, dragged) => savePositions(dragged)}
             onNodeClick={(_e, node) => onSelect(infoFor(project, Number(node.id)).select)}
+            onNodeDoubleClick={(_e, node) => setOpenNodeId(Number(node.id))}
+            onConnectEnd={onConnectEnd}
+            zoomOnDoubleClick={false}
             onEdgeClick={(_e, edge) => onSelect({ kind: "segment", id: Number(edge.id.slice(1)) })}
             onPaneClick={() => onSelect(null)}
-            nodesConnectable={false}
             elementsSelectable={false}
             fitView
             onInit={setFlow}
@@ -616,7 +753,123 @@ export default function Diagrama({ project, setProject, library, findings, selec
             <Controls showInteractive={false} />
           </ReactFlow>
         )}
+        {openNodeId !== null && project.nodes.some((n) => n.id === openNodeId) && (
+          <NodePanel
+            key={openNodeId}
+            project={project}
+            library={library}
+            report={report}
+            nodeId={openNodeId}
+            onClose={() => setOpenNodeId(null)}
+            onAssign={(partId, name) => {
+              const result = assignConnector(project, library, openNodeId, partId, name);
+              setProject(result.project);
+              onSelect({ kind: "connector", id: result.connectorId });
+            }}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Panel de un nodo (doble click): si es un extremo sin conector, se le asigna
+ * uno de la biblioteca; si tiene conector, muestra su pinout (plan 7.3 / 10.4):
+ * Pin · Función · Termina en · Calibre · Color · Largo de corte.
+ */
+function NodePanel({ project, library, report, nodeId, onClose, onAssign }: {
+  project: ProjectData;
+  library: Library;
+  report: CostReport | null;
+  nodeId: number;
+  onClose: () => void;
+  onAssign: (connectorDefId: number, name: string) => void;
+}) {
+  const connector = project.connector_instances.find((c) => c.node_id === nodeId);
+  const node = project.nodes.find((n) => n.id === nodeId)!;
+  const [partId, setPartId] = useState<number | "">("");
+  const [name, setName] = useState("");
+  const partNumber = (id: number) => library.parts.find((p) => p.id === id)?.part_number ?? `#${id}`;
+
+  let body;
+  if (connector) {
+    const def = library.connector_defs.find((d) => d.part_id === connector.library_part_id);
+    const rows = connector.cavities.map((cav) => {
+      const wires = project.wire_instances
+        .map((w) => ({ w, here: w.end_a.cavity_assignment_id === cav.id ? "a" : w.end_b.cavity_assignment_id === cav.id ? "b" : null }))
+        .filter((x) => x.here !== null);
+      return { cav, wires };
+    });
+    body = (
+      <>
+        <div className="dg-panel-sub">
+          {partNumber(connector.library_part_id)}
+          {def ? ` · ${def.series ?? ""} ${def.cavities.length}-way ${def.gender}` : ""}
+        </div>
+        <table className="compact-table dg-pinout">
+          <thead>
+            <tr><th>Pin</th><th>Function</th><th>Goes to</th><th>Gauge</th><th>Color</th><th>Cut</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(({ cav, wires }) =>
+              wires.length === 0 ? (
+                <tr key={cav.id} className="dg-pin-unused">
+                  <td>{cav.cavity_id}</td>
+                  <td colSpan={5}>{cav.external_reference ?? (cav.seal_plug_library_part_id != null ? "plugged" : "—")}</td>
+                </tr>
+              ) : (
+                wires.map(({ w, here }) => (
+                  <tr key={`${cav.id}-${w.id}`}>
+                    <td>{cav.cavity_id}</td>
+                    <td>{w.specific_name ?? w.short_id}</td>
+                    <td>{endLabel(project, here === "a" ? w.end_b : w.end_a)}</td>
+                    <td>{library.wire_defs.find((d) => d.part_id === w.library_part_id)?.gauge ?? "—"}</td>
+                    <td>{w.color ?? "—"}</td>
+                    <td className="num">{report?.cut_list.find((c) => c.wire_id === w.id)?.cut_length_mm.toFixed(0) ?? "—"}</td>
+                  </tr>
+                ))
+              ),
+            )}
+          </tbody>
+        </table>
+      </>
+    );
+  } else if (node.kind === "connector_end") {
+    body = (
+      <div className="dg-panel-form">
+        <label>
+          Part
+          <select value={partId} onChange={(e) => setPartId(e.currentTarget.value ? Number(e.currentTarget.value) : "")}>
+            <option value="">choose…</option>
+            {library.connector_defs.map((d) => (
+              <option key={d.part_id} value={d.part_id}>
+                {partNumber(d.part_id)} · {d.series ?? ""} {d.cavities.length}-way {d.gender}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Name
+          <input value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="e.g. Oil Temp" />
+        </label>
+        <button className="button-primary" disabled={partId === ""} onClick={() => partId !== "" && onAssign(partId, name)}>
+          Assign connector
+        </button>
+        {library.connector_defs.length === 0 && <p className="hint">The library has no connectors — add them in Library → Connectors.</p>}
+      </div>
+    );
+  } else {
+    body = <p className="hint">Nothing to show for a {node.kind.replace("_", " ")} here — use the Inspector.</p>;
+  }
+
+  return (
+    <div className="dg-panel" role="dialog" aria-label={connector ? `${connector.short_id} pinout` : `Node ${nodeId}`}>
+      <div className="dg-panel-head">
+        <span>{connector ? `${connector.short_id} · ${connector.name || "—"}` : `Node ${nodeId}`}</span>
+        <button className="icon-button" onClick={onClose} title="Close" aria-label="Close">×</button>
+      </div>
+      <div className="dg-panel-body">{body}</div>
     </div>
   );
 }

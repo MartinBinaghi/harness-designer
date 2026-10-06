@@ -135,7 +135,10 @@ pub fn base_library() -> Library {
                     image_front_path: None,
                     image_back_path: None,
                     cavities: (1..=ways)
-                        .map(|n| ConnectorDefCavity { cavity_id: n.to_string(), contact_size: family.contact_size.into() })
+                        .map(|n| ConnectorDefCavity {
+                            cavity_id: n.to_string(),
+                            contact_size: family.contact_size.into(),
+                        })
                         .collect(),
                 });
             }
@@ -147,7 +150,9 @@ pub fn base_library() -> Library {
             id,
             part_number: format!("M22759/32-{awg}"),
             manufacturer: None,
-            description: Some(format!("{awg} AWG ETFE, 150 °C, 600 V (Raychem Spec 55) — color as per order code")),
+            description: Some(format!(
+                "{awg} AWG ETFE, 150 °C, 600 V (Raychem Spec 55) — color as per order code"
+            )),
             category: "wire".into(),
             purchase_unit: "meter".into(),
             qty_per_pack: 1.0,
@@ -173,7 +178,11 @@ pub fn base_library() -> Library {
 pub fn merge_base_library(library: &Library) -> Library {
     let base = base_library();
     let mut merged = library.clone();
-    let existing: HashMap<&str, i64> = library.parts.iter().map(|p| (p.part_number.as_str(), p.id)).collect();
+    let existing: HashMap<&str, i64> = library
+        .parts
+        .iter()
+        .map(|p| (p.part_number.as_str(), p.id))
+        .collect();
     let mut next_id = library.parts.iter().map(|p| p.id).max().unwrap_or(0) + 1;
 
     // id en la base -> id final (el existente si ya estaba, o uno nuevo).
@@ -185,19 +194,33 @@ pub fn merge_base_library(library: &Library) -> Library {
         } else {
             id_map.insert(part.id, next_id);
             added.push(part.id);
-            merged.parts.push(Part { id: next_id, ..part.clone() });
+            merged.parts.push(Part {
+                id: next_id,
+                ..part.clone()
+            });
             next_id += 1;
         }
     }
-    for def in base.connector_defs.into_iter().filter(|d| added.contains(&d.part_id)) {
+    for def in base
+        .connector_defs
+        .into_iter()
+        .filter(|d| added.contains(&d.part_id))
+    {
         merged.connector_defs.push(ConnectorDef {
             part_id: id_map[&def.part_id],
             counterpart_id: def.counterpart_id.map(|c| id_map[&c]),
             ..def
         });
     }
-    for def in base.wire_defs.into_iter().filter(|d| added.contains(&d.part_id)) {
-        merged.wire_defs.push(WireDef { part_id: id_map[&def.part_id], ..def });
+    for def in base
+        .wire_defs
+        .into_iter()
+        .filter(|d| added.contains(&d.part_id))
+    {
+        merged.wire_defs.push(WireDef {
+            part_id: id_map[&def.part_id],
+            ..def
+        });
     }
     merged
 }
@@ -224,8 +247,17 @@ mod tests {
     use super::*;
 
     fn def_by_pn<'a>(library: &'a Library, part_number: &str) -> &'a ConnectorDef {
-        let id = library.parts.iter().find(|p| p.part_number == part_number).unwrap().id;
-        library.connector_defs.iter().find(|d| d.part_id == id).unwrap()
+        let id = library
+            .parts
+            .iter()
+            .find(|p| p.part_number == part_number)
+            .unwrap()
+            .id;
+        library
+            .connector_defs
+            .iter()
+            .find(|d| d.part_id == id)
+            .unwrap()
     }
 
     #[test]
@@ -236,7 +268,11 @@ mod tests {
         assert_eq!(dtm6s.gender, "female");
         assert_eq!(dtm6s.cavities.len(), 6);
         assert!(dtm6s.cavities.iter().all(|c| c.contact_size == "20"));
-        let counterpart = base.parts.iter().find(|p| Some(p.id) == dtm6s.counterpart_id).unwrap();
+        let counterpart = base
+            .parts
+            .iter()
+            .find(|p| Some(p.id) == dtm6s.counterpart_id)
+            .unwrap();
         assert_eq!(counterpart.part_number, "DTM04-6P");
     }
 
@@ -254,11 +290,16 @@ mod tests {
     #[test]
     fn wires_carry_the_spec_outer_diameter_in_mm() {
         let base = base_library();
-        let id = base.parts.iter().find(|p| p.part_number == "M22759/32-22").unwrap().id;
+        let id = base
+            .parts
+            .iter()
+            .find(|p| p.part_number == "M22759/32-22")
+            .unwrap()
+            .id;
         let wire = base.wire_defs.iter().find(|w| w.part_id == id).unwrap();
         assert_eq!(wire.gauge, "22 AWG");
         assert_eq!(wire.outer_diameter_mm, 1.09); // 0.043 in
-        // El calibre se entiende igual que cualquier cable cargado a mano.
+                                                  // El calibre se entiende igual que cualquier cable cargado a mano.
         assert!(crate::gauge::gauge_to_mm2(&wire.gauge).is_some());
     }
 
@@ -280,8 +321,17 @@ mod tests {
         let once = merge_base_library(&library);
         assert_eq!(once.parts.len(), base_library().parts.len());
         // La parte existente queda como estaba, con su id.
-        assert_eq!(once.parts.iter().filter(|p| p.part_number == "DTM06-6S").count(), 1);
-        assert_eq!(once.parts.iter().find(|p| p.id == 50).unwrap().price_usd, Some(3.0));
+        assert_eq!(
+            once.parts
+                .iter()
+                .filter(|p| p.part_number == "DTM06-6S")
+                .count(),
+            1
+        );
+        assert_eq!(
+            once.parts.iter().find(|p| p.id == 50).unwrap().price_usd,
+            Some(3.0)
+        );
         // La contraparte nueva apunta al id existente.
         assert_eq!(def_by_pn(&once, "DTM04-6P").counterpart_id, Some(50));
         // Ids únicos.

@@ -37,10 +37,18 @@ impl Finding {
 }
 
 fn error(message: impl Into<String>) -> Finding {
-    Finding { severity: "error".into(), message: message.into(), target: None }
+    Finding {
+        severity: "error".into(),
+        message: message.into(),
+        target: None,
+    }
 }
 fn warning(message: impl Into<String>) -> Finding {
-    Finding { severity: "warning".into(), message: message.into(), target: None }
+    Finding {
+        severity: "warning".into(),
+        message: message.into(),
+        target: None,
+    }
 }
 
 /// Une componentes conectados; si dos nodos ya están unidos antes de agregar
@@ -50,7 +58,9 @@ struct DisjointSet {
 }
 impl DisjointSet {
     fn new(n: usize) -> Self {
-        Self { parent: (0..n).collect() }
+        Self {
+            parent: (0..n).collect(),
+        }
     }
     fn find(&mut self, x: usize) -> usize {
         if self.parent[x] != x {
@@ -70,7 +80,12 @@ impl DisjointSet {
 }
 
 fn check_topology_has_no_loops(data: &ProjectData) -> Vec<Finding> {
-    let index: HashMap<i64, usize> = data.nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
+    let index: HashMap<i64, usize> = data
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.id, i))
+        .collect();
     let mut dsu = DisjointSet::new(data.nodes.len());
     let mut findings = Vec::new();
     for seg in &data.segments {
@@ -89,12 +104,20 @@ fn check_topology_has_no_loops(data: &ProjectData) -> Vec<Finding> {
 
 fn end_target_exists(data: &ProjectData, end: &WireEnd) -> bool {
     match end.kind.as_str() {
-        "cavity" => end
-            .cavity_assignment_id
-            .is_some_and(|id| data.connector_instances.iter().any(|c| c.cavities.iter().any(|cav| cav.id == id))),
-        "splice" => end.splice_id.is_some_and(|id| data.splice_instances.iter().any(|s| s.id == id)),
-        "ground" => end.ground_point_id.is_some_and(|id| data.ground_points.iter().any(|g| g.id == id)),
-        "component" => end.component_instance_id.is_some_and(|id| data.component_instances.iter().any(|c| c.id == id)),
+        "cavity" => end.cavity_assignment_id.is_some_and(|id| {
+            data.connector_instances
+                .iter()
+                .any(|c| c.cavities.iter().any(|cav| cav.id == id))
+        }),
+        "splice" => end
+            .splice_id
+            .is_some_and(|id| data.splice_instances.iter().any(|s| s.id == id)),
+        "ground" => end
+            .ground_point_id
+            .is_some_and(|id| data.ground_points.iter().any(|g| g.id == id)),
+        "component" => end
+            .component_instance_id
+            .is_some_and(|id| data.component_instances.iter().any(|c| c.id == id)),
         _ => false,
     }
 }
@@ -103,10 +126,22 @@ fn check_wires_have_valid_endpoints(data: &ProjectData) -> Vec<Finding> {
     let mut findings = Vec::new();
     for wire in &data.wire_instances {
         if !end_target_exists(data, &wire.end_a) {
-            findings.push(error(format!("Wire {} has no valid starting endpoint", wire.short_id)).at(FindingTarget::Wire { id: wire.id }));
+            findings.push(
+                error(format!(
+                    "Wire {} has no valid starting endpoint",
+                    wire.short_id
+                ))
+                .at(FindingTarget::Wire { id: wire.id }),
+            );
         }
         if !end_target_exists(data, &wire.end_b) {
-            findings.push(error(format!("Wire {} has no valid ending endpoint", wire.short_id)).at(FindingTarget::Wire { id: wire.id }));
+            findings.push(
+                error(format!(
+                    "Wire {} has no valid ending endpoint",
+                    wire.short_id
+                ))
+                .at(FindingTarget::Wire { id: wire.id }),
+            );
         }
     }
     findings
@@ -124,15 +159,22 @@ fn check_splices_within_capacity(data: &ProjectData, library: &Library) -> Vec<F
     }
     let mut findings = Vec::new();
     for splice in &data.splice_instances {
-        let Some(def) = library.splice_defs.iter().find(|d| d.part_id == splice.library_part_id) else {
+        let Some(def) = library
+            .splice_defs
+            .iter()
+            .find(|d| d.part_id == splice.library_part_id)
+        else {
             continue;
         };
         let count = counts.get(&splice.id).copied().unwrap_or(0);
         if count > def.max_wires {
-            findings.push(error(format!(
-                "Splice {} has {count} wires, more than its part allows ({})",
-                splice.short_id, def.max_wires
-            )).at(FindingTarget::Splice { id: splice.id }));
+            findings.push(
+                error(format!(
+                    "Splice {} has {count} wires, more than its part allows ({})",
+                    splice.short_id, def.max_wires
+                ))
+                .at(FindingTarget::Splice { id: splice.id }),
+            );
         }
     }
     findings
@@ -151,13 +193,25 @@ fn gauge_range_mm2(gauge_min: Option<&str>, gauge_max: Option<&str>) -> Option<(
 fn check_gauge_within_splice_range(data: &ProjectData, library: &Library) -> Vec<Finding> {
     let mut findings = Vec::new();
     for splice in &data.splice_instances {
-        let Some(def) = library.splice_defs.iter().find(|d| d.part_id == splice.library_part_id) else { continue };
-        let Some((range_min, range_max)) = gauge_range_mm2(def.gauge_min.as_deref(), def.gauge_max.as_deref()) else { continue };
+        let Some(def) = library
+            .splice_defs
+            .iter()
+            .find(|d| d.part_id == splice.library_part_id)
+        else {
+            continue;
+        };
+        let Some((range_min, range_max)) =
+            gauge_range_mm2(def.gauge_min.as_deref(), def.gauge_max.as_deref())
+        else {
+            continue;
+        };
 
         let wires: Vec<&crate::model::project::WireInstance> = data
             .wire_instances
             .iter()
-            .filter(|w| w.end_a.splice_id == Some(splice.id) || w.end_b.splice_id == Some(splice.id))
+            .filter(|w| {
+                w.end_a.splice_id == Some(splice.id) || w.end_b.splice_id == Some(splice.id)
+            })
             .collect();
         if wires.is_empty() {
             continue;
@@ -177,10 +231,13 @@ fn check_gauge_within_splice_range(data: &ProjectData, library: &Library) -> Vec
         };
 
         if total_mm2 < range_min || total_mm2 > range_max {
-            findings.push(error(format!(
-                "Splice {}'s wire gauge ({total_mm2:.2}mm² total) is outside its part's range",
-                splice.short_id
-            )).at(FindingTarget::Splice { id: splice.id }));
+            findings.push(
+                error(format!(
+                    "Splice {}'s wire gauge ({total_mm2:.2}mm² total) is outside its part's range",
+                    splice.short_id
+                ))
+                .at(FindingTarget::Splice { id: splice.id }),
+            );
         }
     }
     findings
@@ -190,7 +247,10 @@ fn check_pending_connectors(data: &ProjectData) -> Vec<Finding> {
     data.connector_instances
         .iter()
         .filter(|c| c.status == "pending")
-        .map(|c| warning(format!("Connector {} is marked pending", c.short_id)).at(FindingTarget::Connector { id: c.id }))
+        .map(|c| {
+            warning(format!("Connector {} is marked pending", c.short_id))
+                .at(FindingTarget::Connector { id: c.id })
+        })
         .collect()
 }
 
@@ -199,10 +259,13 @@ fn check_unused_cavities_without_seal_plug(data: &ProjectData) -> Vec<Finding> {
     for connector in &data.connector_instances {
         for cav in &connector.cavities {
             if cav.contact_library_part_id.is_none() && cav.seal_plug_library_part_id.is_none() {
-                findings.push(warning(format!(
-                    "{}: cavity {} is unused and has no seal plug",
-                    connector.short_id, cav.cavity_id
-                )).at(FindingTarget::Connector { id: connector.id }));
+                findings.push(
+                    warning(format!(
+                        "{}: cavity {} is unused and has no seal plug",
+                        connector.short_id, cav.cavity_id
+                    ))
+                    .at(FindingTarget::Connector { id: connector.id }),
+                );
             }
         }
     }
@@ -220,12 +283,20 @@ fn check_same_net_different_function(data: &ProjectData) -> Vec<Finding> {
         for &id in &net {
             seen.insert(id);
         }
-        let net_wires: Vec<&crate::model::project::WireInstance> =
-            net.iter().filter_map(|id| data.wire_instances.iter().find(|w| w.id == *id)).collect();
-        let names: HashSet<&str> = net_wires.iter().filter_map(|w| w.specific_name.as_deref()).collect();
+        let net_wires: Vec<&crate::model::project::WireInstance> = net
+            .iter()
+            .filter_map(|id| data.wire_instances.iter().find(|w| w.id == *id))
+            .collect();
+        let names: HashSet<&str> = net_wires
+            .iter()
+            .filter_map(|w| w.specific_name.as_deref())
+            .collect();
         if names.len() > 1 {
             let short_ids: Vec<&str> = net_wires.iter().map(|w| w.short_id.as_str()).collect();
-            findings.push(warning(format!("Wires {} share a net but have different names", short_ids.join(", "))));
+            findings.push(warning(format!(
+                "Wires {} share a net but have different names",
+                short_ids.join(", ")
+            )));
         }
     }
     findings
@@ -242,18 +313,24 @@ fn check_covering_fit(data: &ProjectData, library: &Library) -> Vec<Finding> {
             Some(assigned_id) => {
                 if let Some(fit) = fits.iter().find(|f| f.library_part_id == assigned_id) {
                     if !fit.fits {
-                        findings.push(warning(format!(
-                            "Segment S{} has a covering assigned that doesn't fit this bundle",
-                            segment.id
-                        )).at(FindingTarget::Segment { id: segment.id }));
+                        findings.push(
+                            warning(format!(
+                                "Segment S{} has a covering assigned that doesn't fit this bundle",
+                                segment.id
+                            ))
+                            .at(FindingTarget::Segment { id: segment.id }),
+                        );
                     }
                 }
             }
             None if !fits.iter().any(|f| f.fits) => {
-                findings.push(warning(format!(
-                    "No covering in the library fits segment S{}'s bundle",
-                    segment.id
-                )).at(FindingTarget::Segment { id: segment.id }));
+                findings.push(
+                    warning(format!(
+                        "No covering in the library fits segment S{}'s bundle",
+                        segment.id
+                    ))
+                    .at(FindingTarget::Segment { id: segment.id }),
+                );
             }
             None => {}
         }
@@ -261,25 +338,42 @@ fn check_covering_fit(data: &ProjectData, library: &Library) -> Vec<Finding> {
     findings
 }
 
-fn check_adhesive_heatshrink_connector_without_back_diameter(data: &ProjectData, library: &Library) -> Vec<Finding> {
+fn check_adhesive_heatshrink_connector_without_back_diameter(
+    data: &ProjectData,
+    library: &Library,
+) -> Vec<Finding> {
     data.connector_instances
         .iter()
         .filter(|c| c.termination.as_deref() == Some("adhesive_heatshrink"))
         .filter(|c| {
-            let def = library.connector_defs.iter().find(|d| d.part_id == c.library_part_id);
+            let def = library
+                .connector_defs
+                .iter()
+                .find(|d| d.part_id == c.library_part_id);
             !def.is_some_and(|d| d.back_clearance_mm().is_some())
         })
-        .map(|c| warning(format!("Connector {} uses adhesive heat-shrink but its part has no back diameter loaded", c.short_id)).at(FindingTarget::Connector { id: c.id }))
+        .map(|c| {
+            warning(format!(
+                "Connector {} uses adhesive heat-shrink but its part has no back diameter loaded",
+                c.short_id
+            ))
+            .at(FindingTarget::Connector { id: c.id })
+        })
         .collect()
 }
 
 fn check_boot_assigned_does_not_fit(data: &ProjectData, library: &Library) -> Vec<Finding> {
     let mut findings = Vec::new();
     for connector in &data.connector_instances {
-        if !matches!(connector.termination.as_deref(), Some("boot_straight") | Some("boot_90")) {
+        if !matches!(
+            connector.termination.as_deref(),
+            Some("boot_straight") | Some("boot_90")
+        ) {
             continue;
         }
-        let Some(assigned_id) = connector.termination_library_part_id else { continue };
+        let Some(assigned_id) = connector.termination_library_part_id else {
+            continue;
+        };
         let fits = crate::calc::boots_for_connector(data, library, connector.id);
         if let Some(fit) = fits.iter().find(|f| f.library_part_id == assigned_id) {
             if !fit.fits {
@@ -296,11 +390,19 @@ fn check_t_mold_assigned_does_not_fit(data: &ProjectData, library: &Library) -> 
         if node.termination.as_deref() != Some("t_mold") {
             continue;
         }
-        let Some(assigned_id) = node.termination_library_part_id else { continue };
+        let Some(assigned_id) = node.termination_library_part_id else {
+            continue;
+        };
         let fits = crate::calc::t_mold_fits_for_node(data, library, node.id);
         if let Some(fit) = fits.iter().find(|f| f.library_part_id == assigned_id) {
             if !fit.fits {
-                findings.push(warning(format!("Breakout at node {} has a T-mold assigned that doesn't fit its segments", node.id)).at(FindingTarget::Node { id: node.id }));
+                findings.push(
+                    warning(format!(
+                        "Breakout at node {} has a T-mold assigned that doesn't fit its segments",
+                        node.id
+                    ))
+                    .at(FindingTarget::Node { id: node.id }),
+                );
             }
         }
     }
@@ -317,14 +419,27 @@ fn check_gauge_within_contact_range(data: &ProjectData, library: &Library) -> Ve
     let mut findings = Vec::new();
     for connector in &data.connector_instances {
         for cav in &connector.cavities {
-            let Some(contact_id) = cav.contact_library_part_id else { continue };
-            let Some(contact) = library.contact_defs.iter().find(|c| c.part_id == contact_id) else { continue };
-            let Some((range_min, range_max)) = contact_gauge_range_mm2(contact) else { continue };
+            let Some(contact_id) = cav.contact_library_part_id else {
+                continue;
+            };
+            let Some(contact) = library
+                .contact_defs
+                .iter()
+                .find(|c| c.part_id == contact_id)
+            else {
+                continue;
+            };
+            let Some((range_min, range_max)) = contact_gauge_range_mm2(contact) else {
+                continue;
+            };
 
             let wires: Vec<&crate::model::project::WireInstance> = data
                 .wire_instances
                 .iter()
-                .filter(|w| w.end_a.cavity_assignment_id == Some(cav.id) || w.end_b.cavity_assignment_id == Some(cav.id))
+                .filter(|w| {
+                    w.end_a.cavity_assignment_id == Some(cav.id)
+                        || w.end_b.cavity_assignment_id == Some(cav.id)
+                })
                 .collect();
             if wires.is_empty() {
                 continue;
@@ -360,10 +475,13 @@ fn check_cut_margin_below_twist_minimum(data: &ProjectData, library: &Library) -
         .filter(|cut| cut.margin_pct < cut.twist_min_margin_pct)
         .filter_map(|cut| {
             let wire = data.wire_instances.iter().find(|w| w.id == cut.wire_id)?;
-            Some(warning(format!(
-                "Wire {} has a {:.1}% cut margin, below the {:.1}% minimum its twist needs",
-                wire.short_id, cut.margin_pct, cut.twist_min_margin_pct
-            )).at(FindingTarget::Wire { id: wire.id }))
+            Some(
+                warning(format!(
+                    "Wire {} has a {:.1}% cut margin, below the {:.1}% minimum its twist needs",
+                    wire.short_id, cut.margin_pct, cut.twist_min_margin_pct
+                ))
+                .at(FindingTarget::Wire { id: wire.id }),
+            )
         })
         .collect()
 }
@@ -379,7 +497,9 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
     findings.extend(check_same_net_different_function(data));
     findings.extend(check_cut_margin_below_twist_minimum(data, library));
     findings.extend(check_covering_fit(data, library));
-    findings.extend(check_adhesive_heatshrink_connector_without_back_diameter(data, library));
+    findings.extend(check_adhesive_heatshrink_connector_without_back_diameter(
+        data, library,
+    ));
     findings.extend(check_boot_assigned_does_not_fit(data, library));
     findings.extend(check_t_mold_assigned_does_not_fit(data, library));
     findings.extend(check_gauge_within_contact_range(data, library));
@@ -395,7 +515,13 @@ mod tests {
         SpliceInstance, WireInstance,
     };
 
-    fn end(kind: &str, cavity: Option<i64>, splice: Option<i64>, ground: Option<i64>, component: Option<i64>) -> WireEnd {
+    fn end(
+        kind: &str,
+        cavity: Option<i64>,
+        splice: Option<i64>,
+        ground: Option<i64>,
+        component: Option<i64>,
+    ) -> WireEnd {
         WireEnd {
             kind: kind.into(),
             cavity_assignment_id: cavity,
@@ -441,14 +567,56 @@ mod tests {
     fn flags_a_loop_in_the_topology() {
         let mut data = empty_project();
         data.nodes = vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node {
+                id: 1,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 2,
+                kind: "breakout".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 3,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
         ];
         data.segments = vec![
-            Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
-            Segment { id: 2, node_a_id: 2, node_b_id: 3, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
-            Segment { id: 3, node_a_id: 3, node_b_id: 1, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None }, // closes the loop
+            Segment {
+                id: 1,
+                node_a_id: 1,
+                node_b_id: 2,
+                length_mm: 100.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            },
+            Segment {
+                id: 2,
+                node_a_id: 2,
+                node_b_id: 3,
+                length_mm: 100.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            },
+            Segment {
+                id: 3,
+                node_a_id: 3,
+                node_b_id: 1,
+                length_mm: 100.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            }, // closes the loop
         ];
         let findings = check_topology_has_no_loops(&data);
         assert_eq!(findings.len(), 1);
@@ -459,13 +627,48 @@ mod tests {
     fn a_tree_has_no_loop_findings() {
         let mut data = empty_project();
         data.nodes = vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node {
+                id: 1,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 2,
+                kind: "breakout".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 3,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
         ];
         data.segments = vec![
-            Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
-            Segment { id: 2, node_a_id: 2, node_b_id: 3, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
+            Segment {
+                id: 1,
+                node_a_id: 1,
+                node_b_id: 2,
+                length_mm: 100.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            },
+            Segment {
+                id: 2,
+                node_a_id: 2,
+                node_b_id: 3,
+                length_mm: 100.0,
+                twist_pitch_mm: None,
+                covering_library_part_id: None,
+            },
         ];
         assert!(check_topology_has_no_loops(&data).is_empty());
     }
@@ -536,7 +739,12 @@ mod tests {
             price_usd: None,
             price_date: None,
         }];
-        library.splice_defs = vec![SpliceDef { part_id: 1, gauge_min: None, gauge_max: None, max_wires: 2 }];
+        library.splice_defs = vec![SpliceDef {
+            part_id: 1,
+            gauge_min: None,
+            gauge_max: None,
+            max_wires: 2,
+        }];
 
         let findings = check_splices_within_capacity(&data, &library);
         assert_eq!(findings.len(), 1);
@@ -548,22 +756,39 @@ mod tests {
     fn splice_with_three_22awg_wires() -> (ProjectData, Library) {
         let mut data = empty_project();
         data.splice_instances = vec![SpliceInstance {
-            id: 1, short_id: "SP1".into(), library_part_id: 1, node_id: Some(1),
-            segment_id: None, offset_from_end_mm: None, offset_from_node_id: None,
+            id: 1,
+            short_id: "SP1".into(),
+            library_part_id: 1,
+            node_id: Some(1),
+            segment_id: None,
+            offset_from_end_mm: None,
+            offset_from_node_id: None,
         }];
         data.wire_instances = (1..=3)
             .map(|i| WireInstance {
-                id: i, short_id: format!("W00{i}"), library_part_id: 100, color: None,
-                signal_type_id: None, specific_name: None, manual_cut_margin_pct: None, label: None,
+                id: i,
+                short_id: format!("W00{i}"),
+                library_part_id: 100,
+                color: None,
+                signal_type_id: None,
+                specific_name: None,
+                manual_cut_margin_pct: None,
+                label: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
             })
             .collect();
         let mut library = library_with_wire_def(6.0);
         library.parts = vec![Part {
-            id: 1, part_number: "SPLICE-1".into(), manufacturer: None, description: None,
-            category: "splice".into(), purchase_unit: "unit".into(), qty_per_pack: 1.0,
-            price_usd: None, price_date: None,
+            id: 1,
+            part_number: "SPLICE-1".into(),
+            manufacturer: None,
+            description: None,
+            category: "splice".into(),
+            purchase_unit: "unit".into(),
+            qty_per_pack: 1.0,
+            price_usd: None,
+            price_date: None,
         }];
         (data, library)
     }
@@ -571,7 +796,12 @@ mod tests {
     #[test]
     fn no_gauge_finding_when_the_splice_fits_the_combined_wire_gauge() {
         let (data, mut library) = splice_with_three_22awg_wires();
-        library.splice_defs = vec![SpliceDef { part_id: 1, gauge_min: Some("20 AWG".into()), gauge_max: Some("16 AWG".into()), max_wires: 5 }];
+        library.splice_defs = vec![SpliceDef {
+            part_id: 1,
+            gauge_min: Some("20 AWG".into()),
+            gauge_max: Some("16 AWG".into()),
+            max_wires: 5,
+        }];
         assert!(check_gauge_within_splice_range(&data, &library).is_empty());
     }
 
@@ -579,7 +809,12 @@ mod tests {
     fn flags_a_splice_gauge_outside_its_combined_wire_range() {
         let (data, mut library) = splice_with_three_22awg_wires();
         // Rango pensado para calibres mucho más finos que la suma real (~0.98mm²).
-        library.splice_defs = vec![SpliceDef { part_id: 1, gauge_min: Some("24 AWG".into()), gauge_max: Some("22 AWG".into()), max_wires: 5 }];
+        library.splice_defs = vec![SpliceDef {
+            part_id: 1,
+            gauge_min: Some("24 AWG".into()),
+            gauge_max: Some("22 AWG".into()),
+            max_wires: 5,
+        }];
         let findings = check_gauge_within_splice_range(&data, &library);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].severity, "error");
@@ -589,7 +824,14 @@ mod tests {
     #[test]
     fn flags_a_pending_connector() {
         let mut data = empty_project();
-        data.nodes = vec![Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None }];
+        data.nodes = vec![Node {
+            id: 1,
+            kind: "connector_end".into(),
+            termination: None,
+            termination_library_part_id: None,
+            diagram_x: None,
+            diagram_y: None,
+        }];
         data.connector_instances = vec![ConnectorInstance {
             id: 1,
             short_id: "X1".into(),
@@ -674,28 +916,86 @@ mod tests {
     fn segment_with_one_wire() -> ProjectData {
         let mut data = empty_project();
         data.nodes = vec![
-            Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-            Node { id: 2, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+            Node {
+                id: 1,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
+            Node {
+                id: 2,
+                kind: "connector_end".into(),
+                termination: None,
+                termination_library_part_id: None,
+                diagram_x: None,
+                diagram_y: None,
+            },
         ];
-        data.segments = vec![Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 500.0, twist_pitch_mm: Some(1_000_000.0), covering_library_part_id: None }];
+        data.segments = vec![Segment {
+            id: 1,
+            node_a_id: 1,
+            node_b_id: 2,
+            length_mm: 500.0,
+            twist_pitch_mm: Some(1_000_000.0),
+            covering_library_part_id: None,
+        }];
         data.connector_instances = vec![
             ConnectorInstance {
-                id: 1, short_id: "X1".into(), name: "A".into(), library_part_id: 10, device_instance_id: None,
-                node_id: 1, termination: None, termination_library_part_id: None, backshell_library_part_id: None,
-                status: "complete".into(), is_interconnect: false, mates_with: None,
-                cavities: vec![CavityAssignment { id: 1, cavity_id: "1".into(), contact_library_part_id: None, seal_plug_library_part_id: None, external_reference: None }],
+                id: 1,
+                short_id: "X1".into(),
+                name: "A".into(),
+                library_part_id: 10,
+                device_instance_id: None,
+                node_id: 1,
+                termination: None,
+                termination_library_part_id: None,
+                backshell_library_part_id: None,
+                status: "complete".into(),
+                is_interconnect: false,
+                mates_with: None,
+                cavities: vec![CavityAssignment {
+                    id: 1,
+                    cavity_id: "1".into(),
+                    contact_library_part_id: None,
+                    seal_plug_library_part_id: None,
+                    external_reference: None,
+                }],
             },
             ConnectorInstance {
-                id: 2, short_id: "X2".into(), name: "B".into(), library_part_id: 10, device_instance_id: None,
-                node_id: 2, termination: None, termination_library_part_id: None, backshell_library_part_id: None,
-                status: "complete".into(), is_interconnect: false, mates_with: None,
-                cavities: vec![CavityAssignment { id: 2, cavity_id: "1".into(), contact_library_part_id: None, seal_plug_library_part_id: None, external_reference: None }],
+                id: 2,
+                short_id: "X2".into(),
+                name: "B".into(),
+                library_part_id: 10,
+                device_instance_id: None,
+                node_id: 2,
+                termination: None,
+                termination_library_part_id: None,
+                backshell_library_part_id: None,
+                status: "complete".into(),
+                is_interconnect: false,
+                mates_with: None,
+                cavities: vec![CavityAssignment {
+                    id: 2,
+                    cavity_id: "1".into(),
+                    contact_library_part_id: None,
+                    seal_plug_library_part_id: None,
+                    external_reference: None,
+                }],
             },
         ];
         data.wire_instances = vec![WireInstance {
-            id: 1, short_id: "W001".into(), library_part_id: 100, color: None, signal_type_id: None,
-            specific_name: None, manual_cut_margin_pct: None, label: None,
-            end_a: end("cavity", Some(1), None, None, None), end_b: end("cavity", Some(2), None, None, None),
+            id: 1,
+            short_id: "W001".into(),
+            library_part_id: 100,
+            color: None,
+            signal_type_id: None,
+            specific_name: None,
+            manual_cut_margin_pct: None,
+            label: None,
+            end_a: end("cavity", Some(1), None, None, None),
+            end_b: end("cavity", Some(2), None, None, None),
         }];
         data
     }
@@ -703,8 +1003,13 @@ mod tests {
     fn library_with_wire_def(outer_diameter_mm: f64) -> Library {
         let mut library = empty_library();
         library.wire_defs = vec![crate::model::library::WireDef {
-            part_id: 100, gauge: "22 AWG".into(), spec: None, color: None,
-            outer_diameter_mm, default_cut_margin_pct: None, conductors: vec![],
+            part_id: 100,
+            gauge: "22 AWG".into(),
+            spec: None,
+            color: None,
+            outer_diameter_mm,
+            default_cut_margin_pct: None,
+            conductors: vec![],
         }];
         library
     }
@@ -725,7 +1030,11 @@ mod tests {
         let mut library = library_with_wire_def(6.0);
         // Demasiado angosto: no aprieta contra el bundle real.
         library.covering_defs = vec![crate::model::library::CoveringDef {
-            part_id: 200, supplied_diameter_mm: 1.0, shrunk_diameter_mm: 0.5, shrunk_wall_thickness_mm: 0.2, has_adhesive: true,
+            part_id: 200,
+            supplied_diameter_mm: 1.0,
+            shrunk_diameter_mm: 0.5,
+            shrunk_wall_thickness_mm: 0.2,
+            has_adhesive: true,
         }];
         let findings = check_covering_fit(&data, &library);
         assert_eq!(findings.len(), 1);
@@ -739,7 +1048,11 @@ mod tests {
         let mut library = library_with_wire_def(6.0);
         let d_bundle = crate::calc::bundle_diameter_mm(&data, &library, 1);
         library.covering_defs = vec![crate::model::library::CoveringDef {
-            part_id: 200, supplied_diameter_mm: d_bundle * 1.2, shrunk_diameter_mm: d_bundle * 0.9, shrunk_wall_thickness_mm: 0.2, has_adhesive: true,
+            part_id: 200,
+            supplied_diameter_mm: d_bundle * 1.2,
+            shrunk_diameter_mm: d_bundle * 0.9,
+            shrunk_wall_thickness_mm: 0.2,
+            has_adhesive: true,
         }];
         assert!(check_covering_fit(&data, &library).is_empty());
     }
@@ -761,14 +1074,32 @@ mod tests {
         data.connector_instances[0].termination_library_part_id = Some(300);
         let mut library = library_with_wire_def(6.0);
         library.connector_defs = vec![crate::model::library::ConnectorDef {
-            part_id: 10, gender: "female".into(), series: Some("AMP".into()), shell_size: Some("CE".into()),
-            counterpart_id: None, back_shape: None, back_diameter_mm: None, back_width_mm: None, back_height_mm: None, suggested_termination: None,
-            image_side_path: None, image_front_path: None, image_back_path: None, cavities: vec![],
+            part_id: 10,
+            gender: "female".into(),
+            series: Some("AMP".into()),
+            shell_size: Some("CE".into()),
+            counterpart_id: None,
+            back_shape: None,
+            back_diameter_mm: None,
+            back_width_mm: None,
+            back_height_mm: None,
+            suggested_termination: None,
+            image_side_path: None,
+            image_front_path: None,
+            image_back_path: None,
+            cavities: vec![],
         }];
         library.accessory_defs = vec![crate::model::library::AccessoryDef {
-            part_id: 300, orientation: "straight".into(), cable_side_min_diameter_mm: 1.0, cable_side_max_diameter_mm: 2.0,
-            leg_length_mm: 30.0, overlap_mm: 15.0,
-            compatible_connectors: vec![crate::model::library::AccessoryDefConnectorMatch { series: "DT".into(), shell_size: "06".into() }],
+            part_id: 300,
+            orientation: "straight".into(),
+            cable_side_min_diameter_mm: 1.0,
+            cable_side_max_diameter_mm: 2.0,
+            leg_length_mm: 30.0,
+            overlap_mm: 15.0,
+            compatible_connectors: vec![crate::model::library::AccessoryDefConnectorMatch {
+                series: "DT".into(),
+                shell_size: "06".into(),
+            }],
         }];
         let findings = check_boot_assigned_does_not_fit(&data, &library);
         assert_eq!(findings.len(), 1);
@@ -786,9 +1117,21 @@ mod tests {
             part_id: 400,
             overlap_mm: 20.0,
             legs: vec![
-                crate::model::library::TMoldLeg { min_diameter_mm: 0.0, max_diameter_mm: 100.0, leg_length_mm: 30.0 },
-                crate::model::library::TMoldLeg { min_diameter_mm: 0.0, max_diameter_mm: 100.0, leg_length_mm: 30.0 },
-                crate::model::library::TMoldLeg { min_diameter_mm: 0.0, max_diameter_mm: 100.0, leg_length_mm: 30.0 },
+                crate::model::library::TMoldLeg {
+                    min_diameter_mm: 0.0,
+                    max_diameter_mm: 100.0,
+                    leg_length_mm: 30.0,
+                },
+                crate::model::library::TMoldLeg {
+                    min_diameter_mm: 0.0,
+                    max_diameter_mm: 100.0,
+                    leg_length_mm: 30.0,
+                },
+                crate::model::library::TMoldLeg {
+                    min_diameter_mm: 0.0,
+                    max_diameter_mm: 100.0,
+                    leg_length_mm: 30.0,
+                },
             ],
         }];
         let findings = check_t_mold_assigned_does_not_fit(&data, &library);

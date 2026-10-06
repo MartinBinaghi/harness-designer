@@ -397,10 +397,12 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 ### 10.3 Vista esquemática pin a pin
 - **Generada automáticamente** desde los datos (no se dibuja a mano): conectores como bloques con su lista de pines, líneas pin a pin, splices como puntos de unión.
 - Colores según el tipo de señal.
-- Opcional: crear un cable arrastrando de un pin a otro (crea el mismo registro que la tabla de cables).
+- Crear un cable arrastrando de un pin a otro (crea el mismo registro que la tabla de cables).
+- Muestra solo los pines usados por defecto (opción para ver todos). Las posiciones no se guardan: siempre se regenera desde los datos (principal a la izquierda, uniones en el medio, resto a la derecha, ordenado para minimizar cruces).
 
 ### 10.4 Interacción (ambas vistas)
-- Crear: arrastrar conectores desde la biblioteca, trazar segmentos entre nodos, partir un segmento para insertar un breakout.
+- Crear: arrastrar el "+" de un nodo a un lugar vacío (rama nueva) o a otro nodo (segmento, si no cierra un lazo); partir un segmento para insertar un breakout; doble click en la etiqueta de un segmento para editar su largo; Supr para borrar (lo que tiene conector/masa/splice se borra desde su tabla).
+- Doble click en un extremo sin conector: se le asigna una parte de la biblioteca y un nombre.
 - Clic en un pin → **se resalta en el dibujo el recorrido del cable y toda la net**; el inspector muestra el detalle.
 - Clic en un segmento → cables que pasan y diámetro.
 - Doble clic en un conector → vista frontal (imagen de la biblioteca) + tabla de pinout. La vista frontal no se muestra en el dibujo general.

@@ -1020,3 +1020,284 @@ table.compact-table {
 .dg-block .dg-distance {
   font-size: 0.72rem;
 }
+
+/* Edición desde el diagrama (etapa 5b). */
+.diagram-canvas {
+  position: relative;
+}
+
+.diagram-notice {
+  font-size: 0.82rem;
+  color: var(--warning);
+}
+
+/* "+" para crear una rama: solo visible al pasar el mouse por el nodo. */
+.react-flow__handle.dg-branch-handle {
+  width: 16px;
+  height: 16px;
+  right: -8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  /* "+" dibujado con dos barras centradas (no depende de la fuente). */
+  background:
+    linear-gradient(#fff, #fff) center / 8px 2px no-repeat,
+    linear-gradient(#fff, #fff) center / 2px 8px no-repeat,
+    var(--accent);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.react-flow__node:hover .react-flow__handle.dg-branch-handle {
+  opacity: 1;
+}
+
+
+.dg-edge-label-group {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: all;
+}
+
+.dg-edge-label-group .dg-edge-label {
+  position: static;
+}
+
+.dg-edge-action {
+  font-size: 0.68rem;
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+  border-radius: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dg-edge-input {
+  position: absolute;
+  pointer-events: all;
+  width: 5.5em;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+/* Panel de nodo (doble click): flota sobre el lienzo, a la derecha. */
+.dg-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: min(560px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.dg-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.4rem 0.4rem 0.8rem;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.dg-panel-head .icon-button {
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+.dg-panel-body {
+  padding: 0.6rem 0.8rem;
+  overflow: auto;
+}
+
+.dg-panel-sub {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.dg-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.dg-panel-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--text-muted);
+}
+
+table.dg-pinout {
+  width: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.dg-pin-unused td {
+  color: var(--text-muted);
+}
+
+/* Vista pin a pin (pestaña Schematic, plan 10.3). */
+.sc-block {
+  background: var(--surface);
+  border: 1px solid var(--text-muted);
+  border-radius: 3px;
+  font-size: 0.75rem;
+}
+
+.sc-selected.sc-block,
+.sc-selected .sc-junction-dot {
+  outline: 2px solid var(--accent);
+}
+
+.sc-block-head {
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0.3rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sc-block-id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.sc-block-name {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-pin {
+  height: 22px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.sc-pin-id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 2.2em;
+}
+
+.sc-pin-note {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-pin-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  border-bottom: none;
+}
+
+.react-flow__handle.sc-handle {
+  width: 7px;
+  height: 7px;
+  background: var(--surface);
+  border: 1px solid var(--text-muted);
+}
+
+.react-flow__handle.sc-handle:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.sc-junction {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.sc-junction-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text);
+  flex: 0 0 auto;
+}
+
+.sc-junction-ground .sc-junction-dot {
+  border-radius: 0;
+}
+
+.sc-junction-component .sc-junction-dot {
+  border-radius: 2px;
+  background: var(--surface);
+  border: 2px solid var(--text);
+}
+
+.sc-junction .react-flow__handle {
+  top: 50%;
+}
+
+.sc-junction .react-flow__handle-left {
+  left: 6px;
+}
+
+.sc-junction .react-flow__handle-right {
+  left: 6px;
+  right: auto;
+}
+
+/* En los puntos de unión, los handles (para arrastrar un cable) se ven solo al pasar el mouse. */
+.sc-junction .react-flow__handle.sc-handle {
+  opacity: 0;
+}
+
+.sc-junction:hover .react-flow__handle.sc-handle {
+  opacity: 1;
+}
+
+.sc-junction-label {
+  margin-left: 0.15rem;
+}
+
+/* Nombre del archivo abierto (proyecto / biblioteca), en lugar de un campo para tipear la ruta. */
+.file-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  min-width: 10rem;
+  max-width: 22rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

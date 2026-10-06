@@ -4,7 +4,7 @@
 //! Los `library_part_id` referencian filas de la biblioteca (archivo separado);
 //! no se validan acá, es responsabilidad de la capa de chequeos (etapa 2).
 
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -160,7 +160,13 @@ pub struct ProjectData {
     pub twist_groups: Vec<TwistGroup>,
 }
 
-fn wire_end(kind: String, a: Option<i64>, b: Option<i64>, c: Option<i64>, d: Option<i64>) -> WireEnd {
+fn wire_end(
+    kind: String,
+    a: Option<i64>,
+    b: Option<i64>,
+    c: Option<i64>,
+    d: Option<i64>,
+) -> WireEnd {
     WireEnd {
         kind,
         cavity_assignment_id: a,
@@ -275,8 +281,9 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
             .collect::<Result<Vec<_>>>()?;
     }
 
-    let mut ground_points_stmt =
-        conn.prepare("SELECT id, short_id, name, terminal_library_part_id, node_id FROM ground_points")?;
+    let mut ground_points_stmt = conn.prepare(
+        "SELECT id, short_id, name, terminal_library_part_id, node_id FROM ground_points",
+    )?;
     let ground_points = ground_points_stmt
         .query_map([], |row| {
             Ok(GroundPoint {
@@ -341,13 +348,26 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 specific_name: row.get(5)?,
                 manual_cut_margin_pct: row.get(6)?,
                 label: row.get(7)?,
-                end_a: wire_end(row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?),
-                end_b: wire_end(row.get(13)?, row.get(14)?, row.get(15)?, row.get(16)?, row.get(17)?),
+                end_a: wire_end(
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                    row.get(12)?,
+                ),
+                end_b: wire_end(
+                    row.get(13)?,
+                    row.get(14)?,
+                    row.get(15)?,
+                    row.get(16)?,
+                    row.get(17)?,
+                ),
             })
         })?
         .collect::<Result<Vec<_>>>()?;
 
-    let mut twist_groups_stmt = conn.prepare("SELECT id, name, shielded, drain FROM twist_groups")?;
+    let mut twist_groups_stmt =
+        conn.prepare("SELECT id, name, shielded, drain FROM twist_groups")?;
     let mut twist_groups = twist_groups_stmt
         .query_map([], |row| {
             Ok(TwistGroup {
@@ -590,9 +610,30 @@ mod tests {
                 library_part_id: Some(2),
             }],
             nodes: vec![
-                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-                Node { id: 2, kind: "breakout".into(), termination: Some("t_mold".into()), termination_library_part_id: None, diagram_x: Some(120.5), diagram_y: Some(-40.0) },
-                Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+                Node {
+                    id: 1,
+                    kind: "connector_end".into(),
+                    termination: None,
+                    termination_library_part_id: None,
+                    diagram_x: None,
+                    diagram_y: None,
+                },
+                Node {
+                    id: 2,
+                    kind: "breakout".into(),
+                    termination: Some("t_mold".into()),
+                    termination_library_part_id: None,
+                    diagram_x: Some(120.5),
+                    diagram_y: Some(-40.0),
+                },
+                Node {
+                    id: 3,
+                    kind: "connector_end".into(),
+                    termination: None,
+                    termination_library_part_id: None,
+                    diagram_x: None,
+                    diagram_y: None,
+                },
             ],
             segments: vec![Segment {
                 id: 1,

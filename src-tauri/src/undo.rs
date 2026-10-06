@@ -35,7 +35,8 @@ impl<T: Clone> History<T> {
     pub fn undo(&mut self) -> bool {
         match self.undo_stack.pop() {
             Some(prev) => {
-                self.redo_stack.push(std::mem::replace(&mut self.current, prev));
+                self.redo_stack
+                    .push(std::mem::replace(&mut self.current, prev));
                 true
             }
             None => false,
@@ -45,7 +46,8 @@ impl<T: Clone> History<T> {
     pub fn redo(&mut self) -> bool {
         match self.redo_stack.pop() {
             Some(next) => {
-                self.undo_stack.push(std::mem::replace(&mut self.current, next));
+                self.undo_stack
+                    .push(std::mem::replace(&mut self.current, next));
                 true
             }
             None => false,

@@ -65,8 +65,14 @@ pub fn path_between_nodes(data: &ProjectData, from: i64, to: i64) -> Option<Vec<
 fn adjacency(data: &ProjectData) -> HashMap<i64, Vec<(i64, &Segment)>> {
     let mut adjacency: HashMap<i64, Vec<(i64, &Segment)>> = HashMap::new();
     for segment in &data.segments {
-        adjacency.entry(segment.node_a_id).or_default().push((segment.node_b_id, segment));
-        adjacency.entry(segment.node_b_id).or_default().push((segment.node_a_id, segment));
+        adjacency
+            .entry(segment.node_a_id)
+            .or_default()
+            .push((segment.node_b_id, segment));
+        adjacency
+            .entry(segment.node_b_id)
+            .or_default()
+            .push((segment.node_a_id, segment));
     }
     adjacency
 }
@@ -118,7 +124,10 @@ fn wire_end_node(data: &ProjectData, end: &WireEnd) -> Option<i64> {
         }
         "component" => {
             let component_id = end.component_instance_id?;
-            let component = data.component_instances.iter().find(|c| c.id == component_id)?;
+            let component = data
+                .component_instances
+                .iter()
+                .find(|c| c.id == component_id)?;
             component.node_id.or(component.offset_from_node_id)
         }
         _ => None,
@@ -145,10 +154,11 @@ pub fn net_of_wire(data: &ProjectData, wire_id: i64) -> Vec<i64> {
     let mut points_by_wire: HashMap<i64, Vec<ConnectionPoint>> = HashMap::new();
     let mut wires_by_point: HashMap<ConnectionPoint, Vec<i64>> = HashMap::new();
     for wire in &data.wire_instances {
-        let points: Vec<ConnectionPoint> = [connection_point(&wire.end_a), connection_point(&wire.end_b)]
-            .into_iter()
-            .flatten()
-            .collect();
+        let points: Vec<ConnectionPoint> =
+            [connection_point(&wire.end_a), connection_point(&wire.end_b)]
+                .into_iter()
+                .flatten()
+                .collect();
         for &point in &points {
             wires_by_point.entry(point).or_default().push(wire.id);
         }
@@ -181,7 +191,13 @@ mod tests {
         SpliceInstance, WireInstance,
     };
 
-    fn wire_end(kind: &str, cavity: Option<i64>, splice: Option<i64>, ground: Option<i64>, component: Option<i64>) -> WireEnd {
+    fn wire_end(
+        kind: &str,
+        cavity: Option<i64>,
+        splice: Option<i64>,
+        ground: Option<i64>,
+        component: Option<i64>,
+    ) -> WireEnd {
         WireEnd {
             kind: kind.into(),
             cavity_assignment_id: cavity,
@@ -215,15 +231,64 @@ mod tests {
             project: empty_project(),
             device_instances: vec![],
             nodes: vec![
-                Node { id: 1, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-                Node { id: 2, kind: "breakout".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-                Node { id: 3, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
-                Node { id: 4, kind: "connector_end".into(), termination: None, termination_library_part_id: None, diagram_x: None, diagram_y: None },
+                Node {
+                    id: 1,
+                    kind: "connector_end".into(),
+                    termination: None,
+                    termination_library_part_id: None,
+                    diagram_x: None,
+                    diagram_y: None,
+                },
+                Node {
+                    id: 2,
+                    kind: "breakout".into(),
+                    termination: None,
+                    termination_library_part_id: None,
+                    diagram_x: None,
+                    diagram_y: None,
+                },
+                Node {
+                    id: 3,
+                    kind: "connector_end".into(),
+                    termination: None,
+                    termination_library_part_id: None,
+                    diagram_x: None,
+                    diagram_y: None,
+                },
+                Node {
+                    id: 4,
+                    kind: "connector_end".into(),
+                    termination: None,
+                    termination_library_part_id: None,
+                    diagram_x: None,
+                    diagram_y: None,
+                },
             ],
             segments: vec![
-                Segment { id: 1, node_a_id: 1, node_b_id: 2, length_mm: 100.0, twist_pitch_mm: None, covering_library_part_id: None },
-                Segment { id: 2, node_a_id: 2, node_b_id: 3, length_mm: 200.0, twist_pitch_mm: None, covering_library_part_id: None },
-                Segment { id: 3, node_a_id: 2, node_b_id: 4, length_mm: 50.0, twist_pitch_mm: None, covering_library_part_id: None },
+                Segment {
+                    id: 1,
+                    node_a_id: 1,
+                    node_b_id: 2,
+                    length_mm: 100.0,
+                    twist_pitch_mm: None,
+                    covering_library_part_id: None,
+                },
+                Segment {
+                    id: 2,
+                    node_a_id: 2,
+                    node_b_id: 3,
+                    length_mm: 200.0,
+                    twist_pitch_mm: None,
+                    covering_library_part_id: None,
+                },
+                Segment {
+                    id: 3,
+                    node_a_id: 2,
+                    node_b_id: 4,
+                    length_mm: 50.0,
+                    twist_pitch_mm: None,
+                    covering_library_part_id: None,
+                },
             ],
             connector_instances: vec![],
             ground_points: vec![],

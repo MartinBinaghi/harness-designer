@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import Topologia from "./Topologia";
 import Diagrama from "./Diagrama";
+import Esquema from "./Esquema";
 import LibraryScreen from "./Library";
 import Conectores from "./Conectores";
 import Cables from "./Cables";
@@ -17,13 +18,14 @@ import type { Library } from "./libraryTypes";
 import { emptyLibrary } from "./libraryTypes";
 import "./App.css";
 
-const SECTIONS = ["Library", "Topology", "Diagram", "Connectors", "Wires", "Checks", "Costs"] as const;
+const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Checks", "Costs"] as const;
 type Section = (typeof SECTIONS)[number];
 
 export default function App() {
   const [section, setSection] = useState<Section>("Topology");
 
-  const [projectPath, setProjectPath] = useState("project.harness.db");
+  const [selection, setSelection] = useState<Selection>(null);
+  const [projectPath, setProjectPath] = useState("");
   const [projectStatus, setProjectStatus] = useState<ProjectStatus>({ loaded: false, can_undo: false, can_redo: false });
   const refreshProjectStatus = useCallback(async () => {
     setProjectStatus(await invoke<ProjectStatus>("project_status"));
@@ -46,12 +48,14 @@ export default function App() {
     (next: ProjectData) => {
       projectHistory.reset(next);
       void refreshProjectStatus();
+      // Otro proyecto: los ids de la selección anterior no significan nada acá.
+      setSelection(null);
     },
     [projectHistory, refreshProjectStatus],
   );
   const cancelProjectEdits = projectHistory.cancel;
 
-  const [libraryPath, setLibraryPath] = useState("library.db");
+  const [libraryPath, setLibraryPath] = useState("");
   const [libraryStatus, setLibraryStatus] = useState<HistoryStatus>({ can_undo: false, can_redo: false });
   const refreshLibraryStatus = useCallback(async () => {
     setLibraryStatus(await invoke<HistoryStatus>("library_status"));
@@ -100,7 +104,6 @@ export default function App() {
     await refreshLibraryStatus();
   }, [libraryHistory, refreshLibraryStatus]);
 
-  const [selection, setSelection] = useState<Selection>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
 
   // Chequeos en vivo: se recalculan solos cada vez que cambia el proyecto o
@@ -210,7 +213,7 @@ export default function App() {
       <div className="shell">
         {showPanels && treeOpen && <Tree project={project} selection={selection} onSelect={setSelection} />}
 
-        <div className={`screen${section === "Diagram" ? " screen-canvas" : ""}`}>
+        <div className={`screen${section === "Diagram" || section === "Schematic" ? " screen-canvas" : ""}`}>
           {section === "Library" && (
             <LibraryScreen
               library={library}
@@ -245,6 +248,9 @@ export default function App() {
               selection={selection}
               onSelect={setSelection}
             />
+          )}
+          {section === "Schematic" && (
+            <Esquema project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
           )}
           {section === "Connectors" && (
             <Conectores project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />

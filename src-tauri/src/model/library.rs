@@ -5,7 +5,7 @@
 //! `String`: SQLite ya valida los valores permitidos con CHECK, duplicarlo como
 //! enum de Rust no agrega nada a esta escala.
 
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -302,8 +302,9 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 .collect::<Result<Vec<_>>>()?;
         }
 
-        let mut pin_groups_stmt =
-            conn.prepare("SELECT id, name FROM device_def_pin_groups WHERE device_def_id = ?1 ORDER BY rowid")?;
+        let mut pin_groups_stmt = conn.prepare(
+            "SELECT id, name FROM device_def_pin_groups WHERE device_def_id = ?1 ORDER BY rowid",
+        )?;
         let mut pin_groups = pin_groups_stmt
             .query_map(params![part_id], |row| {
                 Ok(DeviceDefPinGroup {
@@ -328,8 +329,8 @@ pub fn load(conn: &Connection) -> Result<Library> {
         });
     }
 
-    let mut contact_defs_stmt =
-        conn.prepare("SELECT part_id, gender, contact_size, gauge_min, gauge_max FROM contact_defs")?;
+    let mut contact_defs_stmt = conn
+        .prepare("SELECT part_id, gender, contact_size, gauge_min, gauge_max FROM contact_defs")?;
     let contact_defs = contact_defs_stmt
         .query_map([], |row| {
             Ok(ContactDef {
@@ -342,7 +343,8 @@ pub fn load(conn: &Connection) -> Result<Library> {
         })?
         .collect::<Result<Vec<_>>>()?;
 
-    let mut seal_plug_defs_stmt = conn.prepare("SELECT part_id, contact_size FROM seal_plug_defs")?;
+    let mut seal_plug_defs_stmt =
+        conn.prepare("SELECT part_id, contact_size FROM seal_plug_defs")?;
     let seal_plug_defs = seal_plug_defs_stmt
         .query_map([], |row| {
             Ok(SealPlugDef {
@@ -448,14 +450,23 @@ pub fn load(conn: &Connection) -> Result<Library> {
         )?;
         accessory_def.compatible_connectors = matches_stmt
             .query_map(params![accessory_def.part_id], |row| {
-                Ok(AccessoryDefConnectorMatch { series: row.get(0)?, shell_size: row.get(1)? })
+                Ok(AccessoryDefConnectorMatch {
+                    series: row.get(0)?,
+                    shell_size: row.get(1)?,
+                })
             })?
             .collect::<Result<Vec<_>>>()?;
     }
 
     let mut t_mold_defs_stmt = conn.prepare("SELECT part_id, overlap_mm FROM t_mold_defs")?;
     let mut t_mold_defs = t_mold_defs_stmt
-        .query_map([], |row| Ok(TMoldDef { part_id: row.get(0)?, overlap_mm: row.get(1)?, legs: Vec::new() }))?
+        .query_map([], |row| {
+            Ok(TMoldDef {
+                part_id: row.get(0)?,
+                overlap_mm: row.get(1)?,
+                legs: Vec::new(),
+            })
+        })?
         .collect::<Result<Vec<_>>>()?;
     for t_mold_def in &mut t_mold_defs {
         let mut legs_stmt = conn.prepare(
@@ -463,7 +474,11 @@ pub fn load(conn: &Connection) -> Result<Library> {
         )?;
         t_mold_def.legs = legs_stmt
             .query_map(params![t_mold_def.part_id], |row| {
-                Ok(TMoldLeg { min_diameter_mm: row.get(0)?, max_diameter_mm: row.get(1)?, leg_length_mm: row.get(2)? })
+                Ok(TMoldLeg {
+                    min_diameter_mm: row.get(0)?,
+                    max_diameter_mm: row.get(1)?,
+                    leg_length_mm: row.get(2)?,
+                })
             })?
             .collect::<Result<Vec<_>>>()?;
     }
@@ -932,9 +947,21 @@ mod tests {
                 part_id: 6,
                 overlap_mm: 20.0,
                 legs: vec![
-                    TMoldLeg { min_diameter_mm: 8.0, max_diameter_mm: 14.0, leg_length_mm: 40.0 },
-                    TMoldLeg { min_diameter_mm: 4.0, max_diameter_mm: 8.0, leg_length_mm: 30.0 },
-                    TMoldLeg { min_diameter_mm: 4.0, max_diameter_mm: 8.0, leg_length_mm: 30.0 },
+                    TMoldLeg {
+                        min_diameter_mm: 8.0,
+                        max_diameter_mm: 14.0,
+                        leg_length_mm: 40.0,
+                    },
+                    TMoldLeg {
+                        min_diameter_mm: 4.0,
+                        max_diameter_mm: 8.0,
+                        leg_length_mm: 30.0,
+                    },
+                    TMoldLeg {
+                        min_diameter_mm: 4.0,
+                        max_diameter_mm: 8.0,
+                        leg_length_mm: 30.0,
+                    },
                 ],
             }],
             signal_types: vec![SignalType {
