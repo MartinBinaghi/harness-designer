@@ -79,7 +79,7 @@ Cada tipo de parte extiende `Part`:
 - **género** (macho/hembra)
 - tamaño de carcasa, cantidad de vías
 - lista de cavidades (la cantidad de vías es el largo de la lista, no un campo aparte): identificador tal cual el fabricante (1, 2… / A, B… / a, b…, **distinguiendo mayúsculas y minúsculas**) y tamaño de contacto que acepta
-- **imágenes**: vista lateral, frontal y trasera, con numeración de pines. Cada ConnectorDef guarda su propia vista frontal (la numeración de macho y hembra está espejada; no se deriva de la contraparte)
+- **imágenes**: vista lateral, frontal y trasera, con numeración de pines. Cada ConnectorDef guarda su propia vista frontal (la numeración de macho y hembra está espejada; no se deriva de la contraparte). Se guardan **dentro del archivo de la biblioteca** (achicadas a 800 px, WebP), no como ruta a un archivo externo, para que la biblioteca se pueda copiar a otra máquina. Se ven en el Inspector al seleccionar un conector y (la frontal) en la hoja de pinout del doble click en el diagrama. Además, para las familias conocidas (Deutsch DT/DTM/DTP, Superseal, MIL-DTL-38999 por MIL-STD-1560) el programa **dibuja la cara** a partir de la serie y las vías: contorno, traba y número de cada vía, vista de acople o lado cables, con las vías usadas resaltadas; avisa cuando la numeración no está confirmada con el fabricante
 - contraparte (opcional): el ConnectorDef con el que enchufa
 - **parte trasera**, redonda (Ø) o rectangular (ancho × alto; se usa la diagonal): necesaria para dimensionar termo con adhesivo que pasa por encima del conector
 - **terminación sugerida**: boot / termo con adhesivo / nada (ej. Amphenol de interconexión → boot; DTM → termo con adhesivo)
@@ -301,12 +301,12 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 - **Barra inferior**: contador de errores/advertencias siempre visible
 
 ### 7.3 Pantallas
-- **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Carga de pinout de dispositivo (nombre y función de cada pin, pines en paralelo).
+- **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Carga de pinout de dispositivo (nombre y función de cada pin, pines en paralelo).
 - **Topología**: tabla de segmentos (segmento, nodo desde, nodo hasta, largo, paso de trenzado, coberturas) + vista de árbol en texto (ramas indentadas). Rechaza lazos.
 - **Conectores**: lista de conectores (ID, nombre, parte, género, device, nodo, estado). Al elegir uno, **hoja de pinout con el mismo formato que las hojas actuales del taller**: Pin · Función · Termina en (calculado) · AWG · Color · Largo · Conector · Vistas.
 - **Cables (wire list / TO-FROM)**: tabla global editable estilo planilla (ID, desde, hasta, tipo de señal, nombre, WireDef, color, recorrido calculado, largo con trenzado, margen, largo de corte). Extremos por texto con autocompletado: `X1:12`, `SP3`, `G1`, o por nombre de pin de dispositivo (`PDM OUT11`).
 - **Splices**: lista con tipo, ubicación y cables que une. Incluye masas y componentes.
-- **Inspector**:
+- **Inspector**: muestra **y edita** lo seleccionado (nodo, segmento, conector, masa, splice, cable) con los mismos campos que las tablas; como edita el mismo proyecto, el resto de las vistas se actualiza solo. Las vías de un conector (contacto, tapón, referencia externa) se siguen editando en la pantalla de Conectores.
   - pin seleccionado → función, cable(s), extremo opuesto, recorrido por segmentos, **net completa**, referencia externa si sale del arnés. Todo clickeable para navegar.
   - segmento seleccionado → cables que pasan, largo, diámetro estimado (etapa 4).
 - **Chequeos**: lista de errores/advertencias; click lleva al elemento. Las filas con problemas se marcan en su tabla.

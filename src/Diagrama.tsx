@@ -24,6 +24,7 @@ import { infoFor } from "./TreePanel";
 import { constrainDrag, pxPerMm, rootedTree, scaledCenters } from "./diagramScale";
 import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, setSegmentLength, splitSegment } from "./projectEdit";
 import { endLabel } from "./Cables";
+import { ConnectorViews, usedCavities } from "./Inspector";
 import type { Finding, ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
@@ -160,7 +161,20 @@ interface HarnessNodeData extends Record<string, unknown> {
  * arrastrarlo crea una rama nueva (ver onConnectEnd).
  */
 function CenterHandles() {
-  const style = { top: "50%", left: "50%", opacity: 0, pointerEvents: "none" as const };
+  // Tamaño cero: React Flow engancha la línea en el borde superior del handle
+  // (Position.Top), así que con el tamaño por defecto (6 px) todas las líneas
+  // terminaban 3 px por encima del centro del nodo.
+  const style = {
+    top: "50%",
+    left: "50%",
+    width: 0,
+    height: 0,
+    minWidth: 0,
+    minHeight: 0,
+    border: 0,
+    opacity: 0,
+    pointerEvents: "none" as const,
+  };
   return (
     <>
       <Handle id="c-t" type="target" position={Position.Top} style={style} isConnectable={false} />
@@ -309,7 +323,8 @@ function SegmentEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps
                   e.stopPropagation();
                   d.onSplit();
                 }}
-                title="Split this segment in two with a breakout in the middle">
+                title="Split this segment in two with a breakout in the middle"
+              >
                 + breakout
               </button>
             )}
@@ -746,6 +761,7 @@ export default function Diagrama({ project, setProject, library, findings, selec
             onPaneClick={() => onSelect(null)}
             elementsSelectable={false}
             fitView
+            proOptions={{ hideAttribution: true }}
             onInit={setFlow}
             minZoom={0.2}
           >
@@ -807,6 +823,7 @@ function NodePanel({ project, library, report, nodeId, onClose, onAssign }: {
           {partNumber(connector.library_part_id)}
           {def ? ` · ${def.series ?? ""} ${def.cavities.length}-way ${def.gender}` : ""}
         </div>
+        <ConnectorViews library={library} partId={connector.library_part_id} only="image_front" used={usedCavities(project, connector)} />
         <table className="compact-table dg-pinout">
           <thead>
             <tr><th>Pin</th><th>Function</th><th>Goes to</th><th>Gauge</th><th>Color</th><th>Cut</th></tr>

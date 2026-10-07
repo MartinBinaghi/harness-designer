@@ -30,9 +30,10 @@ CREATE TABLE IF NOT EXISTS connector_defs (
     back_width_mm           REAL,
     back_height_mm          REAL,
     suggested_termination   TEXT CHECK (suggested_termination IN ('boot', 'adhesive_heatshrink', 'none')),
-    image_side_path         TEXT,
-    image_front_path        TEXT,
-    image_back_path         TEXT
+    -- vistas del conector como data URL (la imagen viaja dentro de la biblioteca)
+    image_side         TEXT,
+    image_front        TEXT,
+    image_back         TEXT
 );
 
 -- Cavidades: identificador tal cual el fabricante (1, 2... / A, B... / a, b...),

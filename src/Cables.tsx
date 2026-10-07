@@ -1,15 +1,10 @@
 import { useState } from "react";
 import type { ProjectData, Selection, WireEnd, WireInstance } from "./types";
-import type { Library } from "./libraryTypes";
+import { partLabel, type Library } from "./libraryTypes";
 import { TrashIcon } from "./icons";
-import { nextId } from "./projectEdit";
+import { nextId, wireCategoryPatch } from "./projectEdit";
 
 
-function partLabel(library: Library, partId: number | null): string {
-  if (partId === null) return "—";
-  const part = library.parts.find((p) => p.id === partId);
-  return part ? part.part_number || `#${partId}` : `#${partId} (not in library)`;
-}
 
 function cavityOptions(project: ProjectData): { value: number; label: string }[] {
   return project.connector_instances.flatMap((c) => c.cavities.map((cav) => ({ value: cav.id, label: `${c.short_id}:${cav.cavity_id}` })));
@@ -59,7 +54,7 @@ function blankEnd(): WireEnd {
   return { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null };
 }
 
-function EndEditor({ end, project, onChange }: { end: WireEnd; project: ProjectData; onChange: (e: WireEnd) => void }) {
+export function EndEditor({ end, project, onChange }: { end: WireEnd; project: ProjectData; onChange: (e: WireEnd) => void }) {
   function setKind(kind: WireEnd["kind"]) {
     onChange({ kind, cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null });
   }
@@ -153,17 +148,6 @@ export default function Cables({ project, setProject, library, selection, onSele
     setProject({ ...project, wire_instances: [...project.wire_instances, newWire] });
   }
 
-  // Elegir la categoría sugiere su color (Library → Color code). Solo pisa el
-  // color si estaba vacío o era el sugerido por la categoría anterior: un color
-  // elegido a mano se respeta.
-  function categoryPatch(wire: WireInstance, signalTypeId: number | null): Partial<WireInstance> {
-    const colorOf = (id: number | null) => library.signal_types.find((st) => st.id === id)?.default_color ?? null;
-    const previousSuggestion = colorOf(wire.signal_type_id);
-    const keepManualColor = wire.color != null && wire.color !== "" && wire.color !== previousSuggestion;
-    const suggested = colorOf(signalTypeId);
-    return { signal_type_id: signalTypeId, ...(keepManualColor || !suggested ? {} : { color: suggested }) };
-  }
-
   function gaugeOf(wire: WireInstance): string | null {
     return library.wire_defs.find((wd) => wd.part_id === wire.library_part_id)?.gauge ?? null;
   }
@@ -234,7 +218,7 @@ export default function Cables({ project, setProject, library, selection, onSele
                 </span>
               </td>
               <td>
-                <select value={wire.signal_type_id ?? ""} onChange={(e) => update(wire.id, categoryPatch(wire, e.currentTarget.value ? Number(e.currentTarget.value) : null))}>
+                <select value={wire.signal_type_id ?? ""} onChange={(e) => update(wire.id, wireCategoryPatch(library, wire, e.currentTarget.value ? Number(e.currentTarget.value) : null))}>
                   <option value="">—</option>
                   {library.signal_types.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
                 </select>

@@ -22,7 +22,12 @@ import type {
 } from "./libraryTypes";
 import { FolderIcon, PencilIcon, SaveIcon, TrashIcon } from "./icons";
 import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "./fileDialogs";
+import { readImageAsDataUrl } from "./imageFile";
+import { CONNECTOR_VIEWS, partLabel } from "./libraryTypes";
+import type { ProjectData } from "./types";
 import milStd1560 from "./data/mil-std-1560.json";
+import type { MilArrangements } from "./connectorFace";
+import { ConnectorFaceView } from "./ConnectorFaceView";
 import { nextId } from "./projectEdit";
 
 const TABS = [
@@ -147,9 +152,11 @@ interface ScreenProps {
   flushLibraryEdits: () => Promise<void>;
   filePath: string;
   setFilePath: (p: string) => void;
+  /** Proyecto abierto, para mostrar dónde se usa cada conector. */
+  project: ProjectData | null;
 }
 
-export default function LibraryScreen({ library, setLibrary, loadLibrary, cancelLibraryEdits, flushLibraryEdits, filePath, setFilePath }: ScreenProps) {
+export default function LibraryScreen({ library, setLibrary, loadLibrary, cancelLibraryEdits, flushLibraryEdits, filePath, setFilePath, project }: ScreenProps) {
   const [status, setStatus] = useState("");
   const [tab, setTab] = useState<Tab>("Connectors");
 
@@ -230,7 +237,7 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
       </section>
 
       {tab === "Connectors" && (
-        <ConnectorDefsTab library={library} setLibrary={setLibrary} partById={partById} />
+        <ConnectorDefsTab library={library} setLibrary={setLibrary} partById={partById} project={project} />
       )}
       {tab === "Devices" && (
         <DeviceDefsTab library={library} setLibrary={setLibrary} partById={partById} />
@@ -846,20 +853,69 @@ function contactSizeSummary(cavities: ConnectorDef["cavities"]): string {
   return `contact sizes ${[...counts].map(([size, n]) => `${size} ×${n}`).join(", ")}`;
 }
 
-/** Arreglos de inserto MIL-DTL-38999 (MIL-STD-1560): "13-35" -> [[id, tamaño], ...]. */
-const MIL_INSERTS: Record<string, string[][]> = milStd1560.arrangements;
+/** Arreglos de inserto MIL-DTL-38999 (MIL-STD-1560): "13-35" -> [[id, tamaño, x, y], ...]. */
+const MIL_INSERTS = milStd1560.arrangements as MilArrangements;
 
 function insertLabel(code: string): string {
   const counts = new Map<string, number>();
-  for (const [, size] of MIL_INSERTS[code]) counts.set(size, (counts.get(size) ?? 0) + 1);
+  for (const [, size] of MIL_INSERTS[code]) counts.set(String(size), (counts.get(String(size)) ?? 0) + 1);
   return `${code} · ${[...counts].map(([size, n]) => `${n} × ${size}`).join(", ")}`;
 }
 
 /**
- * Vías del conector: un generador (cantidad + numeración + tamaño de contacto)
- * para el caso normal, un arreglo de inserto MIL-STD-1560 para los circulares
- * militares, y edición una por una solo para conectores mixtos.
+ * Imágenes del conector (frontal con numeración de pines, lateral, trasera):
+ * se guardan dentro de la biblioteca, achicadas (ver imageFile.ts).
  */
+function ConnectorImages({ cd, onChange }: { cd: ConnectorDef; onChange: (patch: Partial<ConnectorDef>) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  async function load(key: (typeof CONNECTOR_VIEWS)[number]["key"], file: File | undefined) {
+    if (!file) return;
+    try {
+      setError(null);
+      onChange({ [key]: await readImageAsDataUrl(file) });
+    } catch {
+      setError(`Couldn't read ${file.name} as an image.`);
+    }
+  }
+  return (
+    <div className="connector-images">
+      <div className="connector-images-row">
+        {CONNECTOR_VIEWS.map(({ key, label }) => {
+          const src = cd[key];
+          return (
+            <div key={key} className="connector-image-slot">
+              <div className="connector-image-box">
+                {src ? <img src={src} alt={`${label} view`} /> : <span className="hint">no image</span>}
+              </div>
+              <div className="connector-image-actions">
+                <span>{label}</span>
+                <label className="link-button">
+                  {src ? "Replace…" : "Load…"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+                    hidden
+                    onChange={(e) => {
+                      void load(key, e.currentTarget.files?.[0]);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                {src && (
+                  <button className="link-button" onClick={() => onChange({ [key]: null })}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {error && <p className="diagram-notice">{error}</p>}
+    </div>
+  );
+}
+
 function generatorDefaults(cavities: ConnectorDef["cavities"]) {
   const first = cavities[0]?.cavity_id ?? "";
   return {
@@ -869,6 +925,11 @@ function generatorDefaults(cavities: ConnectorDef["cavities"]) {
   };
 }
 
+/**
+ * Vías del conector: un generador (cantidad + numeración + tamaño de contacto)
+ * para el caso normal, un arreglo de inserto MIL-STD-1560 para los circulares
+ * militares, y edición una por una solo para conectores mixtos.
+ */
 function CavityEditor({ cd, onChange: onPatch }: { cd: ConnectorDef; onChange: (patch: Partial<ConnectorDef>) => void }) {
   const onChange = (cavities: ConnectorDef["cavities"]) => onPatch({ cavities });
   const initial = generatorDefaults(cd.cavities);
@@ -896,7 +957,6 @@ function CavityEditor({ cd, onChange: onPatch }: { cd: ConnectorDef; onChange: (
 
   return (
     <div className="cavity-editor">
-      <div className="field-label">Cavities</div>
       {cd.cavities.length > 0 && (
         <div className="cavity-summary">
           <span>
@@ -941,7 +1001,7 @@ function CavityEditor({ cd, onChange: onPatch }: { cd: ConnectorDef; onChange: (
                   if (!code) return;
                   onPatch({
                     shell_size: code.split("-")[0],
-                    cavities: MIL_INSERTS[code].map(([id, size]) => ({ cavity_id: id, contact_size: size })),
+                    cavities: MIL_INSERTS[code].map(([id, size]) => ({ cavity_id: String(id), contact_size: String(size) })),
                   });
                 }}
               >
@@ -979,102 +1039,291 @@ function CavityEditor({ cd, onChange: onPatch }: { cd: ConnectorDef; onChange: (
   );
 }
 
-function ConnectorDefsTab({ library, setLibrary, partById }: TabProps) {
-  const [search, setSearch] = useState("");
-  const [genderFilter, setGenderFilter] = useState("");
+const TERMINATION_OPTIONS: [ConnectorDef["suggested_termination"], string][] = [
+  [null, "—"],
+  ["boot", "Boot"],
+  ["adhesive_heatshrink", "Adhesive heat-shrink"],
+  ["none", "None"],
+];
 
-  function updateCd(partId: number, patch: Partial<ConnectorDef>) {
-    setLibrary(updateSubtype<"connector_defs", ConnectorDef>(library, "connector_defs", partId, patch));
+function blankConnectorDef(partId: number): ConnectorDef {
+  return {
+    part_id: partId,
+    gender: "female",
+    series: null,
+    shell_size: null,
+    counterpart_id: null,
+    back_shape: null,
+    back_diameter_mm: null,
+    back_width_mm: null,
+    back_height_mm: null,
+    suggested_termination: null,
+    image_side: null,
+    image_front: null,
+    image_back: null,
+    cavities: [],
+  };
+}
+
+/** Datos que faltan y que algún cálculo o chequeo necesita (punto naranja en la lista). */
+function missingData(cd: ConnectorDef, part: Part): string[] {
+  const out: string[] = [];
+  if (part.price_usd == null) out.push("no price");
+  if (cd.cavities.length === 0) out.push("no cavities");
+  const backKnown =
+    cd.back_shape === "round"
+      ? cd.back_diameter_mm != null
+      : cd.back_shape === "rectangular" && cd.back_width_mm != null && cd.back_height_mm != null;
+  if (cd.suggested_termination === "adhesive_heatshrink" && !backKnown) out.push("no back size");
+  return out;
+}
+
+/**
+ * Contraparte en los dos sentidos: si A enchufa con B, B enchufa con A. Lo que
+ * apuntaba a A o a B antes queda sin contraparte.
+ */
+function setCounterpart(library: Library, partId: number, counterpartId: number | null): Library {
+  const old = library.connector_defs.find((d) => d.part_id === partId)?.counterpart_id ?? null;
+  return {
+    ...library,
+    connector_defs: library.connector_defs.map((d) => {
+      if (d.part_id === partId) return { ...d, counterpart_id: counterpartId };
+      if (counterpartId != null && d.part_id === counterpartId) return { ...d, counterpart_id: partId };
+      if (d.part_id === old || d.counterpart_id === partId || (counterpartId != null && d.counterpart_id === counterpartId)) {
+        return { ...d, counterpart_id: null };
+      }
+      return d;
+    }),
+  };
+}
+
+/**
+ * Conectores: lista compacta (buscador, filtro por serie y por datos faltantes)
+ * a la izquierda y la ficha del elegido a la derecha, en bloques: parte,
+ * terminación, vías con la cara dibujada, imágenes y dónde se usa.
+ */
+function ConnectorDefsTab({ library, setLibrary, partById, project }: TabProps & { project: ProjectData | null }) {
+  const [search, setSearch] = useState("");
+  const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const rows = library.connector_defs.flatMap((cd) => {
+    const part = partById(cd.part_id);
+    return part ? [{ cd, part, missing: missingData(cd, part) }] : [];
+  });
+  const seriesCounts = new Map<string, number>();
+  for (const { cd } of rows) if (cd.series) seriesCounts.set(cd.series, (seriesCounts.get(cd.series) ?? 0) + 1);
+  const visible = rows.filter(({ cd, part, missing }) => {
+    if (seriesFilter && cd.series !== seriesFilter) return false;
+    if (onlyMissing && missing.length === 0) return false;
+    return matchesSearch(search, [part.part_number, part.manufacturer, cd.series, cd.shell_size]);
+  });
+  const selected = rows.find((r) => r.cd.part_id === selectedId) ?? visible[0] ?? null;
+
+  function addConnector() {
+    const next = addPart(library, "connector", "connector_defs", blankConnectorDef);
+    setLibrary(next);
+    setSelectedId(next.parts[next.parts.length - 1].id);
+    setSeriesFilter(null);
+    setOnlyMissing(false);
+    setSearch("");
+  }
+  function deleteConnector(partId: number) {
+    const index = visible.findIndex((r) => r.cd.part_id === partId);
+    setSelectedId((visible[index + 1] ?? visible[index - 1])?.cd.part_id ?? null);
+    setLibrary(removePart(setCounterpart(library, partId, null), "connector_defs", partId));
   }
 
-  const visible = library.connector_defs.filter((cd) => {
-    if (genderFilter && cd.gender !== genderFilter) return false;
-    const part = partById(cd.part_id);
-    return matchesSearch(search, [part?.part_number, part?.manufacturer, cd.series, cd.shell_size]);
-  });
+  const chip = (label: string, active: boolean, onClick: () => void) => (
+    <button key={label} className={active ? "filter-chip active" : "filter-chip"} onClick={onClick}>
+      {label}
+    </button>
+  );
 
   return (
-    <section>
-      <FilterBar search={search} setSearch={setSearch} placeholder="Search part number, manufacturer, series…" count={visible.length} total={library.connector_defs.length}>
-        <select value={genderFilter} onChange={(e) => setGenderFilter(e.currentTarget.value)}>
-          <option value="">All genders</option>
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-        </select>
-      </FilterBar>
-      {visible.map((cd) => {
-        const part = partById(cd.part_id);
-        if (!part) return null;
-        return (
-          <div key={cd.part_id} className="query-result" style={{ marginBottom: "1rem" }}>
-            <table>
-              <thead>
-                <tr><th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gender</th><th>Series</th><th>Shell size</th><th title="Rear of the connector, where adhesive heat-shrink has to pass over">Back (mm)</th><th>Suggested termination</th><th></th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <PartFields part={part} onChange={(patch) => setLibrary(updatePart(library, part.id, patch))} />
-                  <td>
-                    <select value={cd.gender} onChange={(e) => updateCd(cd.part_id, { gender: e.currentTarget.value as ConnectorDef["gender"] })}>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                    </select>
-                  </td>
-                  <td><input value={cd.series ?? ""} onChange={(e) => updateCd(cd.part_id, { series: e.currentTarget.value || null })} placeholder="e.g. DT, DTM, DTP, Metri-Pack" /></td>
-                  <td><input value={cd.shell_size ?? ""} onChange={(e) => updateCd(cd.part_id, { shell_size: e.currentTarget.value || null })} placeholder="e.g. 12, 20" /></td>
-                  <td>
-                    <BackSizeFields cd={cd} onChange={(patch) => updateCd(cd.part_id, patch)} />
-                  </td>
-                  <td>
-                    <select
-                      value={cd.suggested_termination ?? ""}
-                      onChange={(e) => updateCd(cd.part_id, { suggested_termination: (e.currentTarget.value || null) as ConnectorDef["suggested_termination"] })}
-                    >
-                      <option value="">—</option>
-                      <option value="boot">Boot</option>
-                      <option value="adhesive_heatshrink">Adhesive heat-shrink</option>
-                      <option value="none">None</option>
-                    </select>
-                  </td>
-                  <td>
-                    <button className="icon-button" onClick={() => setLibrary(removePart(library, "connector_defs", cd.part_id))} title="Delete" aria-label="Delete connector">
-                      <TrashIcon />
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <CavityEditor cd={cd} onChange={(patch) => updateCd(cd.part_id, patch)} />
+    <section className="lib-master-detail">
+      <aside className="lib-list">
+        <div className="lib-list-filters">
+          <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search part number, series…" aria-label="Search connectors" />
+          <div className="filter-chips">
+            {chip(`All ${rows.length}`, !seriesFilter && !onlyMissing, () => {
+              setSeriesFilter(null);
+              setOnlyMissing(false);
+            })}
+            {[...seriesCounts.keys()].map((series) => chip(series, seriesFilter === series, () => setSeriesFilter(seriesFilter === series ? null : series)))}
+            {chip("Missing data", onlyMissing, () => setOnlyMissing(!onlyMissing))}
           </div>
-        );
-      })}
-      <button
-        onClick={() =>
-          setLibrary(
-            addPart(library, "connector", "connector_defs", (partId) => ({
-              part_id: partId,
-              gender: "female",
-              series: null,
-              shell_size: null,
-              counterpart_id: null,
-              back_shape: null,
-              back_diameter_mm: null,
-              back_width_mm: null,
-              back_height_mm: null,
-              suggested_termination: null,
-              image_side_path: null,
-              image_front_path: null,
-              image_back_path: null,
-              cavities: [],
-            })),
-          )
-        }
-        className="button-ghost-accent"
-      >
-        + New
-      </button>
+        </div>
+        <div className="lib-list-rows">
+          {visible.map(({ cd, part, missing }) => (
+            <button
+              key={cd.part_id}
+              className={cd.part_id === selected?.cd.part_id ? "lib-list-row selected" : "lib-list-row"}
+              onClick={() => setSelectedId(cd.part_id)}
+            >
+              <span className="lib-list-pn">{part.part_number || "(no part number)"}</span>
+              <span className="lib-gender">{cd.gender === "male" ? "M" : "F"}</span>
+              <span className="lib-list-meta">
+                {cd.series ?? "—"} · {cd.cavities.length}-way
+                {cd.cavities.length > 0 && ` · size ${contactSizeSummary(cd.cavities).replace(/^contact sizes? /, "")}`}
+              </span>
+              {missing.length > 0 && <span className="lib-missing-dot" title={`Missing: ${missing.join(", ")}`} aria-label={`Missing: ${missing.join(", ")}`} />}
+            </button>
+          ))}
+          {visible.length === 0 && <p className="hint lib-list-empty">No connectors match.</p>}
+        </div>
+        <div className="lib-list-footer">
+          <button className="button-ghost-accent" onClick={addConnector}>+ New connector</button>
+        </div>
+      </aside>
+
+      {selected ? (
+        <ConnectorDetail
+          key={selected.cd.part_id}
+          library={library}
+          project={project}
+          cd={selected.cd}
+          part={selected.part}
+          missing={selected.missing}
+          onPart={(patch) => setLibrary(updatePart(library, selected.part.id, patch))}
+          onCd={(patch) => setLibrary(updateSubtype<"connector_defs", ConnectorDef>(library, "connector_defs", selected.cd.part_id, patch))}
+          onCounterpart={(id) => setLibrary(setCounterpart(library, selected.cd.part_id, id))}
+          onSelect={setSelectedId}
+          onDelete={() => deleteConnector(selected.cd.part_id)}
+        />
+      ) : (
+        <div className="lib-detail">
+          <p className="hint">No connectors yet: “+ New connector” or “Add standard parts”.</p>
+        </div>
+      )}
     </section>
+  );
+}
+
+function ConnectorDetail({ library, project, cd, part, missing, onPart, onCd, onCounterpart, onSelect, onDelete }: {
+  library: Library;
+  project: ProjectData | null;
+  cd: ConnectorDef;
+  part: Part;
+  missing: string[];
+  onPart: (patch: Partial<Part>) => void;
+  onCd: (patch: Partial<ConnectorDef>) => void;
+  onCounterpart: (id: number | null) => void;
+  onSelect: (id: number) => void;
+  onDelete: () => void;
+}) {
+  const usedIn = project?.connector_instances.filter((c) => c.library_part_id === cd.part_id) ?? [];
+  const others = library.connector_defs.filter((d) => d.part_id !== cd.part_id);
+  return (
+    <div className="lib-detail">
+      <div className="lib-detail-header">
+        <input
+          className="lib-detail-pn"
+          value={part.part_number}
+          onChange={(e) => onPart({ part_number: e.currentTarget.value })}
+          placeholder="part number"
+          aria-label="Part number"
+        />
+        <span className="lib-detail-sub">
+          {cd.series ?? "no series"} · {cd.cavities.length}-way · {cd.gender}
+          {cd.counterpart_id != null && (
+            <>
+              {" · mates with "}
+              <button className="link-button" onClick={() => onSelect(cd.counterpart_id!)}>{partLabel(library, cd.counterpart_id)}</button>
+            </>
+          )}
+        </span>
+        <span className="lib-detail-spacer" />
+        <button className="lib-delete" onClick={onDelete}>Delete</button>
+      </div>
+      {missing.length > 0 && <p className="lib-detail-missing">Missing: {missing.join(" · ")}</p>}
+
+      <div className="lib-detail-cards">
+        <section className="lib-card">
+          <h3>Part</h3>
+          <div className="lib-fields">
+            <label>
+              <span className="field-label">Manufacturer</span>
+              <input value={part.manufacturer ?? ""} onChange={(e) => onPart({ manufacturer: e.currentTarget.value || null })} placeholder="—" />
+            </label>
+            <label>
+              <span className="field-label">USD</span>
+              <input type="number" value={part.price_usd ?? ""} onChange={(e) => onPart({ price_usd: numberOrNull(e.currentTarget.value) })} placeholder="—" />
+            </label>
+            <label>
+              <span className="field-label">Gender</span>
+              <select value={cd.gender} onChange={(e) => onCd({ gender: e.currentTarget.value as ConnectorDef["gender"] })}>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </label>
+            <label>
+              <span className="field-label">Series</span>
+              <input value={cd.series ?? ""} onChange={(e) => onCd({ series: e.currentTarget.value || null })} placeholder="e.g. DT, DTM" />
+            </label>
+            <label>
+              <span className="field-label">Shell size</span>
+              <input value={cd.shell_size ?? ""} onChange={(e) => onCd({ shell_size: e.currentTarget.value || null })} placeholder="e.g. 12, 20" />
+            </label>
+            <label>
+              <span className="field-label">Mates with</span>
+              <select value={cd.counterpart_id ?? ""} onChange={(e) => onCounterpart(e.currentTarget.value ? Number(e.currentTarget.value) : null)}>
+                <option value="">—</option>
+                {others.map((d) => (
+                  <option key={d.part_id} value={d.part_id}>{partLabel(library, d.part_id)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="lib-field-wide">
+              <span className="field-label">Description</span>
+              <input value={part.description ?? ""} onChange={(e) => onPart({ description: e.currentTarget.value || null })} placeholder="—" />
+            </label>
+          </div>
+          <h3>Termination</h3>
+          <div className="lib-fields">
+            <div className="lib-field-wide">
+              <span className="field-label" title="Rear of the connector, where adhesive heat-shrink has to pass over">Back (mm)</span>
+              <BackSizeFields cd={cd} onChange={onCd} />
+            </div>
+            <label className="lib-field-wide">
+              <span className="field-label">Suggested termination</span>
+              <select
+                value={cd.suggested_termination ?? ""}
+                onChange={(e) => onCd({ suggested_termination: (e.currentTarget.value || null) as ConnectorDef["suggested_termination"] })}
+              >
+                {TERMINATION_OPTIONS.map(([value, label]) => (
+                  <option key={label} value={value ?? ""}>{label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section className="lib-card">
+          <h3>Cavities</h3>
+          <CavityEditor cd={cd} onChange={onCd} />
+          <ConnectorFaceView def={cd} />
+        </section>
+
+        <section className="lib-card">
+          <h3>Images</h3>
+          <ConnectorImages cd={cd} onChange={onCd} />
+          <h3>Used in</h3>
+          {!project ? (
+            <p className="hint">No project open.</p>
+          ) : usedIn.length === 0 ? (
+            <p className="hint">Not used in the open project.</p>
+          ) : (
+            <ul className="lib-used-in">
+              {usedIn.map((c) => (
+                <li key={c.id}><span className="lib-used-id">{c.short_id}</span> {c.name}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
 

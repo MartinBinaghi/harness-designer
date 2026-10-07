@@ -1084,9 +1084,9 @@ mod tests {
             back_width_mm: None,
             back_height_mm: None,
             suggested_termination: None,
-            image_side_path: None,
-            image_front_path: None,
-            image_back_path: None,
+            image_side: None,
+            image_front: None,
+            image_back: None,
             cavities: vec![],
         }];
         library.accessory_defs = vec![crate::model::library::AccessoryDef {

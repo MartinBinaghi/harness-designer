@@ -131,9 +131,9 @@ pub fn base_library() -> Library {
                     back_width_mm: None,
                     back_height_mm: None,
                     suggested_termination: family.suggested_termination.map(Into::into),
-                    image_side_path: None,
-                    image_front_path: None,
-                    image_back_path: None,
+                    image_side: None,
+                    image_front: None,
+                    image_back: None,
                     cavities: (1..=ways)
                         .map(|n| ConnectorDefCavity {
                             cavity_id: n.to_string(),

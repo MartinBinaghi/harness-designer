@@ -40,9 +40,9 @@ export interface ConnectorDef {
   back_width_mm: number | null;
   back_height_mm: number | null;
   suggested_termination: "boot" | "adhesive_heatshrink" | "none" | null;
-  image_side_path: string | null;
-  image_front_path: string | null;
-  image_back_path: string | null;
+  image_side: string | null;
+  image_front: string | null;
+  image_back: string | null;
   cavities: ConnectorDefCavity[];
 }
 
@@ -188,4 +188,18 @@ export function emptyLibrary(): Library {
     t_mold_defs: [],
     signal_types: [],
   };
+}
+
+/** Vistas de un conector que se pueden cargar como imagen (plan 4.1). */
+export const CONNECTOR_VIEWS = [
+  { key: "image_front", label: "Front" },
+  { key: "image_side", label: "Side" },
+  { key: "image_back", label: "Back" },
+] as const;
+
+/** Número de parte para mostrar en listas y selects ("—" si no hay parte). */
+export function partLabel(library: Library, partId: number | null | undefined): string {
+  if (partId == null) return "—";
+  const part = library.parts.find((p) => p.id === partId);
+  return part ? part.part_number || `#${partId}` : `#${partId} (not in library)`;
 }

@@ -1,15 +1,10 @@
 import { useState } from "react";
 import type { CavityAssignment, ConnectorInstance, ProjectData, Selection } from "./types";
-import type { Library } from "./libraryTypes";
+import { partLabel, type Library } from "./libraryTypes";
 import { ChevronIcon, TrashIcon } from "./icons";
-import { cavitiesFromDef, nextId } from "./projectEdit";
+import { cavitiesFromDef, changeConnectorPart, nextId } from "./projectEdit";
 
 
-function partLabel(library: Library, partId: number | null): string {
-  if (partId === null) return "—";
-  const part = library.parts.find((p) => p.id === partId);
-  return part ? part.part_number || `#${partId}` : `#${partId} (not in library)`;
-}
 
 
 interface Props {
@@ -52,10 +47,7 @@ export default function Conectores({ project, setProject, library, selection, on
 
   function changeConnectorDef(connector: ConnectorInstance, connectorDefId: number) {
     if (!project) return;
-    update(connector.id, {
-      library_part_id: connectorDefId,
-      cavities: cavitiesFromDef(project, connectorDefId, library),
-    });
+    setProject(changeConnectorPart(project, library, connector.id, connectorDefId));
   }
 
   function updateCavity(connector: ConnectorInstance, cavityId: number, patch: Partial<CavityAssignment>) {

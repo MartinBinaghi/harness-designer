@@ -41,9 +41,12 @@ pub struct ConnectorDef {
     pub back_width_mm: Option<f64>,
     pub back_height_mm: Option<f64>,
     pub suggested_termination: Option<String>,
-    pub image_side_path: Option<String>,
-    pub image_front_path: Option<String>,
-    pub image_back_path: Option<String>,
+    /// Vistas del conector (lateral, frontal con numeración de pines, trasera)
+    /// como data URL ("data:image/webp;base64,…"): la imagen vive dentro del
+    /// archivo de la biblioteca, así se puede copiar y llevar a otra máquina.
+    pub image_side: Option<String>,
+    pub image_front: Option<String>,
+    pub image_back: Option<String>,
     pub cavities: Vec<ConnectorDefCavity>,
 }
 
@@ -231,7 +234,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut connector_defs_stmt = conn.prepare(
-        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side_path, image_front_path, image_back_path FROM connector_defs",
+        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back FROM connector_defs",
     )?;
     let mut connector_defs = connector_defs_stmt
         .query_map([], |row| {
@@ -246,9 +249,9 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 back_width_mm: row.get(7)?,
                 back_height_mm: row.get(8)?,
                 suggested_termination: row.get(9)?,
-                image_side_path: row.get(10)?,
-                image_front_path: row.get(11)?,
-                image_back_path: row.get(12)?,
+                image_side: row.get(10)?,
+                image_front: row.get(11)?,
+                image_back: row.get(12)?,
                 cavities: Vec::new(),
             })
         })?
@@ -563,7 +566,7 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
 
     for connector_def in &library.connector_defs {
         tx.execute(
-            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side_path, image_front_path, image_back_path)
+            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 connector_def.part_id,
@@ -576,9 +579,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
                 connector_def.back_width_mm,
                 connector_def.back_height_mm,
                 connector_def.suggested_termination,
-                connector_def.image_side_path,
-                connector_def.image_front_path,
-                connector_def.image_back_path,
+                connector_def.image_side,
+                connector_def.image_front,
+                connector_def.image_back,
             ],
         )?;
         for cavity in &connector_def.cavities {
@@ -759,9 +762,9 @@ mod tests {
             back_width_mm: Some(12.0),
             back_height_mm: Some(9.5),
             suggested_termination: None,
-            image_side_path: None,
-            image_front_path: None,
-            image_back_path: None,
+            image_side: None,
+            image_front: None,
+            image_back: None,
             cavities: vec![],
         };
         // Rectangular 12 × 9.5 mm -> diagonal ≈ 15.31 mm.
@@ -861,9 +864,9 @@ mod tests {
                 back_width_mm: Some(12.0),
                 back_height_mm: Some(9.5),
                 suggested_termination: Some("boot".into()),
-                image_side_path: None,
-                image_front_path: None,
-                image_back_path: None,
+                image_side: None,
+                image_front: Some("data:image/webp;base64,UklGRhIAAABXRUJQVlA4".into()),
+                image_back: None,
                 cavities: vec![ConnectorDefCavity {
                     cavity_id: "N".into(),
                     contact_size: "20".into(),

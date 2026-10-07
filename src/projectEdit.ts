@@ -215,3 +215,41 @@ export function addWire(project: ProjectData, library: Library, endA: WireEnd, e
   };
   return { project: { ...project, wire_instances: [...project.wire_instances, wire] }, wireId: id };
 }
+
+type ListKey = "nodes" | "segments" | "connector_instances" | "ground_points" | "splice_instances" | "wire_instances";
+
+/** Cambia campos de un elemento (por id) de cualquiera de las listas del proyecto. Lo usan tablas e Inspector. */
+export function patchItem<K extends ListKey>(project: ProjectData, key: K, id: number, patch: Partial<ProjectData[K][number]>): ProjectData {
+  const list = project[key] as Array<{ id: number }>;
+  return { ...project, [key]: list.map((item) => (item.id === id ? { ...item, ...patch } : item)) };
+}
+
+/**
+ * Cambia la parte (ConnectorDef) de un conector. Las vías se arman desde la
+ * ficha nueva, pero las que ya existían con el mismo nombre ("1", "A"…)
+ * conservan su id — y con él sus cables, contacto, tapón y referencia
+ * externa. Antes se regeneraban todas y los cables quedaban sueltos. Las vías
+ * que la parte nueva no tiene se descartan (Checks marca sus cables sin extremo).
+ */
+export function changeConnectorPart(project: ProjectData, library: Library, connectorId: number, connectorDefId: number): ProjectData {
+  const connector = project.connector_instances.find((c) => c.id === connectorId);
+  const previous = new Map((connector?.cavities ?? []).map((cav) => [cav.cavity_id, cav]));
+  const fresh = cavitiesFromDef(project, connectorDefId, library);
+  return patchItem(project, "connector_instances", connectorId, {
+    library_part_id: connectorDefId,
+    cavities: fresh.map((cav) => previous.get(cav.cavity_id) ?? cav),
+  });
+}
+
+/**
+ * Elegir la categoría de un cable sugiere su color (Library → Color code).
+ * Solo pisa el color si estaba vacío o era el sugerido por la categoría
+ * anterior: un color elegido a mano se respeta.
+ */
+export function wireCategoryPatch(library: Library, wire: WireInstance, signalTypeId: number | null): Partial<WireInstance> {
+  const colorOf = (id: number | null) => library.signal_types.find((st) => st.id === id)?.default_color ?? null;
+  const previousSuggestion = colorOf(wire.signal_type_id);
+  const keepManualColor = wire.color != null && wire.color !== "" && wire.color !== previousSuggestion;
+  const suggested = colorOf(signalTypeId);
+  return { signal_type_id: signalTypeId, ...(keepManualColor || !suggested ? {} : { color: suggested }) };
+}

@@ -74,3 +74,37 @@ console.log("project edit: ok");
   assert.equal((addWire(p, lib, pin(1), pin(2)) as { project: ProjectData }).project.wire_instances[0].library_part_id, 20);
   console.log("project edit (wires): ok");
 }
+
+// Categoría de cable -> color sugerido; un color puesto a mano no se pisa. patchItem cambia solo el elemento pedido.
+{
+  const { wireCategoryPatch, patchItem } = await import("../src/projectEdit.ts");
+  const lib = { signal_types: [{ id: 1, name: "5V", default_color: "violet" }, { id: 2, name: "0V", default_color: "black" }] } as unknown as Library;
+  const wire = (color: string | null, st: number | null) => ({ color, signal_type_id: st }) as unknown as ProjectData["wire_instances"][number];
+  assert.deepEqual(wireCategoryPatch(lib, wire(null, null), 1), { signal_type_id: 1, color: "violet" });
+  assert.deepEqual(wireCategoryPatch(lib, wire("violet", 1), 2), { signal_type_id: 2, color: "black" });
+  assert.deepEqual(wireCategoryPatch(lib, wire("white", 1), 2), { signal_type_id: 2 });
+  const patched = patchItem(p, "segments", 1, { length_mm: 999 });
+  assert.deepEqual(patched.segments.map((s) => s.length_mm), p.segments.map((s) => (s.id === 1 ? 999 : s.length_mm)));
+  console.log("project edit (category color, patchItem): ok");
+}
+
+// Cambiar la parte de un conector conserva las vías con el mismo nombre (y sus cables); descarta las que no existen.
+{
+  const { changeConnectorPart } = await import("../src/projectEdit.ts");
+  const lib = { connector_defs: [{ part_id: 7, cavities: [{ cavity_id: "1", contact_size: "20" }, { cavity_id: "2", contact_size: "20" }, { cavity_id: "3", contact_size: "20" }] }] } as unknown as Library;
+  const before = {
+    ...p,
+    connector_instances: [{ id: 1, library_part_id: 5, cavities: [
+      { id: 50, cavity_id: "1", contact_library_part_id: 9, seal_plug_library_part_id: null, external_reference: "ECU pin 12" },
+      { id: 51, cavity_id: "2", contact_library_part_id: null, seal_plug_library_part_id: null, external_reference: null },
+      { id: 52, cavity_id: "B", contact_library_part_id: null, seal_plug_library_part_id: null, external_reference: null },
+    ] }],
+  } as unknown as ProjectData;
+  const after = changeConnectorPart(before, lib, 1, 7).connector_instances[0];
+  assert.equal(after.library_part_id, 7);
+  assert.deepEqual(after.cavities.map((c) => c.cavity_id), ["1", "2", "3"]);
+  assert.deepEqual(after.cavities.slice(0, 2).map((c) => c.id), [50, 51]); // mismos ids -> los cables siguen enganchados
+  assert.equal(after.cavities[0].external_reference, "ECU pin 12");
+  assert.ok(![50, 51, 52].includes(after.cavities[2].id)); // la vía nueva tiene id propio
+  console.log("project edit (change connector part keeps cavities): ok");
+}

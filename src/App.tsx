@@ -223,6 +223,7 @@ export default function App() {
               flushLibraryEdits={libraryHistory.flush}
               filePath={libraryPath}
               setFilePath={setLibraryPath}
+              project={project}
             />
           )}
           {section === "Topology" && (
@@ -264,7 +265,7 @@ export default function App() {
           )}
         </div>
 
-        {showPanels && inspectorOpen && <Inspector project={project} library={library} selection={selection} />}
+        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} />}
       </div>
 
       <div className="status-bar">

@@ -5,9 +5,10 @@ Uso (desde la raíz del proyecto, con pymupdf instalado):
     python tools/parse_mil_std_1560.py std1560.pdf
 Escribe src/data/mil-std-1560.json e imprime los arreglos descartados.
 
-Por arreglo: IDs de contacto (de la tabla de coordenadas: una palabra con forma
-de ID seguida, en la misma fila, por una coordenada) y tamaño de cada uno (del
-resumen, leído por columnas). Un arreglo se acepta solo si la cantidad de IDs
+Por arreglo: IDs de contacto con su posición X/Y en pulgadas (de la tabla de
+coordenadas: una palabra con forma de ID seguida, en la misma fila, por sus
+coordenadas; la norma las da vistas desde la cara frontal del inserto de
+pines) y tamaño de cada uno (del resumen, leído por columnas). Un arreglo se acepta solo si la cantidad de IDs
 coincide con la suma declarada por la norma y todos quedan con tamaño.
 """
 import json
@@ -22,6 +23,11 @@ HEADER = re.compile(r"\(Insert arrangement (\d+-\d+)\)")
 COORD = re.compile(r"^[+-]?\s*\d*\.\d+$|^[+-]$")
 ID_TOKEN = re.compile(r"^(?:[A-Z]{1,2}|[a-z]{1,2}|\d{1,3})$")
 SIZES = {"22D", "22M", "22", "20", "16", "12", "10", "8", "4", "0", "23-22"}
+
+# Erratas de la norma: estos contactos repiten la coordenada de otro (25-37 H = C,
+# 16-35 53 = 1). Se corrigen por la simetría del arreglo (H espeja a C como G a D;
+# 53 espeja a 1 como 54 a 2).
+COORD_FIXES = {("25-37", "H"): [0.333, -0.382], ("16-35", "53"): [0.312, 0.086]}
 
 pages_by_arr = defaultdict(list)
 for pno in range(len(doc)):
@@ -49,13 +55,39 @@ def ids_on_page(words):
     shell_y = first_y(words, "Shell")
     fig_y = first_y(words, "FIGURE")
     limit = min(y for y in [shell_y, fig_y, 1e9] if y is not None)
+    # Algunas tablas (ej. 9-7) dan primero los mm y entre paréntesis las pulgadas.
+    texts = [w[4] for w in words]
+    mm_first = any(texts[k] == "mm" and texts[k + 1] == "(inches)" for k in range(len(texts) - 1))
     ids = []
     for row in rows_of([w for w in words if w[1] < limit]):
         for i, w in enumerate(row[:-1]):
             nxt = row[i + 1]
             if ID_TOKEN.match(w[4]) and COORD.match(nxt[4]) and nxt[0] - w[2] < 90:
-                ids.append(w[4])
+                xy = inch_pair(row[i + 1 :])
+                if xy and mm_first:
+                    xy = [round(v / 25.4, 4) for v in xy]
+                ids.append((w[4], xy))
     return ids
+
+
+def inch_pair(tokens):
+    """X e Y: los dos primeros valores después del ID (cada uno va seguido de
+    su equivalente en la otra unidad entre paréntesis, que se salta)."""
+    vals, sign = [], ""
+    for t in tokens:
+        x = t[4].replace(" ", "")
+        if x in ("+", "-"):
+            sign = x
+        elif re.fullmatch(r"[+-]?\d*\.\d+", x):
+            vals.append(float(sign + x if x[0] not in "+-" else x))
+            sign = ""
+            if len(vals) == 2:
+                return vals
+        elif "(" in x or ")" in x:
+            continue
+        else:
+            break
+    return None
 
 
 def summary(words):
@@ -140,7 +172,8 @@ for arr, pnos in pages_by_arr.items():
         s = summary(words)
         if s:
             rows = s
-    ids = sorted(set(ids), key=id_order)
+    pos = {i: COORD_FIXES.get((arr, i), xy) for i, xy in ids if xy}
+    ids = sorted({i for i, _ in ids}, key=id_order)
     if not rows:
         rejected[arr] = f"no summary (ids={len(ids)})"
         continue
@@ -179,12 +212,17 @@ for arr, pnos in pages_by_arr.items():
     if set(sizes) != set(ids):
         rejected[arr] = "unassigned ids"
         continue
-    results[arr] = [[i, sizes[i]] for i in ids]
+    if set(pos) != set(ids):
+        rejected[arr] = "missing coordinates"
+        continue
+    # [id, tamaño, x, y]: x/y en pulgadas desde el centro, cara frontal del inserto de pines.
+    results[arr] = [[i, sizes[i], *pos[i]] for i in ids]
 
 key = lambda a: [int(x) for x in a.split("-")]
 out = {
     "source": "MIL-STD-1560C w/CHANGE 2 (6 Dec 2018), extracted with tools/parse_mil_std_1560.py; "
-    "only arrangements whose contact count matches the standard's declared total are included.",
+    "only arrangements whose contact count matches the standard's declared total are included. "
+    "Each contact: [id, size, x, y], x/y in inches from the insert center, front face of the pin insert.",
     "arrangements": {k: results[k] for k in sorted(results, key=key)},
 }
 json.dump(out, open("src/data/mil-std-1560.json", "w"), separators=(",", ":"))

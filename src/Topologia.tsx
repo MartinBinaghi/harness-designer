@@ -7,19 +7,19 @@ import { FolderIcon, SaveIcon, TrashIcon } from "./icons";
 import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "./fileDialogs";
 import { nextId } from "./projectEdit";
 
-const NODE_KIND_LABELS: Record<Node["kind"], string> = {
+export const NODE_KIND_LABELS: Record<Node["kind"], string> = {
   connector_end: "Connector end",
   breakout: "Breakout",
   splice_point: "Splice point",
   ground_point: "Ground point",
 };
-const TERMINATION_LABELS: Record<NonNullable<Node["termination"]>, string> = {
+export const TERMINATION_LABELS: Record<NonNullable<Node["termination"]>, string> = {
   t_mold: "T-mold",
   adhesive_heatshrink: "Adhesive heat-shrink",
   none: "None",
 };
-const NODE_KINDS = Object.keys(NODE_KIND_LABELS) as Node["kind"][];
-const TERMINATIONS = Object.keys(TERMINATION_LABELS) as NonNullable<Node["termination"]>[];
+export const NODE_KINDS = Object.keys(NODE_KIND_LABELS) as Node["kind"][];
+export const TERMINATIONS = Object.keys(TERMINATION_LABELS) as NonNullable<Node["termination"]>[];
 
 
 interface Props {
