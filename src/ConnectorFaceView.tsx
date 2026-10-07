@@ -14,10 +14,12 @@ const NUMBERING_NOTE = {
 /**
  * Cara del conector dibujada a partir de su serie y sus vías (ver
  * connectorFace.ts), con selector cara de acople / lado cables. `used` resalta
- * las vías que tienen cable. No muestra nada si la familia no se reconoce.
+ * las vías que tienen cable. `fixedSide` muestra solo esa vista, sin selector
+ * (hojas impresas). No muestra nada si la familia no se reconoce.
  */
-export function ConnectorFaceView({ def, used }: { def: ConnectorDef; used?: Set<string> }) {
-  const [side, setSide] = useState<"front" | "rear">("front");
+export function ConnectorFaceView({ def, used, fixedSide }: { def: ConnectorDef; used?: Set<string>; fixedSide?: "front" | "rear" }) {
+  const [chosenSide, setSide] = useState<"front" | "rear">("front");
+  const side = fixedSide ?? chosenSide;
   const front = useMemo(() => connectorFace(def, MIL), [def]);
   if (!front) return null;
   const face = side === "front" ? front : wireSide(front);
@@ -40,15 +42,24 @@ export function ConnectorFaceView({ def, used }: { def: ConnectorDef; used?: Set
     box = [-o, -o, o, o];
   } else {
     const pts = hull(face);
-    const points = pts.map(([x, y]) => `${x},${y}`).join(" ");
     const xs = pts.map(([x]) => x);
     const ys = pts.map(([, y]) => y);
     box = [Math.min(...xs) - o, Math.min(...ys) - o, Math.max(...xs) + o, Math.max(...ys) + o];
     const midY = (box[1] + box[3]) / 2;
     body = (
       <>
-        <polygon points={points} className="cf-body-edge" strokeWidth={2 * o + o * 0.12} />
-        <polygon points={points} className="cf-body-fill" strokeWidth={2 * o} />
+        {face.shape === "rect" ? (
+          <>
+            {/* Carcasa rectangular con esquinas apenas redondeadas, como las Deutsch reales. */}
+            <rect x={box[0] - o * 0.06} y={box[1] - o * 0.06} width={box[2] - box[0] + o * 0.12} height={box[3] - box[1] + o * 0.12} rx={o * 0.46} className="cf-body-edge" />
+            <rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} rx={o * 0.4} className="cf-body-fill" />
+          </>
+        ) : (
+          <>
+            <RoundedHull pts={pts} r={o * 1.06} className="cf-body-edge" />
+            <RoundedHull pts={pts} r={o} className="cf-body-fill" />
+          </>
+        )}
         {face.latch === "top" ? (
           <rect x={-o * 0.7} y={box[1] - latchH} width={o * 1.4} height={latchH + o * 0.1} rx={latchH * 0.3} className="cf-latch" />
         ) : (
@@ -81,12 +92,38 @@ export function ConnectorFaceView({ def, used }: { def: ConnectorDef; used?: Set
         })}
       </svg>
       <figcaption>
-        <span className="cf-toggle">
-          <button className={side === "front" ? "active" : ""} onClick={() => setSide("front")}>Mating face</button>
-          <button className={side === "rear" ? "active" : ""} onClick={() => setSide("rear")}>Wire side</button>
-        </span>
+        {fixedSide ? (
+          <span className="cf-fixed-side">{side === "front" ? "Mating face" : "Wire side"}</span>
+        ) : (
+          <span className="cf-toggle">
+            <button className={side === "front" ? "active" : ""} onClick={() => setSide("front")}>Mating face</button>
+            <button className={side === "rear" ? "active" : ""} onClick={() => setSide("rear")}>Wire side</button>
+          </span>
+        )}
         <span className="hint">Drawn by the program · {NUMBERING_NOTE[face.numbering]}</span>
       </figcaption>
     </figure>
+  );
+}
+
+/**
+ * La envolvente de los centros agrandada `r` en todas direcciones (contorno de
+ * esquinas redondeadas), como figuras rellenas: el polígono, un círculo en cada
+ * vértice y una banda por lado. Un trazo grueso con uniones redondeadas daría
+ * lo mismo en pantalla, pero la impresión de Chromium lo deforma.
+ */
+function RoundedHull({ pts, r, className }: { pts: [number, number][]; r: number; className: string }) {
+  const bands = pts.map(([x1, y1], i) => {
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const [nx, ny] = [(-(y2 - y1) / len) * r, ((x2 - x1) / len) * r];
+    return `${x1 + nx},${y1 + ny} ${x2 + nx},${y2 + ny} ${x2 - nx},${y2 - ny} ${x1 - nx},${y1 - ny}`;
+  });
+  return (
+    <g className={className}>
+      {pts.length >= 3 && <polygon points={pts.map(([x, y]) => `${x},${y}`).join(" ")} />}
+      {pts.length >= 2 && bands.map((b, i) => <polygon key={i} points={b} />)}
+      {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={r} />)}
+    </g>
   );
 }

@@ -23,9 +23,13 @@ export interface FaceCavity {
 }
 
 export interface ConnectorFace {
-  /** "hull": contorno redondeado alrededor de las vías (Deutsch, Superseal); "circle": circular militar. */
-  shape: "hull" | "circle";
-  /** Margen del contorno alrededor de los centros de las vías (hull) o radio (circle), mm. */
+  /**
+   * "rect": rectángulo de esquinas poco redondeadas alrededor de las vías
+   * (Deutsch); "hull": contorno redondeado que sigue a las vías (Superseal,
+   * ovalado; DT de 3 vías, triangular); "circle": circular militar.
+   */
+  shape: "rect" | "hull" | "circle";
+  /** Margen del contorno alrededor de los centros de las vías (rect, hull) o radio (circle), mm. */
   outline: number;
   /** Traba (Deutsch/Superseal) o chavetero principal (circular): marca la orientación. */
   latch: "top" | "sides";
@@ -111,11 +115,13 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
   const rear = layout.grid.map(([x, y], i) => ({ id: String(i + 1), x: (x - cx) * p, y: (y - cy) * p, r: p * 0.32 }));
+  // Superseal es ovalado y el DT de 3 vías triangular; las demás Deutsch, rectangulares.
+  const rounded = fam === "SUPERSEAL" || (fam === "DT" && ways === 3);
   // Cara del macho = su vista trasera espejada; la hembra enfrenta al macho, así
   // que su cara coincide con la vista trasera del macho.
   return {
-    shape: "hull",
-    outline: p * 0.75,
+    shape: rounded ? "hull" : "rect",
+    outline: p * (rounded ? 0.75 : 0.8),
     latch: fam === "DT" && ways === 12 ? "sides" : "top",
     cavities: def.gender === "male" ? mirror(rear) : rear,
     numbering: layout.checked ? "datasheet" : "inferred",

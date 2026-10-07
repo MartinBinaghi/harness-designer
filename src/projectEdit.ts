@@ -253,3 +253,41 @@ export function wireCategoryPatch(library: Library, wire: WireInstance, signalTy
   const suggested = colorOf(signalTypeId);
   return { signal_type_id: signalTypeId, ...(keepManualColor || !suggested ? {} : { color: suggested }) };
 }
+
+// Etiquetas de los extremos de un cable ("X4:2", "SP1", "G1", "R1"): tablas, diagrama y hojas impresas.
+export function cavityOptions(project: ProjectData): { value: number; label: string }[] {
+  return project.connector_instances.flatMap((c) => c.cavities.map((cav) => ({ value: cav.id, label: `${c.short_id}:${cav.cavity_id}` })));
+}
+export function spliceOptions(project: ProjectData): { value: number; label: string }[] {
+  return project.splice_instances.map((s) => ({ value: s.id, label: s.short_id }));
+}
+export function groundOptions(project: ProjectData): { value: number; label: string }[] {
+  return project.ground_points.map((g) => ({ value: g.id, label: g.short_id }));
+}
+export function componentOptions(project: ProjectData): { value: number; label: string }[] {
+  return project.component_instances.map((c) => ({ value: c.id, label: c.short_id }));
+}
+
+/** Human-readable label for one wire end, for both display and search. */
+export function endLabel(project: ProjectData, end: WireEnd): string {
+  switch (end.kind) {
+    case "cavity": {
+      const found = cavityOptions(project).find((o) => o.value === end.cavity_assignment_id);
+      return found?.label ?? "—";
+    }
+    case "splice": {
+      const found = spliceOptions(project).find((o) => o.value === end.splice_id);
+      return found?.label ?? "—";
+    }
+    case "ground": {
+      const found = groundOptions(project).find((o) => o.value === end.ground_point_id);
+      return found?.label ?? "—";
+    }
+    case "component": {
+      const found = componentOptions(project).find((o) => o.value === end.component_instance_id);
+      return found?.label ?? "—";
+    }
+    default:
+      return "—";
+  }
+}

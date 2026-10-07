@@ -56,7 +56,7 @@ Uso inicial: personal. A futuro, posibilidad de venderlo, así que las decisione
 3. **Costos y lista de corte**: partes, mano de obra, márgenes, markup.
 4. **Diámetro estimado por segmento**: selección de termocontraíble y boots.
 5. **Editor visual**: diagrama de armado (no escalado, con medidas) + vista esquemática pin a pin generada automáticamente. Detalle en la sección 10.
-6. **Exportaciones e impresión**: PDF de lista de corte, hojas de pinout por conector (mismo formato que las hojas actuales del taller), etiquetas, **hoja de armado** (el diagrama con medidas, en A4/A3, para llevar a la mesa).
+6. **Exportaciones e impresión**: PDF de lista de corte, hojas de pinout por conector (mismo formato que las hojas actuales del taller), etiquetas, **hoja de armado** (el diagrama con medidas, en A4/A3, para llevar a la mesa). Pestaña **Print**: las hojas se arman en HTML (vista previa = lo que sale impreso, A4/A3) y se imprimen con el diálogo del sistema, que también guarda como PDF; las etiquetas además se exportan a CSV.
 7. **Módulo de construcción concéntrica** (opcional), con y sin fillers.
 8. **Futuro**: Mac/Linux, licencia, biblioteca distribuible, importación de pinouts desde CSV/Excel, revisiones, proyectos multi-arnés (vínculo real entre conectores de interconexión), inventario/stock (descontar del BOM lo que ya hay en el taller), **vista realista/3D o simulación del cableado** (requiere agregar coordenadas espaciales al modelo; se puede sumar sin romper lo existente).
 
@@ -303,7 +303,7 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 ### 7.3 Pantallas
 - **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Carga de pinout de dispositivo (nombre y función de cada pin, pines en paralelo).
 - **Topología**: tabla de segmentos (segmento, nodo desde, nodo hasta, largo, paso de trenzado, coberturas) + vista de árbol en texto (ramas indentadas). Rechaza lazos.
-- **Conectores**: lista de conectores (ID, nombre, parte, género, device, nodo, estado). Al elegir uno, **hoja de pinout con el mismo formato que las hojas actuales del taller**: Pin · Función · Termina en (calculado) · AWG · Color · Largo · Conector · Vistas.
+- **Conectores**: lista de conectores (ID, nombre, parte, género, device, nodo, estado). **Hoja de pinout con el mismo formato que las hojas actuales del taller** (pestaña Print): hoja apaisada, una tabla con un bloque por conector — Nombre · Pin · Función · Termina en (calculado) · Conector · Vista delantera (la vista lateral queda para más adelante) —, "n/c" en las vías sin cable, y "falta pinout y conector" en los pendientes. Calibre, color y largo van en la lista de corte.
 - **Cables (wire list / TO-FROM)**: tabla global editable estilo planilla (ID, desde, hasta, tipo de señal, nombre, WireDef, color, recorrido calculado, largo con trenzado, margen, largo de corte). Extremos por texto con autocompletado: `X1:12`, `SP3`, `G1`, o por nombre de pin de dispositivo (`PDM OUT11`).
 - **Splices**: lista con tipo, ubicación y cables que une. Incluye masas y componentes.
 - **Inspector**: muestra **y edita** lo seleccionado (nodo, segmento, conector, masa, splice, cable) con los mismos campos que las tablas; como edita el mismo proyecto, el resto de las vistas se actualiza solo. Las vías de un conector (contacto, tapón, referencia externa) se siguen editando en la pantalla de Conectores.
@@ -325,7 +325,7 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 ### 8.1 Lista de corte (para el taller)
 - Un renglón por cable: ID, función, WireDef (calibre, tipo, color), desde → hasta (ej. "X4:2 → X9:47"), largo de segmentos, margen aplicado, **largo de corte final**, grupo de trenzado.
 - Sin largo de pelado (es conocimiento del taller).
-- Ordenamientos: por tipo de cable (cortar de corrido del mismo rollo), por largo, por conector. Los grupos de trenzado aparecen juntos.
+- **Dividida por conector** (pedido de Martin: si no, es confusa a la vista). Cada cable aparece una sola vez, bajo el conector de su extremo que no es el principal (X1:1 → X2:1 va con X2); los que no tocan ningún conector, en "Other" al final. Dentro de cada bloque: por pin (defecto), por tipo de cable (cortar de corrido del mismo rollo) o por largo. Los grupos de trenzado aparecen juntos, en el bloque de su primer cable. Cada bloque indica el **termocontraíble del tramo que llega al conector** en medida nominal (1/8", 3/16", 1/4"…): el asignado al segmento o el sugerido por el cálculo (sección 9.2). El **color va en palabras** (la hoja se imprime en blanco y negro).
 - **Totales por tipo de cable**: metros necesarios de cada WireDef.
 - **Lista de corte de coberturas**: tramos de termocontraíble/sleeving por segmento con su largo, y boots por conector.
 

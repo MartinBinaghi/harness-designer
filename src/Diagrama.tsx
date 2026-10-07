@@ -22,8 +22,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { infoFor } from "./TreePanel";
 import { constrainDrag, pxPerMm, rootedTree, scaledCenters } from "./diagramScale";
-import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, setSegmentLength, splitSegment } from "./projectEdit";
-import { endLabel } from "./Cables";
+import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, endLabel, setSegmentLength, splitSegment } from "./projectEdit";
 import { ConnectorViews, usedCavities } from "./Inspector";
 import type { Finding, ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";

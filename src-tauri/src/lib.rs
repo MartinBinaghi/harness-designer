@@ -176,6 +176,13 @@ fn compute_costs(project: ProjectData, library: Library) -> calc::CostReport {
     calc::compute_cost_report(&project, &library)
 }
 
+/// Guarda un texto exportado (ej. la lista de etiquetas en CSV) en la ruta
+/// que el usuario eligió en el diálogo de guardar.
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| format!("Couldn't write {path}: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -203,7 +210,8 @@ pub fn run() {
             node_distances,
             merge_base_library,
             run_checks,
-            compute_costs
+            compute_costs,
+            write_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

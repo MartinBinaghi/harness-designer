@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
-import { endLabel } from "./Cables";
+import { endLabel } from "./projectEdit";
 
 interface Props {
   project: ProjectData | null;

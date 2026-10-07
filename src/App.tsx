@@ -9,6 +9,7 @@ import Conectores from "./Conectores";
 import Cables from "./Cables";
 import Checks from "./Checks";
 import Costs from "./Costs";
+import Impresion from "./Impresion";
 import Tree from "./TreePanel";
 import Inspector from "./Inspector";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./icons";
@@ -18,7 +19,7 @@ import type { Library } from "./libraryTypes";
 import { emptyLibrary } from "./libraryTypes";
 import "./App.css";
 
-const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Checks", "Costs"] as const;
+const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Checks", "Costs", "Print"] as const;
 type Section = (typeof SECTIONS)[number];
 
 export default function App() {
@@ -145,7 +146,7 @@ export default function App() {
     localStorage.setItem("inspectorOpen", String(inspectorOpen));
   }, [treeOpen, inspectorOpen]);
 
-  const showPanels = section !== "Library";
+  const showPanels = section !== "Library" && section !== "Print";
   const errorCount = findings.filter((f) => f.severity === "error").length;
   const warningCount = findings.filter((f) => f.severity === "warning").length;
   const canUndo = section === "Library" ? libraryStatus.can_undo : projectStatus.can_undo;
@@ -263,6 +264,7 @@ export default function App() {
           {section === "Costs" && (
             <Costs project={project} library={library} selection={selection} onSelect={setSelection} />
           )}
+          {section === "Print" && <Impresion project={project} library={library} />}
         </div>
 
         {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} />}

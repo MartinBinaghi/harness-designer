@@ -33,6 +33,10 @@ assert.equal(new Set(dt3.cavities.map((c) => Math.round(c.y))).size, 2);
 assert.equal(hull(dt3).length, 3);
 assert.equal(new Set(connectorFace(def("DTM", "male", ways(3)), mil)!.cavities.map((c) => c.y)).size, 1);
 assert.equal(dt3.numbering, "inferred");
+// Contorno: rectangular en las Deutsch, salvo el DT de 3 vías (triangular); Superseal ovalado.
+assert.equal(dt3.shape, "hull");
+assert.equal(dtm4p.shape, "rect");
+assert.equal(connectorFace(def("Superseal 1.5", "male", ways(3, "1.5")), mil)!.shape, "hull");
 // Contorno de una grilla 2×3: sus 4 esquinas.
 assert.equal(hull(connectorFace(def("DT", "female", ways(6, "16")), mil)!).length, 4);
 

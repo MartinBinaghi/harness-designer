@@ -1,14 +1,16 @@
 /**
- * Diálogos nativos para elegir dónde abrir/guardar un proyecto o la
- * biblioteca (plugin dialog de Tauri: explorador de Windows, Finder en Mac).
+ * Diálogos nativos para elegir dónde abrir/guardar un proyecto, la
+ * biblioteca o una exportación (plugin dialog de Tauri: explorador de
+ * Windows, Finder en Mac).
  */
 import { open, save } from "@tauri-apps/plugin-dialog";
 
-type FileKind = "project" | "library";
+type FileKind = "project" | "library" | "csv";
 
 const FILTERS: Record<FileKind, { name: string; extensions: string[] }[]> = {
   project: [{ name: "Harness project", extensions: ["db"] }],
   library: [{ name: "Parts library", extensions: ["db"] }],
+  csv: [{ name: "CSV (Excel, label printer software)", extensions: ["csv"] }],
 };
 
 /** Una ruta elegida en un diálogo (o guardada antes): se puede guardar ahí sin preguntar. */
