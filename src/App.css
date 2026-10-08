@@ -2322,9 +2322,14 @@ table.cn-pinout {
 }
 
 .cn-col-actions {
-  width: 5.5rem;
+  width: 7rem;
   white-space: nowrap;
   text-align: right;
+}
+
+/* "+ wire" y el tacho, bien separados para no borrar sin querer. */
+.cn-col-actions .link-button {
+  margin-right: 1rem;
 }
 
 .cn-footnote {
