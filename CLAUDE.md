@@ -41,7 +41,7 @@ Uso inicial: personal. A futuro, posibilidad de venderlo, así que las decisione
 | Stack | Tauri (frontend web + núcleo Rust) con SQLite. |
 | Portabilidad | No usar APIs exclusivas de Windows (rutas fijas, registro, etc.) para que el paso a Mac/Linux sea compilar y probar. |
 | Archivos | Un archivo por proyecto (arnés), copiable y respaldable. El archivo guarda la **versión del formato** para poder migrar archivos viejos. |
-| Biblioteca de partes | Separada de los proyectos. Exportable/importable. Incluye imágenes de conectores. Hay una **biblioteca base** de conectores estandarizados (DT/DTM/DTP, Superseal 1.5) que se suma con un botón; sus datos están marcados como no verificados hasta confirmarlos con el datasheet. |
+| Biblioteca de partes | Separada de los proyectos. Exportable/importable. Incluye imágenes de conectores. Hay una **biblioteca base** de conectores estandarizados (DT/DTM/DTP con su contacto y tapón, Superseal 1.5, Superseal 1.0 hembra de 26 y 34 vías para el MoTeC PDM30, con sus pines y tapón), cable M22759/32 y termocontraíble Raychem (DR-25 sin adhesivo, ATUM con adhesivo) que se suma con un botón; sus datos están marcados como no verificados hasta confirmarlos con el datasheet. |
 | Configuración | Nada específico del taller en el código: moneda, markup, márgenes, unidades, valor hora, prefijos de nomenclatura, colores por tipo de señal, etc. van en configuración. |
 | Moneda | Precios en USD, con fecha de actualización de cada precio. |
 | Deshacer/rehacer | Contemplarlo desde el inicio en la arquitectura. |
@@ -78,21 +78,22 @@ Cada tipo de parte extiende `Part`:
 **ConnectorDef**
 - **género** (macho/hembra)
 - tamaño de carcasa, cantidad de vías
-- lista de cavidades (la cantidad de vías es el largo de la lista, no un campo aparte): identificador tal cual el fabricante (1, 2… / A, B… / a, b…, **distinguiendo mayúsculas y minúsculas**) y tamaño de contacto que acepta
-- **imágenes**: vista lateral, frontal y trasera, con numeración de pines. Cada ConnectorDef guarda su propia vista frontal (la numeración de macho y hembra está espejada; no se deriva de la contraparte). Se guardan **dentro del archivo de la biblioteca** (achicadas a 800 px, WebP), no como ruta a un archivo externo, para que la biblioteca se pueda copiar a otra máquina. Se ven en el Inspector al seleccionar un conector y (la frontal) en la hoja de pinout del doble click en el diagrama. Además, para las familias conocidas (Deutsch DT/DTM/DTP, Superseal, MIL-DTL-38999 por MIL-STD-1560) el programa **dibuja la cara** a partir de la serie y las vías: contorno, traba y número de cada vía, vista de acople o lado cables, con las vías usadas resaltadas; avisa cuando la numeración no está confirmada con el fabricante
+- lista de cavidades (la cantidad de vías es el largo de la lista, no un campo aparte): identificador tal cual el fabricante (1, 2… / A, B… / a, b…, **distinguiendo mayúsculas y minúsculas**; el DT de 3 vías va A, B, C) y tamaño de contacto que acepta
+- **imágenes**: vista lateral, frontal y trasera, con numeración de pines. Cada ConnectorDef guarda su propia vista frontal (la numeración de macho y hembra está espejada; no se deriva de la contraparte). Se guardan **dentro del archivo de la biblioteca** (achicadas a 800 px, WebP), no como ruta a un archivo externo, para que la biblioteca se pueda copiar a otra máquina. Se ven en el Inspector al seleccionar un conector y (la frontal) en la hoja de pinout del doble click en el diagrama. Además, para las familias conocidas (Deutsch DT/DTM/DTP, Superseal 1.5, Superseal 1.0 de 26 y 34 vías — los del MoTeC PDM30/M1 —, MIL-DTL-38999 por MIL-STD-1560) el programa **dibuja la cara** a partir de la serie y las vías: contorno, traba y número de cada vía, vista de acople o lado cables, con las vías usadas resaltadas; avisa cuando la numeración no está confirmada con el fabricante
 - contraparte (opcional): el ConnectorDef con el que enchufa
 - **contacto y tapón por defecto**: el contacto que lleva cada vía con cable y el tapón de las vías sin usar, **uno por conector** (en el taller cada familia usa un solo contacto). El proyecto no los carga vía por vía: el programa los asigna; si el calibre de un cable no entra en el contacto del conector, usa otro de la biblioteca del mismo tamaño y género que sí sirva, y si no hay, avisa
 - **parte trasera**, redonda (Ø) o rectangular (ancho × alto; se usa la diagonal): necesaria para dimensionar termo con adhesivo que pasa por encima del conector
 - **terminación sugerida**: boot / termo con adhesivo / nada (ej. Amphenol de interconexión → boot; DTM → termo con adhesivo)
+- **largo de la pieza de termo con adhesivo** que se corta para ese conector (varía según el conector): va en la hoja de corte y suma metros al BOM
 - los terminales sueltos (ej. AMP 6.3, ojales) se modelan como conector de una sola cavidad
 
-**DeviceDef** — dispositivo con pinout conocido (ej. MoTeC PDM30, MoTeC C185, ECUs)
-- lista de conectores del dispositivo (ej. PDM30: A 34 vías, B 26 vías, C perno M6), cada uno referenciando su ConnectorDef de acople
+**DeviceDef** — dispositivo con pinout conocido (ej. MoTeC PDM30, MoTeC C185, ECUs, un volante del cliente)
+- lista de conectores del dispositivo (ej. PDM30: A 34 vías, B 26 vías, C perno M6), cada uno referenciando la carcasa **del lado del arnés** (la que se compra; su ConnectorDef da las vías)
 - por cada pin: **nombre** (ej. `OUT11`, `AV3`) y función (ej. "8 A Output 11")
-- **pines en paralelo**: una misma salida en varios pines (ej. PDM30 OUT1 = A1 + A10)
+- **pines en paralelo**: una misma salida en varios pines (ej. PDM30 OUT1 = A1 + A10). No se cargan aparte: **el mismo nombre en dos vías** ya lo indica (la pantalla lo marca "also A10"); en "Goes to" se escriben con la vía ("PDM30 OUT1 (A10)")
 - permite referenciar destinos por nombre ("PDM OUT11") y que el programa resuelva el pin (A6)
 - en el proyecto, un conector puede ser directamente **"el conector A del PDM30"** (se elige junto a las carcasas): trae su carcasa y el nombre de cada pin, que aparece en las hojas ("PDM30 · OUT11 (X9:A6)", y OUT11 como función en el bloque del PDM)
-- se carga una vez desde el datasheet y sirve para todos los proyectos
+- se carga una vez y sirve para todos los proyectos. Normalmente el pinout lo manda el cliente con el pedido: se **pega** su tabla (Excel o PDF) y se elige qué columna es la vía, el nombre y la función
 
 **ContactDef**
 - género, tamaño de contacto
@@ -131,7 +132,7 @@ Cada tipo de parte extiende `Part`:
 **Project** (= un arnés)
 - nombre, **código del arnés** (ej. `MOT-01`), cliente, revisión, versión del formato de archivo
 - **conector principal**: donde va la etiqueta del arnés (nombre + código)
-- configuración: markup, margen de corte global (por defecto 10%), paso de trenzado por defecto
+- configuración: markup, margen de corte global (por defecto 10%), paso de trenzado por defecto, factor de llenado, **repuesto por categoría de parte** (%) y costo de materiales **sobre lo usado o sobre lo comprado**. Se edita en el Inspector haciendo clic en el nombre del arnés en el árbol; un proyecto nuevo arranca con los valores por defecto
 - mano de obra: horas estimadas × valor hora
 
 
@@ -304,12 +305,12 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 - **Barra inferior**: contador de errores/advertencias siempre visible
 
 ### 7.3 Pantallas
-- **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Carga de pinout de dispositivo (nombre y función de cada pin, pines en paralelo).
+- **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Dispositivos: lista + ficha; cada conector del dispositivo (A, B…) con su carcasa del arnés y **todas sus vías listadas** para escribir nombre y función, la cara dibujada con el nombre de cada pin (clic en una vía va a su fila) y **pegado de la tabla del cliente** con elección de columnas y aviso de las filas que no corresponden a ninguna vía.
 - **Topología**: tabla de segmentos (segmento, nodo desde, nodo hasta, largo, paso de trenzado, coberturas) + vista de árbol en texto (ramas indentadas). Rechaza lazos.
 - **Conectores** (carga principal del arnés, conector por conector): lista de conectores a la izquierda (pines usados, pendientes) y, del elegido, sus datos (ID, nombre, pieza o conector de dispositivo, nodo, estado, terminación, interconexión) y su **pinout editable**: una fila por vía — Función · Categoría (color sugerido) · Goes to · Tipo de cable · Color · Largo. Escribir en un pin vacío crea el cable; "Goes to" acepta `X4:2`, `SP1`, `G1` o el nombre de pin de un dispositivo (`PDM30 OUT11`), con autocompletado. **Un pin puede tener varios cables** (sub-filas). Un cable es uno solo: aparece en el pinout de sus dos puntas. El largo sale del recorrido ("auto") o se pone a mano desde el Inspector ("manual"). Por vía también se carga la referencia externa (en conectores de interconexión) y se ve el nombre de pin si es el conector de un dispositivo. **Hoja de pinout con el mismo formato que las hojas actuales del taller** (pestaña Print): hoja apaisada, una tabla con un bloque por conector — Nombre · Pin · Función · Termina en (calculado) · Conector · Vista delantera (la vista lateral queda para más adelante) —, "n/c" en las vías sin cable, y "falta pinout y conector" en los pendientes. Calibre, color y largo van en la lista de corte.
 - **Cables (wire list / TO-FROM)**: lista global (la carga principal es por conector, ver Conectores); tabla editable estilo planilla (ID, desde, hasta, tipo de señal, nombre, WireDef, color, recorrido calculado, largo con trenzado, margen, largo de corte). Extremos por texto con autocompletado: `X1:12`, `SP3`, `G1`, o por nombre de pin de dispositivo (`PDM OUT11`).
-- **Splices**: lista con tipo, ubicación y cables que une. Incluye masas y componentes.
-- **Inspector**: muestra **y edita** lo seleccionado (nodo, segmento, conector, masa, splice, cable) con los mismos campos que las tablas; como edita el mismo proyecto, el resto de las vistas se actualiza solo. Las referencias externas de las vías se editan en la pantalla de Conectores.
+- **Splices**: lista con tipo, ubicación y cables que une. Incluye masas y componentes. Acá se crean (con el próximo ID y la primera parte de la biblioteca de su tipo) y se borran (sus cables quedan con ese extremo vacío); el resto se edita en el Inspector.
+- **Inspector**: muestra **y edita** lo seleccionado (el arnés, nodo, segmento, conector, masa, splice, componente, cable) con los mismos campos que las tablas; como edita el mismo proyecto, el resto de las vistas se actualiza solo. Las referencias externas de las vías se editan en la pantalla de Conectores.
   - cable seleccionado → recorrido por segmentos con sus largos, largo con trenzado + margen = largo de corte, **largo a mano**, grupo de trenzado.
   - pin seleccionado → función, cable(s), extremo opuesto, recorrido por segmentos, **net completa**, referencia externa si sale del arnés. Todo clickeable para navegar.
   - segmento seleccionado → cables que pasan, largo, diámetro estimado (etapa 4).
@@ -331,10 +332,11 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 - Sin largo de pelado (es conocimiento del taller).
 - **Dividida por conector** (pedido de Martin: si no, es confusa a la vista). Cada cable aparece una sola vez, bajo el conector de su extremo que no es el principal (X1:1 → X2:1 va con X2); los que no tocan ningún conector, en "Other" al final. Dentro de cada bloque: por pin (defecto), por tipo de cable (cortar de corrido del mismo rollo) o por largo. Los grupos de trenzado aparecen juntos, en el bloque de su primer cable. Cada bloque indica el **termocontraíble del tramo que llega al conector** en medida nominal (1/8", 3/16", 1/4"…): el asignado al segmento o el sugerido por el cálculo (sección 9.2). El **color va en palabras** (la hoja se imprime en blanco y negro).
 - **Totales por tipo de cable**: metros necesarios de cada WireDef.
-- **Lista de corte de coberturas**: tramos de termocontraíble/sleeving por segmento con su largo, y boots por conector.
+- **Lista de corte de coberturas**: un tramo de termocontraíble por segmento con cables (el asignado, o el sugerido), largo = segmento − patas de boots/moldes en sus puntas + solape sobre cada pata (sección 9.2); y la lista de lo que va en cada punta (boots, moldes en T, piezas de termo con adhesivo). Va al final de la hoja de corte.
+- Los extremos de cable en el conector de un dispositivo llevan el nombre del pin ("X9:A6 OUT11").
 
 ### 8.2 BOM (lista de materiales)
-- Agrupado por categoría: conectores, contactos, tapones, splices, componentes, cables (m), coberturas (m), accesorios, etiquetas.
+- Agrupado por categoría: conectores, contactos, tapones, splices, componentes, cables (m), coberturas (m, de la lista de corte de coberturas), accesorios (boots y moldes elegidos), etiquetas. Las piezas de termo con adhesivo de los conectores suman el largo cargado en su ConnectorDef; las de los breakouts todavía no tienen largo.
 - Por parte: cantidad necesaria, repuesto (% configurable), **cantidad a comprar redondeada al pack** (sirve para el pedido aunque no se cobre así), precio unitario, subtotal, fecha del precio.
 - Sin umbral automático de desactualización: la fecha del precio se muestra siempre, y Martin decide cuándo recotizar una parte (ver sección 13).
 
@@ -355,7 +357,7 @@ Sirve si:
 1. **Contraído ≤ D_bundle** del segmento (para que apriete).
 2. **Suministrado ≥ D_bundle del segmento** + margen.
 
-El programa sugiere el tamaño más chico que cumple, muestra alternativas y avisa si ninguno de la biblioteca sirve.
+El programa sugiere el tamaño más chico que cumple, muestra alternativas y avisa si ninguno de la biblioteca sirve. Para un tramo solo se sugieren termos **sin adhesivo** (el con adhesivo es la pieza corta de una punta, 9.3); si se asigna uno con adhesivo a mano, igual se chequea.
 
 **Largo a cortar** = largo del segmento − largo de las patas de boots/moldes en sus puntas + solape.
 
@@ -460,7 +462,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 | Varios cables por cavidad | Permitido, validando sección total contra el contacto. |
 | Nomenclatura | ID corto automático (X, W, SP, G, R/D, S) + nombre descriptivo; prefijos configurables. |
 | Género del conector | Dato del ConnectorDef, fuera del ID, siempre visible; en el editor gráfico se dibuja distinto. |
-| Dispositivos | DeviceDef en la biblioteca con pines nombrados y pines en paralelo. |
+| Dispositivos | DeviceDef en la biblioteca con pines nombrados; pines en paralelo = mismo nombre en dos vías. |
 | Trenzados del taller | Entidad TwistGroup (con blindaje opcional). |
 | Margen de corte | Porcentaje en tres niveles (proyecto / tipo de cable / cable) + mínimo por trenzado. |
 | Mano de obra | Horas × valor hora, a nivel proyecto. |

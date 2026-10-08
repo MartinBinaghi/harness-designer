@@ -4,7 +4,7 @@
  * proyecto, la biblioteca y los largos de corte ya calculados (`compute_costs`),
  * sin React, para chequearlas con `node tools/check_sheets.ts`.
  */
-import type { SegmentDiameterInfo, WireCutLength } from "./costTypes";
+import type { CoveringCut, SegmentDiameterInfo, WireCutLength } from "./costTypes";
 import { devicePinName, type Library } from "./libraryTypes.ts";
 import { endLabel } from "./projectEdit.ts";
 import type { ProjectData, WireEnd, WireInstance } from "./types";
@@ -105,8 +105,8 @@ export function cutListRows(project: ProjectData, library: Library, cuts: WireCu
       fn: wireFunction(library, wire),
       wireType: wireType(library, wire),
       color: colorWord(wire.color || library.wire_defs.find((d) => d.part_id === wire.library_part_id)?.color || null),
-      from: endLabel(project, wire.end_a),
-      to: endLabel(project, wire.end_b),
+      from: cutEndLabel(project, library, wire.end_a),
+      to: cutEndLabel(project, library, wire.end_b),
       withTwistMm: cut.length_with_twist_mm,
       marginPct: cut.margin_pct,
       cutMm: cut.cut_length_mm,
@@ -135,6 +135,85 @@ export function cutListRows(project: ProjectData, library: Library, cuts: WireCu
     }
   }
   return out;
+}
+
+/** "X9:A6 OUT11": el extremo, con el nombre del pin si es el conector de un dispositivo. */
+function cutEndLabel(project: ProjectData, library: Library, end: WireEnd): string {
+  const label = endLabel(project, end);
+  if (end.kind !== "cavity") return label;
+  const connector = project.connector_instances.find((c) => c.cavities.some((cav) => cav.id === end.cavity_assignment_id));
+  const cav = connector?.cavities.find((c) => c.id === end.cavity_assignment_id);
+  const pinName = connector && cav ? devicePinName(library, connector.device_connector_id, cav.cavity_id) : null;
+  return pinName ? `${label} ${pinName}` : label;
+}
+
+/** Cómo se llama un nodo en las hojas: su conector, masa o splice; si no, "Breakout N" / "Node N". */
+export function nodeName(project: ProjectData, nodeId: number): string {
+  const holder =
+    project.connector_instances.find((c) => c.node_id === nodeId) ??
+    project.ground_points.find((g) => g.node_id === nodeId) ??
+    project.splice_instances.find((s) => s.node_id === nodeId);
+  if (holder) return holder.short_id;
+  return `${project.nodes.find((n) => n.id === nodeId)?.kind === "breakout" ? "Breakout" : "Node"} ${nodeId}`;
+}
+
+export interface CoveringRow {
+  segmentId: number;
+  between: string;
+  /** Medida nominal (3/16") o "none in library fits". */
+  size: string;
+  part: string;
+  suggested: boolean;
+  segmentMm: number;
+  legsMm: number;
+  overlapMm: number;
+  cutMm: number;
+}
+
+/** Lista de corte de coberturas (plan 8.1): un tramo de termo por segmento con cables. */
+export function coveringRows(project: ProjectData, library: Library, cuts: CoveringCut[]): CoveringRow[] {
+  return cuts.flatMap((cut) => {
+    const seg = project.segments.find((s) => s.id === cut.segment_id);
+    if (!seg) return [];
+    const def = library.covering_defs.find((c) => c.part_id === cut.library_part_id);
+    return [{
+      segmentId: seg.id,
+      between: `${nodeName(project, seg.node_a_id)} – ${nodeName(project, seg.node_b_id)}`,
+      size: def ? heatShrinkSize(def.supplied_diameter_mm) : "none in library fits",
+      part: def ? (library.parts.find((p) => p.id === def.part_id)?.part_number ?? "") : "",
+      suggested: cut.suggested,
+      segmentMm: cut.segment_length_mm,
+      legsMm: cut.legs_mm,
+      overlapMm: cut.overlap_mm,
+      cutMm: cut.cut_length_mm,
+    }];
+  });
+}
+
+/**
+ * Lo que va en las puntas: boots de los conectores, moldes en T de los
+ * breakouts y las piezas de termo con adhesivo (conector o breakout).
+ */
+export function terminationRows(project: ProjectData, library: Library): [where: string, what: string, part: string][] {
+  const part = (id: number | null) => (id == null ? "not chosen" : (library.parts.find((p) => p.id === id)?.part_number ?? `#${id}`));
+  const adhesive = (id: number | null, lengthMm: number | null = null) => {
+    const def = library.covering_defs.find((c) => c.part_id === id);
+    const what = def ? `${heatShrinkSize(def.supplied_diameter_mm)} · ${part(id)}` : part(id);
+    return lengthMm != null ? `${what} · cut ${lengthMm} mm` : what;
+  };
+  const rows: [string, string, string][] = [];
+  for (const c of project.connector_instances) {
+    const where = c.name ? `${c.short_id} · ${c.name}` : c.short_id;
+    if (c.termination === "boot_straight") rows.push([where, "Straight boot", part(c.termination_library_part_id)]);
+    if (c.termination === "boot_90") rows.push([where, "90° boot", part(c.termination_library_part_id)]);
+    const pieceMm = library.connector_defs.find((d) => d.part_id === c.library_part_id)?.adhesive_heatshrink_length_mm ?? null;
+    if (c.termination === "adhesive_heatshrink") rows.push([where, "Adhesive heat-shrink", adhesive(c.termination_library_part_id, pieceMm)]);
+  }
+  for (const n of project.nodes) {
+    if (n.termination === "t_mold") rows.push([nodeName(project, n.id), "T-mold", part(n.termination_library_part_id)]);
+    if (n.termination === "adhesive_heatshrink") rows.push([nodeName(project, n.id), "Adhesive heat-shrink", adhesive(n.termination_library_part_id)]);
+  }
+  return rows;
 }
 
 /**

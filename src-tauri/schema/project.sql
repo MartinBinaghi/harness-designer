@@ -16,7 +16,11 @@ CREATE TABLE IF NOT EXISTS project (
     default_twist_pitch_factor  REAL NOT NULL DEFAULT 8,
     fill_factor                 REAL NOT NULL DEFAULT 0.75,
     labor_hours                 REAL NOT NULL DEFAULT 0,
-    labor_rate_usd              REAL NOT NULL DEFAULT 0
+    labor_rate_usd              REAL NOT NULL DEFAULT 0,
+    -- materiales sobre lo comprado (packs completos) en vez de lo usado
+    cost_on_purchased           INTEGER NOT NULL DEFAULT 0,
+    -- repuesto por categoría de parte, JSON {"contact": 10, ...} (%)
+    spare_pcts                  TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
@@ -24,8 +28,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     kind                        TEXT NOT NULL CHECK (kind IN ('connector_end', 'breakout', 'splice_point', 'ground_point')),
     -- terminación solo aplica a breakouts
     termination                 TEXT CHECK (termination IN ('t_mold', 'adhesive_heatshrink', 'none')),
-    -- solo tiene sentido con termination = 'adhesive_heatshrink' (covering_defs);
-    -- 't_mold' todavía no elige una parte específica de biblioteca.
+    -- t_mold_defs si termination = 't_mold', covering_defs si 'adhesive_heatshrink'
     termination_library_part_id INTEGER,
     -- posición en el diagrama de armado (no escalado); NULL hasta acomodarlo
     diagram_x                   REAL,

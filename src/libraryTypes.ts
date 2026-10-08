@@ -43,6 +43,8 @@ export interface ConnectorDef {
   /** Contacto de las vías con cable y tapón de las vías sin usar: uno por conector. */
   contact_part_id: number | null;
   seal_plug_part_id: number | null;
+  /** Largo de la pieza de termo con adhesivo detrás del conector (varía según el conector). */
+  adhesive_heatshrink_length_mm: number | null;
   image_side: string | null;
   image_front: string | null;
   image_back: string | null;
@@ -63,16 +65,10 @@ export interface DeviceDefConnector {
   pins: DeviceDefPin[];
 }
 
-export interface DeviceDefPinGroup {
-  id: number;
-  name: string;
-  pin_ids: number[];
-}
-
+/** Un nombre repetido en dos vías de un conector (OUT1 en A1 y A10) es una misma salida en dos pines. */
 export interface DeviceDef {
   part_id: number;
   connectors: DeviceDefConnector[];
-  pin_groups: DeviceDefPinGroup[];
 }
 
 export interface ContactDef {

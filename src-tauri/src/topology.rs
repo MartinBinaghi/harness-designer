@@ -221,6 +221,8 @@ mod tests {
             fill_factor: 0.75,
             labor_hours: 0.0,
             labor_rate_usd: 0.0,
+            cost_on_purchased: false,
+            spare_pcts: Default::default(),
         }
     }
 

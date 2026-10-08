@@ -7,6 +7,7 @@ import Esquema from "./Esquema";
 import LibraryScreen from "./Library";
 import Conectores from "./Conectores";
 import Cables from "./Cables";
+import Splices from "./Splices";
 import Checks from "./Checks";
 import Costs from "./Costs";
 import Impresion from "./Impresion";
@@ -19,7 +20,7 @@ import type { Library } from "./libraryTypes";
 import { emptyLibrary } from "./libraryTypes";
 import "./App.css";
 
-const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Checks", "Costs", "Print"] as const;
+const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Splices", "Checks", "Costs", "Print"] as const;
 type Section = (typeof SECTIONS)[number];
 
 export default function App() {
@@ -260,6 +261,9 @@ export default function App() {
           {section === "Wires" && (
             <Cables project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
           )}
+          {section === "Splices" && (
+            <Splices project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+          )}
           {section === "Checks" && <Checks project={project} findings={findings} selection={selection} onSelect={setSelection} />}
           {section === "Costs" && (
             <Costs project={project} library={library} selection={selection} onSelect={setSelection} />
@@ -274,7 +278,7 @@ export default function App() {
         <span><span className="status-dot status-dot-error" />{errorCount} error{errorCount === 1 ? "" : "s"}</span>
         <span><span className="status-dot status-dot-warning" />{warningCount} warning{warningCount === 1 ? "" : "s"}</span>
         <span style={{ flex: 1 }} />
-        <span>{project ? `${project.project.name} · ${project.project.harness_code}` : "No project loaded"}</span>
+        <span>{project ? [project.project.name, project.project.harness_code].filter(Boolean).join(" · ") : "No project loaded"}</span>
       </div>
     </main>
   );

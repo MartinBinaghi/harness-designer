@@ -99,9 +99,12 @@ export default function Costs({ project, library, selection, onSelect }: Props) 
 
           <section>
             <h3>Bill of materials</h3>
+            <p className="hint">
+              Subtotals on {project.project.cost_on_purchased ? "what is bought (full packs)" : "what is used, spare included"}. Spare per category, labor and markup: click the harness name in the tree.
+            </p>
             <table>
               <thead>
-                <tr><th>Category</th><th>Part</th><th>Needed</th><th>Unit</th><th>To buy</th><th>Unit price</th><th>Subtotal</th><th>Price date</th></tr>
+                <tr><th>Category</th><th>Part</th><th>Needed</th><th>Spare</th><th>Unit</th><th>To buy</th><th>Unit price</th><th>Subtotal</th><th>Price date</th></tr>
               </thead>
               <tbody>
                 {report.bom.map((row) => (
@@ -109,6 +112,7 @@ export default function Costs({ project, library, selection, onSelect }: Props) 
                     <td>{row.category}</td>
                     <td>{partLabel(row)}</td>
                     <td>{row.quantity_needed.toFixed(row.unit === "meter" ? 2 : 0)}</td>
+                    <td>{row.spare ? row.spare.toFixed(row.unit === "meter" ? 2 : 0) : "—"}</td>
                     <td>{row.unit}</td>
                     <td>{row.quantity_to_buy.toFixed(row.unit === "meter" ? 2 : 0)}</td>
                     <td>{row.unit_price_usd !== null ? `$${row.unit_price_usd.toFixed(2)}` : "—"}</td>
@@ -143,6 +147,31 @@ export default function Costs({ project, library, selection, onSelect }: Props) 
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          {report.covering_cuts.length > 0 && (
+            <section>
+              <h3>Heat-shrink cut per segment</h3>
+              <table>
+                <thead>
+                  <tr><th>Segment</th><th>Heat-shrink</th><th>Segment (mm)</th><th>− Boot/T-mold legs</th><th>+ Overlap</th><th>Cut (mm)</th></tr>
+                </thead>
+                <tbody>
+                  {report.covering_cuts.map((c) => (
+                    <tr key={c.segment_id}>
+                      <td>S{c.segment_id}</td>
+                      <td style={c.library_part_id === null ? { color: "var(--warning)" } : undefined}>
+                        {c.library_part_id === null ? "none in library fits" : `${libraryPartNumber(c.library_part_id)}${c.suggested ? " (suggested)" : ""}`}
+                      </td>
+                      <td>{c.segment_length_mm.toFixed(0)}</td>
+                      <td>{c.legs_mm.toFixed(0)}</td>
+                      <td>{c.overlap_mm.toFixed(0)}</td>
+                      <td>{c.cut_length_mm.toFixed(0)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </section>

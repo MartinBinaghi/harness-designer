@@ -1,6 +1,6 @@
 // Chequeo de las ediciones del proyecto (diagrama/tablas). Uso: node tools/check_project_edit.ts
 import assert from "node:assert/strict";
-import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, splitSegment } from "../src/projectEdit.ts";
+import { addBranch, addJunction, assignConnector, connectNodes, deleteJunction, deleteNode, deleteSegment, splitSegment, wiresAtJunction } from "../src/projectEdit.ts";
 import type { ProjectData } from "../src/types.ts";
 import type { Library } from "../src/libraryTypes.ts";
 
@@ -113,7 +113,7 @@ console.log("project edit: ok");
   const { addWireAtCavity, deleteWire, endChoices, otherEnd, parseEnd, setOtherEnd, wiresAtCavity } = await import("../src/projectEdit.ts");
   const lib = {
     wire_defs: [{ part_id: 100 }],
-    device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "A6", name: "OUT11", function: null }] }], pin_groups: [] }],
+    device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "A6", name: "OUT11", function: null }] }] }],
   } as unknown as Library;
   const proj = {
     ...p,
@@ -132,6 +132,10 @@ console.log("project edit: ok");
   assert.equal(parseEnd(proj, lib, "pdm30 out11")?.cavity_assignment_id, 91); // por nombre de pin del dispositivo
   assert.equal(parseEnd(proj, lib, "g1")?.ground_point_id, 1);
   assert.equal(parseEnd(proj, lib, "X9:B1"), null);
+  // Pines en paralelo (mismo nombre en dos vías): "Goes to" lleva la vía para saber a cuál va.
+  const par = { ...lib, device_defs: [{ part_id: 9, connectors: [{ id: 3, pins: [{ id: 1, cavity_id: "A6", name: "OUT1" }, { id: 2, cavity_id: "a6", name: "OUT1" }] }] }] } as unknown as Library;
+  assert.equal(parseEnd(proj, par, "PDM30 OUT1 (a6)")?.cavity_assignment_id, 92);
+  assert.equal(parseEnd(proj, par, "PDM30 OUT1"), null);
 
   // Dos cables desde X4:2: uno a PDM30 OUT11 y otro a masa.
   const a = addWireAtCavity(proj, lib, 42);
@@ -151,3 +155,23 @@ console.log("project edit: ok");
   console.log("project edit (pinout per connector): ok");
 }
 
+// Splices, masas y componentes: alta con el próximo ID y la parte de la biblioteca; baja deja sueltos sus cables.
+{
+  const lib = { splice_defs: [{ part_id: 5 }], component_defs: [{ part_id: 6, component_type: "Diode" }] } as unknown as Library;
+  const added = addJunction(base, lib, "splice");
+  assert.ok(typeof added !== "string");
+  assert.deepEqual([added.id, added.project.splice_instances.at(-1)!.short_id, added.project.splice_instances.at(-1)!.library_part_id], [3, "SP3", 5]);
+  const comp = addJunction(base, lib, "component");
+  assert.ok(typeof comp !== "string" && comp.project.component_instances[0].short_id === "D1");
+  assert.equal(addJunction(base, { splice_defs: [], component_defs: [] } as unknown as Library, "splice"), "Add a splice type in Library → Splices first.");
+  const ground = addJunction(base, lib, "ground");
+  assert.ok(typeof ground !== "string");
+  const w = { id: 1, short_id: "W001", end_a: { kind: "ground", cavity_assignment_id: null, splice_id: null, ground_point_id: 1, component_instance_id: null }, end_b: { kind: "splice", cavity_assignment_id: null, splice_id: 1, ground_point_id: null, component_instance_id: null } };
+  const wired = { ...ground.project, wire_instances: [w] } as unknown as ProjectData;
+  assert.equal(wiresAtJunction(wired, "ground", 1).length, 1);
+  const gone = deleteJunction(wired, "ground", 1);
+  assert.equal(gone.ground_points.length, 0);
+  assert.equal(gone.wire_instances[0].end_a.ground_point_id, null);
+  assert.equal(gone.wire_instances[0].end_b.splice_id, 1);
+  console.log("project edit (splices, grounds, components): ok");
+}

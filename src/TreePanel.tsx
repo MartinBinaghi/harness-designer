@@ -64,7 +64,13 @@ export default function Tree({ project, selection, onSelect }: Props) {
   return (
     <div className="tree-panel">
       <div className="tree-panel-title">Tree</div>
-      <div className="tree-root">{project.project.name} · {project.project.harness_code}</div>
+      <button
+        className={`tree-row tree-root${selection?.kind === "project" ? " tree-row-selected" : ""}`}
+        onClick={() => onSelect({ kind: "project", id: 0 })}
+        title="Harness name, code, margins and costs"
+      >
+        {project.project.name}{project.project.harness_code && ` · ${project.project.harness_code}`}
+      </button>
       <div>
         {entries.map(({ nodeId, depth, lengthMm }) => {
           const info = infoFor(project, nodeId);

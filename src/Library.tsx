@@ -9,7 +9,6 @@ import type {
   CoveringDef,
   DeviceDef,
   DeviceDefConnector,
-  DeviceDefPin,
   Library,
   Part,
   PartCategory,
@@ -26,9 +25,10 @@ import { readImageAsDataUrl } from "./imageFile";
 import { CONNECTOR_VIEWS, partLabel } from "./libraryTypes";
 import type { ProjectData } from "./types";
 import milStd1560 from "./data/mil-std-1560.json";
-import type { MilArrangements } from "./connectorFace";
+import { connectorFace, type MilArrangements } from "./connectorFace";
 import { ConnectorFaceView } from "./ConnectorFaceView";
 import { nextId } from "./projectEdit";
+import { applyPaste, devicePinRows, guessRoles, nextDeviceId, parsePinout, previewPaste, setDevicePin, type ColumnRole, type PasteRow } from "./devicePins";
 
 const TABS = [
   "Connectors",
@@ -199,13 +199,13 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
     setStatus("Sample library loaded (not saved to disk yet).");
   }
 
-  // Suma las partes estandarizadas que falten (DT/DTM/DTP, Superseal, M22759/32) como
+  // Suma las partes estandarizadas que falten (DT/DTM/DTP con contactos y tapones, Superseal, M22759/32, termos) como
   // una edición más: se puede deshacer, y no toca lo que ya estaba cargado.
   async function addBaseParts() {
     const merged = await invoke<Library>("merge_base_library", { library });
     const added = merged.parts.length - library.parts.length;
     setLibrary(merged);
-    setStatus(added > 0 ? `Added ${added} standard parts (connectors unverified — check each datasheet).` : "Standard parts already in the library.");
+    setStatus(added > 0 ? `Added ${added} standard parts (unverified — check each datasheet).` : "Standard parts already in the library.");
   }
 
   function partById(partId: number): Part | undefined {
@@ -224,7 +224,7 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
         </button>
         <button onClick={() => void saveLibrary(true)}>Save as…</button>
         <button onClick={loadDemo}>Load sample</button>
-        <button onClick={() => void addBaseParts()} title="Deutsch DT/DTM/DTP and TE Superseal 1.5 housings, M22759/32 wire 26–12 AWG. No prices.">
+        <button onClick={() => void addBaseParts()} title="Deutsch DT/DTM/DTP housings with their contacts and sealing plugs, TE Superseal 1.5 housings, M22759/32 wire 26–12 AWG, Raychem DR-25 and ATUM heat-shrink. No prices.">
           Add standard parts
         </button>
         {status && <span className="status">{status}</span>}
@@ -1060,6 +1060,7 @@ function blankConnectorDef(partId: number): ConnectorDef {
     suggested_termination: null,
     contact_part_id: null,
     seal_plug_part_id: null,
+    adhesive_heatshrink_length_mm: null,
     image_side: null,
     image_front: null,
     image_back: null,
@@ -1078,6 +1079,7 @@ function missingData(cd: ConnectorDef, part: Part): string[] {
       ? cd.back_diameter_mm != null
       : cd.back_shape === "rectangular" && cd.back_width_mm != null && cd.back_height_mm != null;
   if (cd.suggested_termination === "adhesive_heatshrink" && !backKnown) out.push("no back size");
+  if (cd.suggested_termination === "adhesive_heatshrink" && cd.adhesive_heatshrink_length_mm == null) out.push("no adhesive HS length");
   return out;
 }
 
@@ -1321,6 +1323,16 @@ function ConnectorDetail({ library, project, cd, part, missing, onPart, onCd, on
                 ))}
               </select>
             </label>
+            <label className="lib-field-wide">
+              <span className="field-label" title="Length of the adhesive heat-shrink piece cut for this connector">Adhesive heat-shrink piece (mm)</span>
+              <input
+                type="number"
+                min={0}
+                value={cd.adhesive_heatshrink_length_mm ?? ""}
+                placeholder="—"
+                onChange={(e) => onCd({ adhesive_heatshrink_length_mm: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) })}
+              />
+            </label>
           </div>
         </section>
 
@@ -1351,173 +1363,344 @@ function ConnectorDetail({ library, project, cd, part, missing, onPart, onCd, on
   );
 }
 
+/**
+ * Dispositivos (PDM, ECU, volante del cliente…): lista + ficha, como
+ * Connectors. Cada conector del dispositivo es una carcasa del arnés (la que se
+ * compra) con todas sus vías listadas: se escribe nombre y función de cada
+ * pin, o se pega la tabla que mandó el cliente. La cara dibujada muestra el
+ * nombre de cada pin. Lógica en devicePins.ts.
+ */
 function DeviceDefsTab({ library, setLibrary, partById }: TabProps) {
   const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  function updateDd(partId: number, patch: Partial<DeviceDef>) {
-    setLibrary(updateSubtype<"device_defs", DeviceDef>(library, "device_defs", partId, patch));
-  }
-
-  function addConnector(dd: DeviceDef) {
-    const id = nextId(library.connector_defs.length === 0 ? [] : dd.connectors.map((c) => c.id));
-    const anyConnectorDef = library.connector_defs[0];
-    if (!anyConnectorDef) {
-      setStatusNoConnectorDefs();
-      return;
-    }
-    const newConnector: DeviceDefConnector = { id, label: "", connector_def_id: anyConnectorDef.part_id, pins: [] };
-    updateDd(dd.part_id, { connectors: [...dd.connectors, newConnector] });
-  }
-  function setStatusNoConnectorDefs() {
-    alert("Add at least one connector in the Connectors tab before adding connectors to the device.");
-  }
-  function updateConnector(dd: DeviceDef, connectorId: number, patch: Partial<DeviceDefConnector>) {
-    updateDd(dd.part_id, { connectors: dd.connectors.map((c) => (c.id === connectorId ? { ...c, ...patch } : c)) });
-  }
-  function removeConnector(dd: DeviceDef, connectorId: number) {
-    updateDd(dd.part_id, { connectors: dd.connectors.filter((c) => c.id !== connectorId) });
-  }
-
-  function addPin(dd: DeviceDef, connector: DeviceDefConnector) {
-    const allPinIds = dd.connectors.flatMap((c) => c.pins.map((p) => p.id));
-    const id = nextId(allPinIds);
-    const newPin: DeviceDefPin = { id, cavity_id: "", name: "", function: null };
-    updateConnector(dd, connector.id, { pins: [...connector.pins, newPin] });
-  }
-  function updatePin(dd: DeviceDef, connector: DeviceDefConnector, pinId: number, patch: Partial<DeviceDefPin>) {
-    updateConnector(dd, connector.id, { pins: connector.pins.map((p) => (p.id === pinId ? { ...p, ...patch } : p)) });
-  }
-  function removePin(dd: DeviceDef, connector: DeviceDefConnector, pinId: number) {
-    updateConnector(dd, connector.id, { pins: connector.pins.filter((p) => p.id !== pinId) });
-    updateDd(dd.part_id, { pin_groups: dd.pin_groups.map((g) => ({ ...g, pin_ids: g.pin_ids.filter((id) => id !== pinId) })) });
-  }
-
-  function addPinGroup(dd: DeviceDef) {
-    const id = nextId(dd.pin_groups.map((g) => g.id));
-    updateDd(dd.part_id, { pin_groups: [...dd.pin_groups, { id, name: "", pin_ids: [] }] });
-  }
-  function updatePinGroupName(dd: DeviceDef, groupId: number, name: string) {
-    updateDd(dd.part_id, { pin_groups: dd.pin_groups.map((g) => (g.id === groupId ? { ...g, name } : g)) });
-  }
-  function togglePinInGroup(dd: DeviceDef, groupId: number, pinId: number) {
-    updateDd(dd.part_id, {
-      pin_groups: dd.pin_groups.map((g) =>
-        g.id === groupId
-          ? { ...g, pin_ids: g.pin_ids.includes(pinId) ? g.pin_ids.filter((id) => id !== pinId) : [...g.pin_ids, pinId] }
-          : g,
-      ),
-    });
-  }
-  function removePinGroup(dd: DeviceDef, groupId: number) {
-    updateDd(dd.part_id, { pin_groups: dd.pin_groups.filter((g) => g.id !== groupId) });
-  }
-
-  const visible = library.device_defs.filter((dd) => {
+  const rows = library.device_defs.flatMap((dd) => {
     const part = partById(dd.part_id);
-    return matchesSearch(search, [part?.part_number, part?.manufacturer]);
+    return part ? [{ dd, part }] : [];
   });
+  const visible = rows.filter(({ part }) => matchesSearch(search, [part.part_number, part.manufacturer, part.description]));
+  const selected = rows.find((r) => r.dd.part_id === selectedId) ?? visible[0] ?? null;
+
+  function addDevice() {
+    const next = addPart(library, "device", "device_defs", (partId) => ({ part_id: partId, connectors: [] }));
+    setLibrary(next);
+    setSelectedId(next.parts[next.parts.length - 1].id);
+    setSearch("");
+  }
+  function deleteDevice(partId: number) {
+    const index = visible.findIndex((r) => r.dd.part_id === partId);
+    setSelectedId((visible[index + 1] ?? visible[index - 1])?.dd.part_id ?? null);
+    setLibrary(removePart(library, "device_defs", partId));
+  }
 
   return (
-    <section>
-      <FilterBar search={search} setSearch={setSearch} placeholder="Search part number, manufacturer…" count={visible.length} total={library.device_defs.length} />
-      {visible.map((dd) => {
-        const part = partById(dd.part_id);
-        if (!part) return null;
-        const allPins = dd.connectors.flatMap((c) => c.pins);
-        return (
-          <div key={dd.part_id} className="query-result" style={{ marginBottom: "1rem" }}>
+    <section className="lib-master-detail">
+      <aside className="lib-list">
+        <div className="lib-list-filters">
+          <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search devices" aria-label="Search devices" />
+        </div>
+        <div className="lib-list-rows">
+          {visible.map(({ dd, part }) => {
+            const { named, total } = pinCount(library, dd);
+            return (
+              <button key={dd.part_id} className={dd.part_id === selected?.dd.part_id ? "lib-list-row selected" : "lib-list-row"} onClick={() => setSelectedId(dd.part_id)}>
+                <span className="lib-list-pn">{part.part_number || "(no part number)"}</span>
+                <span className="lib-list-count">{named}/{total}</span>
+                <span className="lib-list-meta">
+                  {dd.connectors.length === 0 ? "no connectors" : `${dd.connectors.length} connector${dd.connectors.length === 1 ? "" : "s"} · ${dd.connectors.map((c) => c.label || "?").join(", ")}`}
+                </span>
+              </button>
+            );
+          })}
+          {visible.length === 0 && <p className="hint lib-list-empty">{rows.length === 0 ? "No devices yet." : "No devices match."}</p>}
+        </div>
+        <div className="lib-list-footer">
+          <button className="button-ghost-accent" onClick={addDevice}>+ New device</button>
+        </div>
+      </aside>
+
+      {selected ? (
+        <DeviceDetail
+          key={selected.dd.part_id}
+          library={library}
+          dd={selected.dd}
+          part={selected.part}
+          onPart={(patch) => setLibrary(updatePart(library, selected.part.id, patch))}
+          onDd={(patch) => setLibrary(updateSubtype<"device_defs", DeviceDef>(library, "device_defs", selected.dd.part_id, patch))}
+          onDelete={() => deleteDevice(selected.dd.part_id)}
+        />
+      ) : (
+        <div className="lib-detail">
+          <p className="hint">No devices yet: “+ New device”, then add its connectors and their pin names.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Pines con nombre / vías de las carcasas, para la lista. */
+function pinCount(library: Library, dd: DeviceDef): { named: number; total: number } {
+  let named = 0;
+  let total = 0;
+  for (const c of dd.connectors) {
+    const housing = library.connector_defs.find((d) => d.part_id === c.connector_def_id);
+    const rows = devicePinRows(c, housing);
+    total += rows.length;
+    named += rows.filter((r) => r.name).length;
+  }
+  return { named, total };
+}
+
+function housingLabel(library: Library, cd: ConnectorDef): string {
+  return `${partLabel(library, cd.part_id)} · ${cd.cavities.length}-way ${cd.gender}`;
+}
+
+function DeviceDetail({ library, dd, part, onPart, onDd, onDelete }: {
+  library: Library;
+  dd: DeviceDef;
+  part: Part;
+  onPart: (patch: Partial<Part>) => void;
+  onDd: (patch: Partial<DeviceDef>) => void;
+  onDelete: () => void;
+}) {
+  const [connectorId, setConnectorId] = useState<number | null>(dd.connectors[0]?.id ?? null);
+  const [pickedCavity, setPickedCavity] = useState<string | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const connector = dd.connectors.find((c) => c.id === connectorId) ?? dd.connectors[0] ?? null;
+  const housing = connector ? library.connector_defs.find((d) => d.part_id === connector.connector_def_id) : undefined;
+  const { named, total } = pinCount(library, dd);
+
+  function setConnector(next: DeviceDefConnector) {
+    onDd({ connectors: dd.connectors.map((c) => (c.id === next.id ? next : c)) });
+  }
+  function addConnector() {
+    const housingDef = library.connector_defs[0];
+    if (!housingDef) {
+      alert("Add at least one connector in Library → Connectors first: each device connector is one of those housings.");
+      return;
+    }
+    const used = new Set(dd.connectors.map((c) => c.label));
+    const label = [..."ABCDEFGHJKLMNPRSTUVWXYZ"].find((l) => !used.has(l)) ?? "";
+    const id = nextDeviceId(library, "connectors");
+    onDd({ connectors: [...dd.connectors, { id, label, connector_def_id: housingDef.part_id, pins: [] }] });
+    setConnectorId(id);
+    setPasting(false);
+  }
+  function removeConnector(id: number) {
+    const rest = dd.connectors.filter((c) => c.id !== id);
+    onDd({ connectors: rest });
+    setConnectorId(rest[0]?.id ?? null);
+    setPasting(false);
+  }
+  function pick(cavityId: string) {
+    setPickedCavity(cavityId);
+    document.getElementById(`dev-pin-${cavityId}`)?.focus();
+  }
+
+  const rows = connector ? devicePinRows(connector, housing) : [];
+  const names = Object.fromEntries(rows.filter((r) => r.name).map((r) => [r.cavityId, r.name]));
+  // Carcasas de serie desconocida (ej. la del PDM) no se dibujan: la tabla ocupa todo el ancho.
+  const drawable = !!housing && connectorFace(housing, milStd1560.arrangements as MilArrangements) !== null;
+
+  return (
+    <div className="lib-detail dev-detail">
+      <div className="lib-detail-header">
+        <input className="lib-detail-pn" value={part.part_number} onChange={(e) => onPart({ part_number: e.currentTarget.value })} placeholder="part number" aria-label="Part number" />
+        <span className="lib-detail-sub">{dd.connectors.length} connector{dd.connectors.length === 1 ? "" : "s"} · {named}/{total} pins named</span>
+        <span className="lib-detail-spacer" />
+        <button className="lib-delete" onClick={onDelete}>Delete</button>
+      </div>
+
+      <section className="lib-card">
+        <div className="lib-fields dev-part-fields">
+          <label>
+            <span className="field-label">Manufacturer</span>
+            <input value={part.manufacturer ?? ""} onChange={(e) => onPart({ manufacturer: e.currentTarget.value || null })} placeholder="—" />
+          </label>
+          <label>
+            <span className="field-label">USD</span>
+            <input type="number" value={part.price_usd ?? ""} onChange={(e) => onPart({ price_usd: numberOrNull(e.currentTarget.value) })} placeholder="—" />
+          </label>
+          <label className="lib-field-wide">
+            <span className="field-label">Description</span>
+            <input value={part.description ?? ""} onChange={(e) => onPart({ description: e.currentTarget.value || null })} placeholder="e.g. Power distribution module" />
+          </label>
+        </div>
+      </section>
+
+      <div className="dev-connector-chips" role="tablist" aria-label="Device connectors">
+        {dd.connectors.map((c) => {
+          const h = library.connector_defs.find((d) => d.part_id === c.connector_def_id);
+          const r = devicePinRows(c, h);
+          return (
+            <button key={c.id} role="tab" aria-selected={c.id === connector?.id} className={c.id === connector?.id ? "filter-chip active" : "filter-chip"} onClick={() => { setConnectorId(c.id); setPasting(false); }}>
+              {c.label || "?"} · {r.filter((x) => x.name).length}/{r.length}
+            </button>
+          );
+        })}
+        <button className="link-button" onClick={addConnector}>+ connector</button>
+      </div>
+
+      {connector && (
+        <>
+          <section className="lib-card dev-connector-head">
+            <label className="dev-label">
+              <span className="field-label">Label</span>
+              <input value={connector.label} onChange={(e) => setConnector({ ...connector, label: e.currentTarget.value })} placeholder="A" />
+            </label>
+            <label className="dev-housing">
+              <span className="field-label">Harness-side housing (what you buy)</span>
+              <select value={connector.connector_def_id} onChange={(e) => setConnector({ ...connector, connector_def_id: Number(e.currentTarget.value) })}>
+                {library.connector_defs.map((cd) => <option key={cd.part_id} value={cd.part_id}>{housingLabel(library, cd)}</option>)}
+              </select>
+            </label>
+            <button onClick={() => setPasting(!pasting)} aria-pressed={pasting}>Paste pinout…</button>
+            <button className="lib-delete" onClick={() => removeConnector(connector.id)}>Delete connector</button>
+          </section>
+
+          {pasting && (
+            <PastePinout
+              cavityIds={housing?.cavities.map((c) => c.cavity_id) ?? []}
+              label={connector.label}
+              housingName={housing ? partLabel(library, housing.part_id) : "the housing"}
+              onCancel={() => setPasting(false)}
+              onApply={(pasted, replace) => {
+                setConnector(applyPaste(connector, pasted, replace, nextDeviceId(library, "pins")));
+                setPasting(false);
+              }}
+            />
+          )}
+
+          <div className="dev-body">
+            <section className="lib-card dev-pins">
+              <table className="dev-pin-table">
+                <thead><tr><th className="dev-col-cav">Cavity</th><th className="dev-col-name">Pin name</th><th>Function</th></tr></thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.cavityId} className={r.cavityId === pickedCavity ? "selected-row" : undefined}>
+                      <td className="dev-col-cav">
+                        {r.cavityId}
+                        {!r.inHousing && <span className="dev-warn" title="This housing has no such cavity: clear it or pick the right housing"> not in housing</span>}
+                      </td>
+                      <td>
+                        <span className="dev-name-cell">
+                          <input
+                            id={`dev-pin-${r.cavityId}`}
+                            className="cn-cell cn-mono"
+                            value={r.name}
+                            placeholder="—"
+                            aria-label={`Pin name of ${r.cavityId}`}
+                            onFocus={() => setPickedCavity(r.cavityId)}
+                            onChange={(e) => setConnector(setDevicePin(connector, r.cavityId, { name: e.currentTarget.value }, nextDeviceId(library, "pins")))}
+                          />
+                          {r.alsoOn.length > 0 && <span className="dev-also" title="Same name on another pin: one output split over several pins">also {r.alsoOn.join(", ")}</span>}
+                        </span>
+                      </td>
+                      <td>
+                        <input
+                          className="cn-cell"
+                          value={r.fn}
+                          placeholder="—"
+                          aria-label={`Function of ${r.cavityId}`}
+                          onFocus={() => setPickedCavity(r.cavityId)}
+                          onChange={(e) => setConnector(setDevicePin(connector, r.cavityId, { fn: e.currentTarget.value }, nextDeviceId(library, "pins")))}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {rows.length === 0 && <p className="hint">The housing has no cavities yet: add them in Library → Connectors.</p>}
+              <p className="hint dev-footnote">A name used on two pins (OUT1 on A1 and A10) is one output split over two pins: wire each one.</p>
+            </section>
+            {drawable && (
+              <section className="lib-card dev-face">
+                <ConnectorFaceView def={housing} names={names} selected={pickedCavity} onPick={pick} />
+              </section>
+            )}
+          </div>
+        </>
+      )}
+      {!connector && <p className="hint">Add the device's connectors (A, B…) with “+ connector”.</p>}
+    </div>
+  );
+}
+
+const ROLE_LABELS: Record<ColumnRole, string> = { cavity: "Cavity", name: "Pin name", function: "Function", ignore: "Ignore" };
+
+/** Pegar la tabla del cliente (Excel o PDF): elegir qué columna es cada cosa, ver qué coincide con la carcasa y aplicar. */
+function PastePinout({ cavityIds, label, housingName, onCancel, onApply }: {
+  cavityIds: string[];
+  label: string;
+  housingName: string;
+  onCancel: () => void;
+  onApply: (rows: PasteRow[], replace: boolean) => void;
+}) {
+  const [text, setText] = useState("");
+  const [roles, setRoles] = useState<ColumnRole[]>([]);
+  const [replace, setReplace] = useState(true);
+  const cells = parsePinout(text);
+  const columns = Math.max(0, ...cells.map((r) => r.length));
+  const effectiveRoles = Array.from({ length: columns }, (_, i) => roles[i] ?? guessRoles(columns)[i]);
+  const preview = previewPaste(cells, effectiveRoles, cavityIds, label);
+  const matched = preview.filter((r) => r.match).length;
+  const unmatched = preview.filter((r) => !r.match).map((r) => r.cavity || "(empty)");
+
+  return (
+    <section className="lib-card dev-paste">
+      <label className="dev-paste-text">
+        <span className="field-label">Paste the client's pinout (select the rows in their Excel or PDF, copy, paste here)</span>
+        <textarea value={text} onChange={(e) => setText(e.currentTarget.value)} rows={8} placeholder={"A1\tOUT1\t20 A output\nA2\tOUT2\t20 A output"} autoFocus />
+      </label>
+      {cells.length > 0 && (
+        <>
+          <div className="dev-paste-preview">
             <table>
-              <thead><tr><th>Part number</th><th>Manufacturer</th><th>USD</th><th></th></tr></thead>
-              <tbody>
+              <thead>
                 <tr>
-                  <PartFields part={part} onChange={(patch) => setLibrary(updatePart(library, part.id, patch))} />
-                  <td>
-                    <button className="icon-button" onClick={() => setLibrary(removePart(library, "device_defs", dd.part_id))} title="Delete" aria-label="Delete device">
-                      <TrashIcon />
-                    </button>
-                  </td>
+                  {effectiveRoles.map((role, i) => (
+                    <th key={i}>
+                      <select
+                        value={role}
+                        aria-label={`Column ${i + 1} is`}
+                        onChange={(e) => setRoles(effectiveRoles.map((r, j) => (j === i ? (e.currentTarget.value as ColumnRole) : r)))}
+                      >
+                        {(Object.keys(ROLE_LABELS) as ColumnRole[]).map((k) => <option key={k} value={k}>{ROLE_LABELS[k]}</option>)}
+                      </select>
+                    </th>
+                  ))}
+                  <th>Check</th>
                 </tr>
+              </thead>
+              <tbody>
+                {cells.slice(0, 200).map((row, i) => (
+                  <tr key={i} className={preview[i].match ? undefined : "dev-paste-skip"}>
+                    {effectiveRoles.map((role, j) => <td key={j} className={role === "ignore" ? "dev-paste-ignored" : undefined}>{row[j] ?? ""}</td>)}
+                    <td>{preview[i].match ? <span className="dev-ok">→ {preview[i].match}</span> : <span className="dev-warn">not in housing</span>}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-
-            {dd.connectors.map((connector) => (
-              <div key={connector.id} style={{ marginLeft: "1rem", marginTop: "0.5rem" }}>
-                <div className="toolbar">
-                  <strong>Connector</strong>
-                  <input
-                    value={connector.label}
-                    placeholder="e.g. A"
-                    onChange={(e) => updateConnector(dd, connector.id, { label: e.currentTarget.value })}
-                  />
-                  <select
-                    value={connector.connector_def_id}
-                    onChange={(e) => updateConnector(dd, connector.id, { connector_def_id: Number(e.currentTarget.value) })}
-                  >
-                    {library.connector_defs.map((cd) => {
-                      const cp = partById(cd.part_id);
-                      return <option key={cd.part_id} value={cd.part_id}>{cp?.part_number || `#${cd.part_id}`}</option>;
-                    })}
-                  </select>
-                  <button className="icon-button" onClick={() => removeConnector(dd, connector.id)} title="Delete" aria-label="Delete device connector">
-                    <TrashIcon />
-                  </button>
-                </div>
-
-                <table>
-                  <thead><tr><th>Cavity</th><th>Name</th><th>Function</th><th></th></tr></thead>
-                  <tbody>
-                    {connector.pins.map((pin) => (
-                      <tr key={pin.id}>
-                        <td><input value={pin.cavity_id} onChange={(e) => updatePin(dd, connector, pin.id, { cavity_id: e.currentTarget.value })} /></td>
-                        <td><input value={pin.name} onChange={(e) => updatePin(dd, connector, pin.id, { name: e.currentTarget.value })} /></td>
-                        <td><input value={pin.function ?? ""} onChange={(e) => updatePin(dd, connector, pin.id, { function: e.currentTarget.value || null })} /></td>
-                        <td>
-                          <button className="icon-button" onClick={() => removePin(dd, connector, pin.id)} title="Delete" aria-label="Delete pin">
-                            <TrashIcon />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <button onClick={() => addPin(dd, connector)}>+ pin</button>
-              </div>
-            ))}
-            <button onClick={() => addConnector(dd)}>+ device connector</button>
-
-            <div style={{ marginTop: "0.75rem" }}>
-              <strong>Parallel pins</strong>
-              {dd.pin_groups.map((group) => (
-                <div key={group.id} className="toolbar">
-                  <input value={group.name} placeholder="e.g. OUT1" onChange={(e) => updatePinGroupName(dd, group.id, e.currentTarget.value)} />
-                  {allPins.map((pin) => (
-                    <label key={pin.id} style={{ fontSize: "0.9em" }}>
-                      <input
-                        type="checkbox"
-                        checked={group.pin_ids.includes(pin.id)}
-                        onChange={() => togglePinInGroup(dd, group.id, pin.id)}
-                      />
-                      {pin.name || `#${pin.id}`}
-                    </label>
-                  ))}
-                  <button className="icon-button" onClick={() => removePinGroup(dd, group.id)} title="Delete" aria-label="Delete pin group">
-                    <TrashIcon />
-                  </button>
-                </div>
-              ))}
-              <button onClick={() => addPinGroup(dd)}>+ pin group</button>
-            </div>
           </div>
-        );
-      })}
-      <button
-        onClick={() =>
-          setLibrary(addPart(library, "device", "device_defs", (partId) => ({ part_id: partId, connectors: [], pin_groups: [] })))
-        }
-        className="button-ghost-accent"
-      >
-        + New
-      </button>
+          <div className="dev-paste-actions">
+            <span>
+              <strong>{cells.length} rows</strong> · {matched} match a cavity of {housingName}
+              {unmatched.length > 0 && <span className="dev-warn"> · {unmatched.length} skipped ({unmatched.slice(0, 5).join(", ")}{unmatched.length > 5 ? "…" : ""})</span>}
+            </span>
+            <span className="lib-detail-spacer" />
+            <label className="dev-replace"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.currentTarget.checked)} /> Replace names already typed</label>
+            <button onClick={onCancel}>Cancel</button>
+            <button className="button-primary" disabled={matched === 0} onClick={() => onApply(preview, replace)}>Apply {matched} pins</button>
+          </div>
+        </>
+      )}
+      {cells.length === 0 && (
+        <div className="dev-paste-actions">
+          <span className="hint">Columns are split by tabs (Excel) or by two or more spaces (PDF). You choose which column is which after pasting.</span>
+          <span className="lib-detail-spacer" />
+          <button onClick={onCancel}>Cancel</button>
+        </div>
+      )}
     </section>
   );
 }

@@ -62,6 +62,15 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     setStatus("Sample project loaded (not saved to disk yet).");
   }
 
+  async function newProject() {
+    cancelProjectEdits();
+    loadProject(await invoke<ProjectData>("new_project"));
+    setFilePath("");
+    setRoute(null);
+    setNet(null);
+    setStatus("New project: name and code in the Inspector (click the project in the tree).");
+  }
+
   async function openProject() {
     const path = await pickFileToOpen("project");
     if (!path) return;
@@ -165,6 +174,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     <>
       <section className="toolbar">
         <span className="file-name" title={filePath || undefined}>{filePath ? fileName(filePath) : project ? "Not saved yet" : "No file"}</span>
+        <button onClick={() => void newProject()}>New</button>
         <button className="icon-button" onClick={() => void openProject()} title="Open…" aria-label="Open project file">
           <FolderIcon />
         </button>

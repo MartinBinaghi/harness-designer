@@ -41,8 +41,8 @@ type XY = { x: number; y: number };
 type Issue = "error" | "warning";
 
 /** Tamaño aproximado de cada tipo de nodo, para centrar puntos y bloques en el layout automático. */
-const BLOCK_SIZE = { width: 170, height: 48 };
-const POINT_SIZE = { width: 14, height: 14 };
+export const BLOCK_SIZE = { width: 170, height: 48 };
+export const POINT_SIZE = { width: 14, height: 14 };
 /** Grilla del layout automático: una columna por nivel del árbol, una fila por rama final. */
 const COLUMN_WIDTH = 300;
 const ROW_HEIGHT = 80;
@@ -52,13 +52,13 @@ const TERMINATION_SHORT: Record<string, string> = {
   adhesive_heatshrink: "Adhesive HS",
 };
 
-function rootNodeId(project: ProjectData): number | undefined {
+export function rootNodeId(project: ProjectData): number | undefined {
   const main = project.connector_instances.find((c) => c.id === project.project.main_connector_instance_id);
   return main?.node_id ?? project.nodes[0]?.id;
 }
 
 /** Extremos de conector y puntos de masa se dibujan como bloque (aunque todavía no tengan nada asignado). */
-function isBlock(project: ProjectData, nodeId: number): boolean {
+export function isBlock(project: ProjectData, nodeId: number): boolean {
   const kind = project.nodes.find((n) => n.id === nodeId)?.kind;
   return (
     kind === "connector_end" ||
@@ -74,7 +74,7 @@ function isBlock(project: ProjectData, nodeId: number): boolean {
  * una fila y cada nodo queda centrado entre sus ramas. Así las ramas de un
  * breakout quedan juntas y no se cruzan con las de otro.
  */
-function autoLayout(project: ProjectData): Map<number, XY> {
+export function autoLayout(project: ProjectData): Map<number, XY> {
   const neighbors = new Map<number, number[]>();
   for (const s of project.segments) {
     neighbors.set(s.node_a_id, [...(neighbors.get(s.node_a_id) ?? []), s.node_b_id]);

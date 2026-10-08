@@ -46,6 +46,9 @@ pub struct ConnectorDef {
     /// proyecto no los carga vía por vía (ver contacts.rs).
     pub contact_part_id: Option<i64>,
     pub seal_plug_part_id: Option<i64>,
+    /// Largo de la pieza de termo con adhesivo que va detrás de este conector
+    /// (varía según el conector; plan 9.3).
+    pub adhesive_heatshrink_length_mm: Option<f64>,
     /// Vistas del conector (lateral, frontal con numeración de pines, trasera)
     /// como data URL ("data:image/webp;base64,…"): la imagen vive dentro del
     /// archivo de la biblioteca, así se puede copiar y llevar a otra máquina.
@@ -84,19 +87,12 @@ pub struct DeviceDefConnector {
     pub pins: Vec<DeviceDefPin>,
 }
 
-/// Pines en paralelo (misma salida en varios pines, ej. PDM30 OUT1 = A1 + A10).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DeviceDefPinGroup {
-    pub id: i64,
-    pub name: String,
-    pub pin_ids: Vec<i64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Dispositivo con pinout conocido. Un nombre repetido en dos vías de un
+/// conector (OUT1 en A1 y A10) es una misma salida en dos pines (en paralelo).
 pub struct DeviceDef {
     pub part_id: i64,
     pub connectors: Vec<DeviceDefConnector>,
-    pub pin_groups: Vec<DeviceDefPinGroup>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -239,7 +235,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut connector_defs_stmt = conn.prepare(
-        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id FROM connector_defs",
+        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm FROM connector_defs",
     )?;
     let mut connector_defs = connector_defs_stmt
         .query_map([], |row| {
@@ -259,6 +255,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 image_back: row.get(12)?,
                 contact_part_id: row.get(13)?,
                 seal_plug_part_id: row.get(14)?,
+                adhesive_heatshrink_length_mm: row.get(15)?,
                 cavities: Vec::new(),
             })
         })?
@@ -312,30 +309,9 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 .collect::<Result<Vec<_>>>()?;
         }
 
-        let mut pin_groups_stmt = conn.prepare(
-            "SELECT id, name FROM device_def_pin_groups WHERE device_def_id = ?1 ORDER BY rowid",
-        )?;
-        let mut pin_groups = pin_groups_stmt
-            .query_map(params![part_id], |row| {
-                Ok(DeviceDefPinGroup {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    pin_ids: Vec::new(),
-                })
-            })?
-            .collect::<Result<Vec<_>>>()?;
-        for group in &mut pin_groups {
-            let mut members_stmt = conn
-                .prepare("SELECT pin_id FROM device_def_pin_group_members WHERE group_id = ?1 ORDER BY rowid")?;
-            group.pin_ids = members_stmt
-                .query_map(params![group.id], |row| row.get::<_, i64>(0))?
-                .collect::<Result<Vec<_>>>()?;
-        }
-
         device_defs.push(DeviceDef {
             part_id,
             connectors,
-            pin_groups,
         });
     }
 
@@ -529,8 +505,6 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     // hacer commit, cuando ya están todas las filas.
     tx.pragma_update(None, "defer_foreign_keys", true)?;
     for table in [
-        "device_def_pin_group_members",
-        "device_def_pin_groups",
         "device_def_pins",
         "device_def_connectors",
         "device_defs",
@@ -573,8 +547,8 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
 
     for connector_def in &library.connector_defs {
         tx.execute(
-            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 connector_def.part_id,
                 connector_def.gender,
@@ -591,6 +565,7 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
                 connector_def.image_back,
                 connector_def.contact_part_id,
                 connector_def.seal_plug_part_id,
+                connector_def.adhesive_heatshrink_length_mm,
             ],
         )?;
         for cavity in &connector_def.cavities {
@@ -615,18 +590,6 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
                 tx.execute(
                     "INSERT INTO device_def_pins (id, device_def_connector_id, cavity_id, name, function) VALUES (?1, ?2, ?3, ?4, ?5)",
                     params![pin.id, connector.id, pin.cavity_id, pin.name, pin.function],
-                )?;
-            }
-        }
-        for group in &device_def.pin_groups {
-            tx.execute(
-                "INSERT INTO device_def_pin_groups (id, device_def_id, name) VALUES (?1, ?2, ?3)",
-                params![group.id, device_def.part_id, group.name],
-            )?;
-            for pin_id in &group.pin_ids {
-                tx.execute(
-                    "INSERT INTO device_def_pin_group_members (group_id, pin_id) VALUES (?1, ?2)",
-                    params![group.id, pin_id],
                 )?;
             }
         }
@@ -773,6 +736,7 @@ mod tests {
             suggested_termination: None,
             contact_part_id: None,
             seal_plug_part_id: None,
+            adhesive_heatshrink_length_mm: None,
             image_side: None,
             image_front: None,
             image_back: None,
@@ -877,6 +841,7 @@ mod tests {
                 suggested_termination: Some("boot".into()),
                 contact_part_id: None,
                 seal_plug_part_id: None,
+                adhesive_heatshrink_length_mm: None,
                 image_side: None,
                 image_front: Some("data:image/webp;base64,UklGRhIAAABXRUJQVlA4".into()),
                 image_back: None,
@@ -905,11 +870,6 @@ mod tests {
                             function: Some("8 A Output 1".into()),
                         },
                     ],
-                }],
-                pin_groups: vec![DeviceDefPinGroup {
-                    id: 1,
-                    name: "OUT1".into(),
-                    pin_ids: vec![1, 2],
                 }],
             }],
             contact_defs: vec![],

@@ -9,6 +9,7 @@
  * de los pines con los que se une (baricentro), para que las líneas se crucen
  * lo menos posible.
  */
+import { devicePinName, type Library } from "./libraryTypes.ts";
 import type { ProjectData, WireEnd } from "./types";
 
 export const PIN_ROW = 22;
@@ -57,7 +58,7 @@ export function anchorY(b: SchematicBlock, cavityId: number | null): number {
   return b.y + BLOCK_HEADER + (i < 0 ? 0 : i) * PIN_ROW + PIN_ROW / 2;
 }
 
-export function buildSchematic(project: ProjectData, showAllPins: boolean): { blocks: SchematicBlock[]; links: SchematicLink[] } {
+export function buildSchematic(project: ProjectData, library: Library, showAllPins: boolean): { blocks: SchematicBlock[]; links: SchematicLink[] } {
   const connectorOfCavity = new Map<number, number>();
   for (const c of project.connector_instances) for (const cav of c.cavities) connectorOfCavity.set(cav.id, c.id);
 
@@ -97,11 +98,12 @@ export function buildSchematic(project: ProjectData, showAllPins: boolean): { bl
     ...project.connector_instances.map((c): SchematicBlock => {
       const pins = c.cavities
         .filter((cav) => showAllPins || wiredCavities.has(cav.id))
-        .map((cav) => ({
-          cavityId: cav.id,
-          label: cav.cavity_id,
-          note: (notesByCavity.get(cav.id) ?? []).join(", ") || cav.external_reference || "",
-        }));
+        .map((cav) => {
+          const note = (notesByCavity.get(cav.id) ?? []).join(", ") || cav.external_reference || "";
+          // En el conector de un dispositivo, el nombre del pin (OUT11) va primero.
+          const pinName = devicePinName(library, c.device_connector_id, cav.cavity_id);
+          return { cavityId: cav.id, label: cav.cavity_id, note: [pinName, note].filter(Boolean).join(" · ") };
+        });
       return {
         key: `c${c.id}`,
         kind: "connector",

@@ -13,13 +13,17 @@ export interface Project {
   fill_factor: number;
   labor_hours: number;
   labor_rate_usd: number;
+  /** Materiales sobre lo comprado (packs completos) en vez de lo usado. */
+  cost_on_purchased: boolean;
+  /** Repuesto por categoría de parte, en %; sin entrada = 0. */
+  spare_pcts: Record<string, number>;
 }
 
 export interface Node {
   id: number;
   kind: "connector_end" | "breakout" | "splice_point" | "ground_point";
   termination: "t_mold" | "adhesive_heatshrink" | "none" | null;
-  /** Solo tiene sentido con termination = "adhesive_heatshrink" (un CoveringDef). */
+  /** TMoldDef si termination = "t_mold", CoveringDef si "adhesive_heatshrink". */
   termination_library_part_id: number | null;
   /** Posición en el diagrama de armado; null hasta acomodarlo (a mano o con el layout automático). */
   diagram_x: number | null;
@@ -138,11 +142,14 @@ export interface ProjectStatus extends HistoryStatus {
 
 /** Elemento seleccionado, compartido entre el árbol, el inspector y las tablas de cada pantalla. */
 export type Selection =
+  /** Los datos del arnés (nombre, código, márgenes, costos). Hay uno solo: id 0. */
+  | { kind: "project"; id: 0 }
   | { kind: "node"; id: number }
   | { kind: "segment"; id: number }
   | { kind: "connector"; id: number }
   | { kind: "ground"; id: number }
   | { kind: "splice"; id: number }
+  | { kind: "component"; id: number }
   | { kind: "wire"; id: number }
   | null;
 

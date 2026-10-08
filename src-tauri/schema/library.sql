@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS connector_defs (
     -- conector); sin FK: si se borra la parte, Checks avisa que falta
     contact_part_id         INTEGER,
     seal_plug_part_id       INTEGER,
+    -- largo de la pieza de termo con adhesivo detrás del conector (mm)
+    adhesive_heatshrink_length_mm REAL,
     -- vistas del conector como data URL (la imagen viaja dentro de la biblioteca)
     image_side         TEXT,
     image_front        TEXT,
@@ -68,19 +70,6 @@ CREATE TABLE IF NOT EXISTS device_def_pins (
     name                        TEXT NOT NULL,
     function                    TEXT,
     UNIQUE (device_def_connector_id, cavity_id)
-);
-
--- Pines en paralelo: misma salida en varios pines (ej. PDM30 OUT1 = A1 + A10).
-CREATE TABLE IF NOT EXISTS device_def_pin_groups (
-    id              INTEGER PRIMARY KEY,
-    device_def_id   INTEGER NOT NULL REFERENCES device_defs(part_id) ON DELETE CASCADE,
-    name            TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS device_def_pin_group_members (
-    group_id    INTEGER NOT NULL REFERENCES device_def_pin_groups(id) ON DELETE CASCADE,
-    pin_id      INTEGER NOT NULL REFERENCES device_def_pins(id) ON DELETE CASCADE,
-    PRIMARY KEY (group_id, pin_id)
 );
 
 CREATE TABLE IF NOT EXISTS contact_defs (

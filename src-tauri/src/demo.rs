@@ -50,6 +50,8 @@ pub fn sample_project() -> ProjectData {
             fill_factor: 0.75,
             labor_hours: 0.0,
             labor_rate_usd: 0.0,
+            cost_on_purchased: false,
+            spare_pcts: Default::default(),
         },
         nodes: vec![
             Node {
@@ -340,6 +342,7 @@ fn connector_def(
         suggested_termination: None,
         contact_part_id: contact,
         seal_plug_part_id: None,
+        adhesive_heatshrink_length_mm: None,
         image_side: None,
         image_front: None,
         image_back: None,
@@ -356,7 +359,8 @@ pub fn sample_library() -> Library {
     Library {
         connector_defs: vec![
             connector_def(1, "female", "AMP", "CE", 6, "20", Some(40)),
-            connector_def(2, "female", "MoTeC", "PDM30 A", 34, "16", Some(41)),
+            // El conector A del PDM30 es un AMP Superseal 1.0 de 34 vías.
+            connector_def(2, "female", "Superseal 1.0", "34", 34, "16", Some(41)),
             // Sin contacto cargado: Checks lo avisa (ejemplo de dato faltante).
             connector_def(3, "male", "DT", "", 2, "16", None),
         ],
@@ -374,7 +378,6 @@ pub fn sample_library() -> Library {
                     function: Some("20 A output 1".into()),
                 }],
             }],
-            pin_groups: vec![],
         }],
         parts: vec![
             part(1, "connector", "AMP-CE-6P", "unit", 1.0, 12.50),

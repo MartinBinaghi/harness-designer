@@ -9,6 +9,9 @@
  *   de los planos de TE (DT04-12PA, DTM04-4P, DTM04-6P) y del catálogo de
  *   bussing de Deutsch (DT 4/6/8/12). El resto se deduce del mismo patrón.
  * - MIL-DTL-38999: coordenadas de cada contacto de MIL-STD-1560.
+ * - AMP Superseal 1.0 (26 y 34 vías, los del MoTeC PDM30/M1): vista trasera de
+ *   la hembra publicada por Corsa Technic (SS10-26S-X, SS10-34S-X); paso 3 mm,
+ *   filas a 3,5 / 4 / 3,5 mm (TE 4-1437290-0).
  *
  * Coordenadas en mm, x a la derecha, y hacia abajo, vista desde la cara de
  * acople (frontal). La vista del lado de los cables es la misma espejada.
@@ -81,6 +84,7 @@ const MIL_CONTACT_R: Record<string, number> = {
 function family(series: string | null): string | null {
   const s = (series ?? "").trim().toUpperCase();
   if (s === "DT" || s === "DTM" || s === "DTP") return s;
+  if (/^SUPERSEAL\s*1\.0/.test(s)) return "SUPERSEAL10";
   if (s.startsWith("SUPERSEAL")) return "SUPERSEAL";
   if (/38999|27599|29600/.test(s)) return "MIL";
   return null;
@@ -93,11 +97,15 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
   const fam = family(def.series);
   if (!fam || def.cavities.length === 0) return null;
   if (fam === "MIL") return milFace(def, mil);
+  if (fam === "SUPERSEAL10") return superseal10Face(def);
 
   const ways = def.cavities.length;
-  // La grilla se indexa por número: las vías tienen que ser 1..n.
+  // La grilla se indexa por número de vía: 1..n, o A.. (el DT de 3 vías va A, B, C).
   const ids = new Set(def.cavities.map((c) => c.cavity_id));
-  if (!Array.from({ length: ways }, (_, i) => String(i + 1)).every((id) => ids.has(id))) return null;
+  const labels = [(i: number) => String(i + 1), (i: number) => String.fromCharCode(65 + i)]
+    .map((label) => Array.from({ length: ways }, (_, i) => label(i)))
+    .find((list) => list.every((id) => ids.has(id)));
+  if (!labels) return null;
 
   let layout: { grid: Grid; checked: boolean } | null;
   if (fam === "SUPERSEAL") {
@@ -114,7 +122,7 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
   const ys = layout.grid.map(([, y]) => y);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const rear = layout.grid.map(([x, y], i) => ({ id: String(i + 1), x: (x - cx) * p, y: (y - cy) * p, r: p * 0.32 }));
+  const rear = layout.grid.map(([x, y], i) => ({ id: labels[i], x: (x - cx) * p, y: (y - cy) * p, r: p * 0.32 }));
   // Superseal es ovalado y el DT de 3 vías triangular; las demás Deutsch, rectangulares.
   const rounded = fam === "SUPERSEAL" || (fam === "DT" && ways === 3);
   // Cara del macho = su vista trasera espejada; la hembra enfrenta al macho, así
@@ -126,6 +134,30 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
     cavities: def.gender === "male" ? mirror(rear) : rear,
     numbering: layout.checked ? "datasheet" : "inferred",
   };
+}
+
+/**
+ * Vías por fila del Superseal 1.0, mirando la hembra desde atrás con la traba
+ * arriba: de izquierda a derecha y de arriba abajo; las filas del medio,
+ * centradas (corridas medio paso).
+ */
+const SUPERSEAL10_ROWS: Record<number, number[]> = { 26: [7, 6, 6, 7], 34: [9, 8, 8, 9] };
+const SUPERSEAL10_ROW_Y = [0, 3.5, 7.5, 11];
+
+function superseal10Face(def: ConnectorDef): ConnectorFace | null {
+  const ways = def.cavities.length;
+  const rows = SUPERSEAL10_ROWS[ways];
+  const ids = new Set(def.cavities.map((c) => c.cavity_id));
+  if (!rows || !Array.from({ length: ways }, (_, i) => String(i + 1)).every((id) => ids.has(id))) return null;
+  const pitch = 3;
+  const femaleRear: FaceCavity[] = [];
+  rows.forEach((count, row) => {
+    for (let i = 0; i < count; i++) {
+      femaleRear.push({ id: String(femaleRear.length + 1), x: (i - (count - 1) / 2) * pitch, y: SUPERSEAL10_ROW_Y[row] - 5.5, r: pitch * 0.42 });
+    }
+  });
+  // La cara de la hembra es su vista trasera espejada; la del macho, la trasera de la hembra.
+  return { shape: "rect", outline: pitch * 0.8, latch: "top", cavities: def.gender === "female" ? mirror(femaleRear) : femaleRear, numbering: "datasheet" };
 }
 
 /**

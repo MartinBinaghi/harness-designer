@@ -168,6 +168,7 @@ mod tests {
             suggested_termination: None,
             contact_part_id: Some(500),
             seal_plug_part_id: Some(600),
+            adhesive_heatshrink_length_mm: None,
             image_side: None,
             image_front: None,
             image_back: None,

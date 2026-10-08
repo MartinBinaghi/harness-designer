@@ -54,6 +54,13 @@ fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn new_project(state: State<AppState>) -> ProjectData {
+    let project = ProjectData::empty();
+    *state.project.lock().unwrap() = Some(History::new(project.clone()));
+    project
+}
+
+#[tauri::command]
 fn demo_project(state: State<AppState>) -> ProjectData {
     let project = demo::sample_project();
     *state.project.lock().unwrap() = Some(History::new(project.clone()));
@@ -196,6 +203,7 @@ pub fn run() {
             save_library,
             open_project,
             save_project,
+            new_project,
             demo_project,
             demo_library,
             edit_project,

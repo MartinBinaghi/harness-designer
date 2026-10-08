@@ -1,6 +1,6 @@
 // Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: node tools/check_sheets.ts
 import assert from "node:assert/strict";
-import { colorWord, connectorHeatShrink, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, toCsv, wireTotals } from "../src/sheets.ts";
+import { colorWord, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
 import type { Library } from "../src/libraryTypes.ts";
 import type { ProjectData } from "../src/types.ts";
 
@@ -108,10 +108,28 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
 
 // Conector de un dispositivo: la función es el nombre del pin, y quien termina ahí lo ve con ese nombre.
 {
-  const devLib = { ...library, device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "1", name: "OUT11", function: null }] }], pin_groups: [] }] } as unknown as Library;
+  const devLib = { ...library, device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "1", name: "OUT11", function: null }] }] }] } as unknown as Library;
   const pdm = { ...project, connector_instances: project.connector_instances.map((c) => (c.id === 2 ? { ...c, name: "PDM30", device_connector_id: 3 } : c)) } as ProjectData;
   assert.equal(pinoutRows(pdm, devLib, 2, net)[0].fn, "OUT11");
   assert.equal(terminatesAt(pdm, devLib, 11, net), "PDM30 · OUT11 (X2:1), X3:1 · TPS (via SP1)");
+  // En la lista de corte, el extremo lleva el nombre del pin.
+  assert.equal(cutListRows(pdm, devLib, cuts, "pin").find((r) => r.id === "W002")!.to, "X2:1 OUT11");
+}
+
+// Coberturas: un tramo por segmento, entre sus puntas, con la medida nominal; y lo que va en cada punta.
+{
+  const p = {
+    ...withSegments,
+    nodes: [{ id: 9, kind: "breakout", termination: "t_mold", termination_library_part_id: 40 }],
+    connector_instances: withSegments.connector_instances.map((c) =>
+      c.id === 2 ? { ...c, termination: "boot_90", termination_library_part_id: null } : c.id === 3 ? { ...c, termination: "adhesive_heatshrink", termination_library_part_id: 31 } : c,
+    ),
+  } as unknown as ProjectData;
+  const lib = { ...covLib, connector_defs: [{ part_id: 1, adhesive_heatshrink_length_mm: 40 }], parts: [{ id: 31, part_number: "DR-25-1/4" }, { id: 40, part_number: "T-202" }] } as unknown as Library;
+  const cov = coveringRows(p, lib, [{ segment_id: 2, library_part_id: 31, suggested: false, segment_length_mm: 400, legs_mm: 30, overlap_mm: 15, cut_length_mm: 385 }]);
+  assert.deepEqual(cov.map((r) => [r.between, r.size, r.part, r.cutMm]), [["Breakout 9 – X2", '1/4"', "DR-25-1/4", 385]]);
+  // La pieza con adhesivo lleva el largo de su ConnectorDef (varía según el conector).
+  assert.deepEqual(terminationRows(p, lib), [["X2 · MAP", "90° boot", "not chosen"], ["X3 · TPS", "Adhesive heat-shrink", '1/4" · DR-25-1/4 · cut 40 mm'], ["Breakout 9", "T-mold", "T-202"]]);
 }
 
 console.log("sheets: ok");

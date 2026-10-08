@@ -15,6 +15,8 @@ export interface BomRow {
   category: string;
   part_number: string;
   quantity_needed: number;
+  /** Repuesto por categoría (% del proyecto). */
+  spare: number;
   unit: string;
   quantity_to_buy: number;
   unit_price_usd: number | null;
@@ -84,6 +86,18 @@ export interface SpliceOutputGaugeInfo {
   options: SpliceOutputGaugeFit[];
 }
 
+/** Tramo de termo de un segmento: largo − patas de boots/moldes + solape. */
+export interface CoveringCut {
+  segment_id: number;
+  /** El asignado al segmento o, si no tiene, el sugerido; null si ninguno sirve. */
+  library_part_id: number | null;
+  suggested: boolean;
+  segment_length_mm: number;
+  legs_mm: number;
+  overlap_mm: number;
+  cut_length_mm: number;
+}
+
 export interface CostReport {
   cut_list: WireCutLength[];
   bom: BomRow[];
@@ -92,4 +106,5 @@ export interface CostReport {
   connector_terminations: ConnectorTerminationInfo[];
   breakout_terminations: BreakoutTerminationInfo[];
   splice_output_gauges: SpliceOutputGaugeInfo[];
+  covering_cuts: CoveringCut[];
 }

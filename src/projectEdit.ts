@@ -222,7 +222,7 @@ export function addWire(project: ProjectData, library: Library, endA: WireEnd, e
   return { project: { ...project, wire_instances: [...project.wire_instances, wire] }, wireId: id };
 }
 
-type ListKey = "nodes" | "segments" | "connector_instances" | "ground_points" | "splice_instances" | "wire_instances";
+type ListKey = "nodes" | "segments" | "connector_instances" | "ground_points" | "splice_instances" | "component_instances" | "wire_instances";
 
 /** Cambia campos de un elemento (por id) de cualquiera de las listas del proyecto. Lo usan tablas e Inspector. */
 export function patchItem<K extends ListKey>(project: ProjectData, key: K, id: number, patch: Partial<ProjectData[K][number]>): ProjectData {
@@ -320,11 +320,14 @@ const cavityEnd = (id: number): WireEnd => ({ ...BLANK_END, cavity_assignment_id
 export function endChoices(project: ProjectData, library: Library): { label: string; end: WireEnd }[] {
   const out: { label: string; end: WireEnd }[] = [];
   for (const c of project.connector_instances) {
-    for (const cav of c.cavities) {
+    const pins = c.cavities.map((cav) => devicePinName(library, c.device_connector_id, cav.cavity_id));
+    c.cavities.forEach((cav, i) => {
       out.push({ label: `${c.short_id}:${cav.cavity_id}`, end: cavityEnd(cav.id) });
-      const pin = devicePinName(library, c.device_connector_id, cav.cavity_id);
-      if (pin) out.push({ label: `${c.name || c.short_id} ${pin}`, end: cavityEnd(cav.id) });
-    }
+      const pin = pins[i];
+      // Un nombre en dos vías (pines en paralelo) lleva la vía: "PDM30 OUT1 (A10)".
+      const repeated = pins.filter((p) => p === pin).length > 1;
+      if (pin) out.push({ label: `${c.name || c.short_id} ${pin}${repeated ? ` (${cav.cavity_id})` : ""}`, end: cavityEnd(cav.id) });
+    });
   }
   for (const s of project.splice_instances) out.push({ label: s.short_id, end: { ...BLANK_END, kind: "splice", cavity_assignment_id: null, splice_id: s.id } });
   for (const g of project.ground_points) out.push({ label: g.short_id, end: { ...BLANK_END, kind: "ground", cavity_assignment_id: null, ground_point_id: g.id } });
@@ -379,6 +382,58 @@ export function setOtherEnd(project: ProjectData, wireId: number, cavityId: numb
 }
 
 /** Borra un cable (y lo saca de su grupo de trenzado). */
+/** Splices, masas y componentes: donde terminan o se unen cables fuera de un conector. */
+export type JunctionKind = "splice" | "ground" | "component";
+const JUNCTION_LIST = { splice: "splice_instances", ground: "ground_points", component: "component_instances" } as const;
+const JUNCTION_END = { splice: "splice_id", ground: "ground_point_id", component: "component_instance_id" } as const;
+
+/** Cables que llegan a un splice, masa o componente. */
+export function wiresAtJunction(project: ProjectData, kind: JunctionKind, id: number): WireInstance[] {
+  const at = (end: WireEnd) => end.kind === kind && end[JUNCTION_END[kind]] === id;
+  return project.wire_instances.filter((w) => at(w.end_a) || at(w.end_b));
+}
+
+/**
+ * Splice, masa o componente nuevo, con el próximo ID (SP3, G2, R1 / D1 según
+ * el tipo) y la primera parte de la biblioteca que le corresponde. Se ubica en
+ * el primer nodo de su clase (punto de splice / de masa), o en el primero; se
+ * corrige después en el Inspector.
+ */
+export function addJunction(project: ProjectData, library: Library, kind: JunctionKind): { project: ProjectData; id: number } | string {
+  const wantedNode = kind === "ground" ? "ground_point" : "splice_point";
+  const nodeId = (project.nodes.find((n) => n.kind === wantedNode) ?? project.nodes[0])?.id;
+  if (nodeId === undefined) return "Draw the topology first: it needs at least one node.";
+  const list = JUNCTION_LIST[kind];
+  const id = nextId(project[list].map((x) => x.id));
+  if (kind === "ground") {
+    const ground = { id, short_id: `G${id}`, name: "", terminal_library_part_id: null, node_id: nodeId };
+    return { project: { ...project, ground_points: [...project.ground_points, ground] }, id };
+  }
+  const place = { node_id: nodeId, segment_id: null, offset_from_end_mm: null, offset_from_node_id: null };
+  if (kind === "splice") {
+    const part = library.splice_defs[0]?.part_id;
+    if (part === undefined) return "Add a splice type in Library → Splices first.";
+    const splice = { id, short_id: `SP${id}`, library_part_id: part, ...place };
+    return { project: { ...project, splice_instances: [...project.splice_instances, splice] }, id };
+  }
+  const def = library.component_defs[0];
+  if (!def) return "Add a component type in Library → Components first.";
+  const prefix = /diod/i.test(def.component_type) ? "D" : "R";
+  const component = { id, short_id: `${prefix}${id}`, name: "", library_part_id: def.part_id, ...place };
+  return { project: { ...project, component_instances: [...project.component_instances, component] }, id };
+}
+
+/** Borra un splice, masa o componente; los cables que llegaban ahí quedan con ese extremo vacío. */
+export function deleteJunction(project: ProjectData, kind: JunctionKind, id: number): ProjectData {
+  const loose = (end: WireEnd) => (end.kind === kind && end[JUNCTION_END[kind]] === id ? BLANK_END : end);
+  const list = JUNCTION_LIST[kind];
+  return {
+    ...project,
+    [list]: (project[list] as { id: number }[]).filter((x) => x.id !== id),
+    wire_instances: project.wire_instances.map((w) => ({ ...w, end_a: loose(w.end_a), end_b: loose(w.end_b) })),
+  };
+}
+
 export function deleteWire(project: ProjectData, wireId: number): ProjectData {
   return {
     ...project,

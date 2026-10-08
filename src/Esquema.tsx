@@ -136,7 +136,7 @@ export default function Esquema({ project, setProject, library, selection, onSel
   const [notice, setNotice] = useState<string | null>(null);
   const [netWires, setNetWires] = useState<Set<number>>(new Set());
 
-  const model = useMemo(() => (project ? buildSchematic(project, showAllPins) : null), [project, showAllPins]);
+  const model = useMemo(() => (project ? buildSchematic(project, library, showAllPins) : null), [project, library, showAllPins]);
   const [nodes, setNodes] = useState<FlowNode<BlockData>[]>([]);
 
   useEffect(() => {

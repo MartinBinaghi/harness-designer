@@ -6,6 +6,7 @@
 
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
@@ -21,6 +22,10 @@ pub struct Project {
     pub fill_factor: f64,
     pub labor_hours: f64,
     pub labor_rate_usd: f64,
+    /// Materiales sobre lo comprado (packs completos) en vez de sobre lo usado (plan 5.4).
+    pub cost_on_purchased: bool,
+    /// Repuesto por categoría de parte (`Part::category`), en %; sin entrada = 0 (plan 5.4).
+    pub spare_pcts: BTreeMap<String, f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,8 +33,7 @@ pub struct Node {
     pub id: i64,
     pub kind: String,
     pub termination: Option<String>,
-    /// Solo tiene sentido con `termination = "adhesive_heatshrink"` (referencia a
-    /// un `CoveringDef`); "t_mold" todavía no elige una parte específica.
+    /// `TMoldDef` si `termination = "t_mold"`, `CoveringDef` si es "adhesive_heatshrink".
     pub termination_library_part_id: Option<i64>,
     /// Posición en el diagrama de armado (no escalado, plan 10.2). `None` hasta
     /// que se acomoda a mano o con el layout automático.
@@ -159,6 +163,39 @@ pub struct ProjectData {
     pub twist_groups: Vec<TwistGroup>,
 }
 
+impl ProjectData {
+    /// Proyecto nuevo, vacío, con los valores por defecto del plan (margen 10%,
+    /// paso de trenzado 8 × D_bundle, llenado 0,75, markup 0%).
+    pub fn empty() -> Self {
+        ProjectData {
+            project: Project {
+                name: "New harness".into(),
+                harness_code: String::new(),
+                client: None,
+                revision: None,
+                format_version: 1,
+                main_connector_instance_id: None,
+                markup_pct: 0.0,
+                default_cut_margin_pct: 10.0,
+                default_twist_pitch_factor: 8.0,
+                fill_factor: 0.75,
+                labor_hours: 0.0,
+                labor_rate_usd: 0.0,
+                cost_on_purchased: false,
+                spare_pcts: BTreeMap::new(),
+            },
+            nodes: vec![],
+            segments: vec![],
+            connector_instances: vec![],
+            ground_points: vec![],
+            splice_instances: vec![],
+            component_instances: vec![],
+            wire_instances: vec![],
+            twist_groups: vec![],
+        }
+    }
+}
+
 fn wire_end(
     kind: String,
     a: Option<i64>,
@@ -177,7 +214,7 @@ fn wire_end(
 
 pub fn load(conn: &Connection) -> Result<ProjectData> {
     let project = conn.query_row(
-        "SELECT name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd
+        "SELECT name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts
          FROM project WHERE id = 1",
         [],
         |row| {
@@ -194,6 +231,8 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 fill_factor: row.get(9)?,
                 labor_hours: row.get(10)?,
                 labor_rate_usd: row.get(11)?,
+                cost_on_purchased: row.get(12)?,
+                spare_pcts: serde_json::from_str(&row.get::<_, String>(13)?).unwrap_or_default(),
             })
         },
     )?;
@@ -408,8 +447,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     let p = &data.project;
     tx.execute(
-        "INSERT INTO project (id, name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO project (id, name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             p.name,
             p.harness_code,
@@ -423,6 +462,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
             p.fill_factor,
             p.labor_hours,
             p.labor_rate_usd,
+            p.cost_on_purchased,
+            serde_json::to_string(&p.spare_pcts).expect("un mapa de números siempre se serializa"),
         ],
     )?;
 
@@ -574,6 +615,8 @@ mod tests {
                 fill_factor: 0.75,
                 labor_hours: 3.5,
                 labor_rate_usd: 25.0,
+                cost_on_purchased: true,
+                spare_pcts: [("contact".to_string(), 10.0)].into(),
             },
             nodes: vec![
                 Node {

@@ -2,7 +2,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CostReport, WireCutLength } from "./costTypes";
 import { changeConnectorPart, patchItem, wireCategoryPatch } from "./projectEdit";
-import type { ConnectorInstance, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
+import type { ComponentInstance, ConnectorInstance, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
+
+type Placed = Pick<SpliceInstance, "node_id" | "segment_id" | "offset_from_end_mm" | "offset_from_node_id">;
 import { choiceKey, CONNECTOR_VIEWS, connectorChoices, partLabel, type ConnectorChoice, type Library } from "./libraryTypes";
 import { EndEditor } from "./Cables";
 import { ConnectorFaceView } from "./ConnectorFaceView";
@@ -201,6 +203,63 @@ function WireLength({ project, library, wire }: { project: ProjectData; library:
   );
 }
 
+/** Dónde está un splice o componente: en un nodo, o sobre un segmento a X mm de uno de sus extremos (plan 4.2). */
+function LocationFields({ project, item, nodeOptions, set }: {
+  project: ProjectData;
+  item: Placed;
+  nodeOptions: { value: number; label: string }[];
+  set: (patch: Partial<Placed>) => void;
+}) {
+  const onSegment = item.segment_id !== null;
+  const seg = onSegment ? project.segments.find((x) => x.id === item.segment_id) : undefined;
+  return (
+    <>
+      <Field label="Location">
+        <Select
+          value={onSegment ? "segment" : "node"}
+          options={[{ value: "node", label: "At a node" }, { value: "segment", label: "On a segment" }]}
+          onChange={(v) => {
+            if (v === "node") set({ node_id: project.nodes[0]?.id ?? null, segment_id: null, offset_from_end_mm: null, offset_from_node_id: null });
+            else if (v === "segment" && project.segments[0]) {
+              const first = project.segments[0];
+              set({ node_id: null, segment_id: first.id, offset_from_node_id: first.node_a_id, offset_from_end_mm: 0 });
+            }
+          }}
+        />
+      </Field>
+      {!onSegment && (
+        <Field label="Node"><Select value={item.node_id} options={nodeOptions} onChange={(v) => v !== null && set({ node_id: v })} /></Field>
+      )}
+      {onSegment && (
+        <>
+          <Field label="Segment">
+            <Select
+              value={item.segment_id}
+              options={project.segments.map((x) => ({ value: x.id, label: `S${x.id} · ${x.node_a_id}–${x.node_b_id} · ${x.length_mm} mm` }))}
+              onChange={(v) => {
+                const next = project.segments.find((x) => x.id === v);
+                if (next) set({ segment_id: next.id, offset_from_node_id: next.node_a_id });
+              }}
+            />
+          </Field>
+          <Field label="Distance">
+            <NumberInput value={item.offset_from_end_mm} unit="mm" onCommit={(v) => v !== null && set({ offset_from_end_mm: v })} />
+          </Field>
+          {seg && (
+            <Field label="From node">
+              <Select
+                value={item.offset_from_node_id}
+                options={[seg.node_a_id, seg.node_b_id].map((id) => ({ value: id, label: `node ${id}` }))}
+                onChange={(v) => v !== null && set({ offset_from_node_id: v })}
+              />
+            </Field>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 interface Props {
   project: ProjectData | null;
   setProject: (p: ProjectData) => void;
@@ -224,7 +283,55 @@ export default function Inspector({ project, setProject, library, selection }: P
   let title = "";
   let fields: ReactNode = null;
 
-  if (selection.kind === "node") {
+  if (selection.kind === "project") {
+    const p = project.project;
+    const set = (patch: Partial<typeof p>) => setProject({ ...project, project: { ...p, ...patch } });
+    const categories = [...new Set(library.parts.map((x) => x.category))].sort();
+    title = "Harness";
+    fields = (
+      <>
+        <Field label="Name"><TextInput value={p.name} onChange={(v) => set({ name: v })} placeholder="e.g. Cableado Motor" /></Field>
+        <Field label="Code"><TextInput value={p.harness_code} onChange={(v) => set({ harness_code: v })} placeholder="e.g. MOT-01" /></Field>
+        <Field label="Client"><TextInput value={p.client ?? ""} onChange={(v) => set({ client: v || null })} /></Field>
+        <Field label="Revision"><TextInput value={p.revision ?? ""} onChange={(v) => set({ revision: v || null })} /></Field>
+        <Field label="Main connector">
+          <Select
+            value={p.main_connector_instance_id}
+            empty="—"
+            options={project.connector_instances.map((c) => ({ value: c.id, label: c.name ? `${c.short_id} · ${c.name}` : c.short_id }))}
+            onChange={(v) => set({ main_connector_instance_id: v })}
+          />
+        </Field>
+        <Field label="Cut margin"><NumberInput value={p.default_cut_margin_pct} unit="%" onCommit={(v) => v !== null && set({ default_cut_margin_pct: v })} /></Field>
+        <Field label="Twist pitch"><NumberInput value={p.default_twist_pitch_factor} unit="× bundle Ø" onCommit={(v) => v !== null && set({ default_twist_pitch_factor: v })} /></Field>
+        <Field label="Fill factor"><NumberInput value={p.fill_factor} onCommit={(v) => v !== null && v > 0 && v <= 1 && set({ fill_factor: v })} /></Field>
+        <Field label="Labor"><NumberInput value={p.labor_hours} unit="h" onCommit={(v) => v !== null && set({ labor_hours: v })} /></Field>
+        <Field label="Labor rate"><NumberInput value={p.labor_rate_usd} unit="USD/h" onCommit={(v) => v !== null && set({ labor_rate_usd: v })} /></Field>
+        <Field label="Markup"><NumberInput value={p.markup_pct} unit="%" onCommit={(v) => v !== null && set({ markup_pct: v })} /></Field>
+        <Field label="Materials cost">
+          <Select
+            value={p.cost_on_purchased ? "purchased" : "used"}
+            options={[{ value: "used", label: "On what is used" }, { value: "purchased", label: "On what is bought (full packs)" }]}
+            onChange={(v) => set({ cost_on_purchased: v === "purchased" })}
+          />
+        </Field>
+        {categories.map((cat) => (
+          <Field key={cat} label={`Spare · ${cat}`}>
+            <NumberInput
+              value={p.spare_pcts[cat] ?? null}
+              nullable
+              unit="%"
+              placeholder="0"
+              onCommit={(v) => {
+                const { [cat]: _, ...rest } = p.spare_pcts;
+                set({ spare_pcts: v ? { ...rest, [cat]: v } : rest });
+              }}
+            />
+          </Field>
+        ))}
+      </>
+    );
+  } else if (selection.kind === "node") {
     const node = project.nodes.find((n) => n.id === selection.id);
     if (node) {
       const set = (patch: Partial<Node>) => setProject(patchItem(project, "nodes", node.id, patch));
@@ -356,55 +463,32 @@ export default function Inspector({ project, setProject, library, selection }: P
     const s = project.splice_instances.find((x) => x.id === selection.id);
     if (s) {
       const set = (patch: Partial<SpliceInstance>) => setProject(patchItem(project, "splice_instances", s.id, patch));
-      const onSegment = s.segment_id !== null;
-      const seg = onSegment ? project.segments.find((x) => x.id === s.segment_id) : undefined;
       title = s.short_id || "Splice";
       fields = (
         <>
           <Field label="ID"><TextInput value={s.short_id} onChange={(v) => set({ short_id: v })} placeholder="SP1" /></Field>
           <Field label="Part"><Select value={s.library_part_id} options={parts(library.splice_defs)} onChange={(v) => v !== null && set({ library_part_id: v })} /></Field>
-          <Field label="Location">
+          <LocationFields project={project} item={s} nodeOptions={nodeOptions} set={set} />
+        </>
+      );
+    }
+  } else if (selection.kind === "component") {
+    const c = project.component_instances.find((x) => x.id === selection.id);
+    if (c) {
+      const set = (patch: Partial<ComponentInstance>) => setProject(patchItem(project, "component_instances", c.id, patch));
+      title = c.short_id || "Component";
+      fields = (
+        <>
+          <Field label="ID"><TextInput value={c.short_id} onChange={(v) => set({ short_id: v })} placeholder="R1" /></Field>
+          <Field label="Name"><TextInput value={c.name} onChange={(v) => set({ name: v })} placeholder="e.g. CAN termination 100 Ω" /></Field>
+          <Field label="Part">
             <Select
-              value={onSegment ? "segment" : "node"}
-              options={[{ value: "node", label: "At a node" }, { value: "segment", label: "On a segment" }]}
-              onChange={(v) => {
-                if (v === "node") set({ node_id: project.nodes[0]?.id ?? null, segment_id: null, offset_from_end_mm: null, offset_from_node_id: null });
-                else if (v === "segment" && project.segments[0]) {
-                  const first = project.segments[0];
-                  set({ node_id: null, segment_id: first.id, offset_from_node_id: first.node_a_id, offset_from_end_mm: 0 });
-                }
-              }}
+              value={c.library_part_id}
+              options={library.component_defs.map((d) => ({ value: d.part_id, label: [partLabel(library, d.part_id), d.component_type, d.value].filter(Boolean).join(" · ") }))}
+              onChange={(v) => v !== null && set({ library_part_id: v })}
             />
           </Field>
-          {!onSegment && (
-            <Field label="Node"><Select value={s.node_id} options={nodeOptions} onChange={(v) => v !== null && set({ node_id: v })} /></Field>
-          )}
-          {onSegment && (
-            <>
-              <Field label="Segment">
-                <Select
-                  value={s.segment_id}
-                  options={project.segments.map((x) => ({ value: x.id, label: `S${x.id} · ${x.node_a_id}–${x.node_b_id} · ${x.length_mm} mm` }))}
-                  onChange={(v) => {
-                    const next = project.segments.find((x) => x.id === v);
-                    if (next) set({ segment_id: next.id, offset_from_node_id: next.node_a_id });
-                  }}
-                />
-              </Field>
-              <Field label="Distance">
-                <NumberInput value={s.offset_from_end_mm} unit="mm" onCommit={(v) => v !== null && set({ offset_from_end_mm: v })} />
-              </Field>
-              {seg && (
-                <Field label="From node">
-                  <Select
-                    value={s.offset_from_node_id}
-                    options={[seg.node_a_id, seg.node_b_id].map((id) => ({ value: id, label: `node ${id}` }))}
-                    onChange={(v) => v !== null && set({ offset_from_node_id: v })}
-                  />
-                </Field>
-              )}
-            </>
-          )}
+          <LocationFields project={project} item={c} nodeOptions={nodeOptions} set={set} />
         </>
       );
     }

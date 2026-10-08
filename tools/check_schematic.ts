@@ -1,6 +1,7 @@
 // Chequeo de la vista esquemática pin a pin. Uso: node tools/check_schematic.ts
 import assert from "node:assert/strict";
 import { anchorY, buildSchematic } from "../src/schematic.ts";
+import type { Library } from "../src/libraryTypes.ts";
 import type { ProjectData } from "../src/types.ts";
 
 const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null });
@@ -23,7 +24,11 @@ const project = {
   ],
 } as unknown as ProjectData;
 
-const { blocks, links } = buildSchematic(project, false);
+// X2 es el conector A de un dispositivo: su pin 2 se llama OUT11.
+project.connector_instances[1].device_connector_id = 5;
+const library = { device_defs: [{ connectors: [{ id: 5, pins: [{ cavity_id: "2", name: "OUT11" }] }] }] } as unknown as Library;
+
+const { blocks, links } = buildSchematic(project, library, false);
 const b = (key: string) => blocks.find((x) => x.key === key)!;
 assert.equal(links.length, 4);
 // Columnas: principal a la izquierda, splice en el medio, el resto a la derecha; SP9 (sin cables) no aparece.
@@ -32,11 +37,11 @@ assert.equal(blocks.some((x) => x.key === "s9"), false);
 // Solo los pines usados; el resto se cuenta.
 assert.deepEqual(b("c1").pins.map((p) => p.label), ["1", "2", "3"]);
 assert.equal(b("c1").hiddenPins, 1);
-assert.equal(b("c2").pins.find((p) => p.cavityId === 22)!.note, "5V");
+assert.equal(b("c2").pins.find((p) => p.cavityId === 22)!.note, "OUT11 · 5V");
 // Baricentro: X3 (unido al pin 1) queda arriba de X2 (pin 2 + splice), así no se cruzan.
 assert.ok(b("c3").y < b("c2").y);
 assert.ok(anchorY(b("c1"), 11) < anchorY(b("c1"), 12));
 // Con todos los pines.
-assert.equal(buildSchematic(project, true).blocks.find((x) => x.key === "c1")!.pins.length, 4);
+assert.equal(buildSchematic(project, library, true).blocks.find((x) => x.key === "c1")!.pins.length, 4);
 
 console.log("schematic: ok");

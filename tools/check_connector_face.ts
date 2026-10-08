@@ -33,6 +33,8 @@ assert.equal(new Set(dt3.cavities.map((c) => Math.round(c.y))).size, 2);
 assert.equal(hull(dt3).length, 3);
 assert.equal(new Set(connectorFace(def("DTM", "male", ways(3)), mil)!.cavities.map((c) => c.y)).size, 1);
 assert.equal(dt3.numbering, "inferred");
+// Marcado A, B, C (como lo usa el taller): misma cara, con las letras.
+assert.deepEqual(connectorFace(def("DT", "male", [["A", "16"], ["B", "16"], ["C", "16"]]), mil)!.cavities.map((c) => c.id), ["A", "B", "C"]);
 // Contorno: rectangular en las Deutsch, salvo el DT de 3 vías (triangular); Superseal ovalado.
 assert.equal(dt3.shape, "hull");
 assert.equal(dtm4p.shape, "rect");
@@ -47,8 +49,20 @@ assert.equal(pin.numbering, "standard");
 assert.ok(Math.abs(at(pin, "A").x - 2.54) < 0.01 && Math.abs(at(pin, "A").y + 5.715) < 0.01);
 assert.ok(at(connectorFace(def("MIL-DTL-38999 III", "female", ins, "15"), mil)!, "A").x < 0);
 
-// Sin familia conocida, o con vías que no son 1..n en una familia de grilla: no se dibuja.
+// Sin familia conocida, o con vías que no son 1..n ni A.. en una familia de grilla: no se dibuja.
 assert.equal(connectorFace(def("Amphenol XYZ", "male", ways(4)), mil), null);
-assert.equal(connectorFace(def("DTM", "male", [["A", "20"], ["B", "20"]]), mil), null);
+assert.equal(connectorFace(def("DTM", "male", [["1", "20"], ["X", "20"]]), mil), null);
+
+// Superseal 1.0 de 34 vías (PDM30 A): filas de 9, 8, 8, 9; la hembra vista de atrás numera de izquierda a derecha.
+{
+  const ss = (gender: "male" | "female") => connectorFace(def("Superseal 1.0", gender, ways(34, "1.0")), mil)!;
+  const rows = [...new Set(ss("female").cavities.map((c) => c.y))];
+  assert.deepEqual(rows.map((y) => ss("female").cavities.filter((c) => c.y === y).length), [9, 8, 8, 9]);
+  const back = wireSide(ss("female"));
+  assert.ok(at(back, "1").x < at(back, "9").x && at(back, "1").y === at(back, "9").y && at(back, "26").y > at(back, "18").y);
+  assert.equal(ss("female").numbering, "datasheet");
+  assert.equal(connectorFace(def("Superseal 1.0", "female", ways(26, "1.0")), mil)!.cavities.length, 26);
+  assert.equal(connectorFace(def("Superseal 1.0", "female", ways(20, "1.0")), mil), null);
+}
 
 console.log("connector face: ok");

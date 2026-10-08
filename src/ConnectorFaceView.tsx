@@ -6,7 +6,7 @@ import milStd1560 from "./data/mil-std-1560.json";
 const MIL = milStd1560.arrangements as MilArrangements;
 
 const NUMBERING_NOTE = {
-  datasheet: "numbering checked against TE drawings",
+  datasheet: "numbering checked against a drawing of the part",
   inferred: "numbering inferred from the family — confirm it on the part",
   standard: "contact positions from MIL-STD-1560",
 };
@@ -15,9 +15,18 @@ const NUMBERING_NOTE = {
  * Cara del conector dibujada a partir de su serie y sus vías (ver
  * connectorFace.ts), con selector cara de acople / lado cables. `used` resalta
  * las vías que tienen cable. `fixedSide` muestra solo esa vista, sin selector
- * (hojas impresas). No muestra nada si la familia no se reconoce.
+ * (hojas impresas). `names` escribe el nombre de cada pin debajo de su vía
+ * (dispositivos), `selected` la resalta y `onPick` avisa el clic en una vía.
+ * No muestra nada si la familia no se reconoce.
  */
-export function ConnectorFaceView({ def, used, fixedSide }: { def: ConnectorDef; used?: Set<string>; fixedSide?: "front" | "rear" }) {
+export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPick }: {
+  def: ConnectorDef;
+  used?: Set<string>;
+  fixedSide?: "front" | "rear";
+  names?: Record<string, string>;
+  selected?: string | null;
+  onPick?: (cavityId: string) => void;
+}) {
   const [chosenSide, setSide] = useState<"front" | "rear">("front");
   const side = fixedSide ?? chosenSide;
   const front = useMemo(() => connectorFace(def, MIL), [def]);
@@ -81,12 +90,21 @@ export function ConnectorFaceView({ def, used, fixedSide }: { def: ConnectorDef;
         {body}
         {face.cavities.map((c) => {
           const r = Math.min(c.r, spacing * 0.46);
+          const name = names?.[c.id];
+          const size = Math.min(font, r * 1.05);
+          const cls = ["cf-cavity", used?.has(c.id) || selected === c.id ? "cf-used" : name ? "cf-named" : "", onPick ? "cf-pickable" : ""].filter(Boolean).join(" ");
           return (
-            <g key={c.id} className={used?.has(c.id) ? "cf-cavity cf-used" : "cf-cavity"}>
+            <g key={c.id} className={cls} onClick={onPick && (() => onPick(c.id))}>
               <circle cx={c.x} cy={c.y} r={r} />
-              <text x={c.x} y={c.y} fontSize={Math.min(font, r * 1.05)} textAnchor="middle" dominantBaseline="central">
+              <text x={c.x} y={name ? c.y - r * 0.28 : c.y} fontSize={name ? size * 0.8 : size} textAnchor="middle" dominantBaseline="central">
                 {c.id}
               </text>
+              {name && (
+                <text x={c.x} y={c.y + r * 0.42} fontSize={Math.min(size * 0.6, (r * 3) / Math.max(name.length, 1))} textAnchor="middle" dominantBaseline="central" className="cf-name">
+                  {name}
+                </text>
+              )}
+              {onPick && <title>{name ? `${c.id} · ${name}` : c.id}</title>}
             </g>
           );
         })}

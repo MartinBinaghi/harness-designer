@@ -6,7 +6,7 @@
 //! aproxima al `D_bundle` del segmento entero: es el "peor caso" que el plan
 //! ya pide usar mientras no haya construcción concéntrica cargada.
 
-use crate::model::library::{Library, WireDef};
+use crate::model::library::{Library, TMoldDef, TMoldLeg, WireDef};
 use crate::model::project::{ConnectorInstance, Project, ProjectData, WireInstance};
 use crate::topology::wire_route;
 use serde::{Deserialize, Serialize};
@@ -93,15 +93,19 @@ pub struct CoveringFit {
 /// Termos de la biblioteca contra un diámetro dado (plan 9.2): el contraído
 /// tiene que apretar (`shrunk ≤ max_shrunk_mm`) y el suministrado tiene que
 /// entrar (`supplied ≥ min_supplied_mm`). Ordenados de más chico a más grande
-/// de suministrado — el primero que cumple es el sugerido.
+/// de suministrado — el primero que cumple es el sugerido. Los con adhesivo
+/// son la pieza corta de una punta (plan 9.3): no se sugieren para un tramo,
+/// salvo que sea el que ya tiene asignado (`assigned`), para chequearlo igual.
 fn coverings_fitting(
     library: &Library,
     max_shrunk_mm: f64,
     min_supplied_mm: f64,
+    assigned: Option<i64>,
 ) -> Vec<CoveringFit> {
     let mut fits: Vec<CoveringFit> = library
         .covering_defs
         .iter()
+        .filter(|c| !c.has_adhesive || Some(c.part_id) == assigned)
         .map(|c| CoveringFit {
             library_part_id: c.part_id,
             supplied_diameter_mm: c.supplied_diameter_mm,
@@ -121,10 +125,16 @@ pub fn coverings_for_segment(
     segment_id: i64,
 ) -> Vec<CoveringFit> {
     let d_bundle = bundle_diameter_mm(data, library, segment_id);
+    let assigned = data
+        .segments
+        .iter()
+        .find(|s| s.id == segment_id)
+        .and_then(|s| s.covering_library_part_id);
     coverings_fitting(
         library,
         d_bundle,
         d_bundle * (1.0 + DEFAULT_COVERING_SUPPLIED_MARGIN_PCT / 100.0),
+        assigned,
     )
 }
 
@@ -223,10 +233,14 @@ pub struct TMoldFit {
     pub fits: bool,
 }
 
-/// Calce de los moldes en T de la biblioteca contra los segmentos conectados a
-/// un breakout (plan 9.4). El catálogo no distingue una pata "de entrada": se
-/// empareja el segmento más grueso con la pata de mayor rango, y así sucesivamente.
-pub fn t_mold_fits_for_node(data: &ProjectData, library: &Library, node_id: i64) -> Vec<TMoldFit> {
+/// Segmentos de un nodo del más grueso al más fino, y patas de un molde en T de
+/// mayor a menor rango: el catálogo no distingue una pata "de entrada", así que
+/// se emparejan en ese orden (plan 9.4).
+fn node_segments_by_diameter(
+    data: &ProjectData,
+    library: &Library,
+    node_id: i64,
+) -> Vec<(i64, f64)> {
     let mut segment_diameters: Vec<(i64, f64)> = data
         .segments
         .iter()
@@ -234,13 +248,25 @@ pub fn t_mold_fits_for_node(data: &ProjectData, library: &Library, node_id: i64)
         .map(|s| (s.id, segment_final_diameter_mm(data, library, s.id)))
         .collect();
     segment_diameters.sort_by(|a, b| b.1.total_cmp(&a.1));
+    segment_diameters
+}
+
+fn legs_by_size(t_mold: &TMoldDef) -> Vec<TMoldLeg> {
+    let mut legs = t_mold.legs.clone();
+    legs.sort_by(|a, b| b.max_diameter_mm.total_cmp(&a.max_diameter_mm));
+    legs
+}
+
+/// Calce de los moldes en T de la biblioteca contra los segmentos conectados a
+/// un breakout (plan 9.4), emparejados por tamaño (`node_segments_by_diameter`).
+pub fn t_mold_fits_for_node(data: &ProjectData, library: &Library, node_id: i64) -> Vec<TMoldFit> {
+    let segment_diameters = node_segments_by_diameter(data, library, node_id);
 
     library
         .t_mold_defs
         .iter()
         .map(|t_mold| {
-            let mut legs = t_mold.legs.clone();
-            legs.sort_by(|a, b| b.max_diameter_mm.total_cmp(&a.max_diameter_mm));
+            let legs = legs_by_size(t_mold);
 
             let leg_fits: Vec<TMoldLegFit> = segment_diameters
                 .iter()
@@ -363,11 +389,14 @@ pub struct BomRow {
     pub part_number: String,
     /// Cantidad usada: unidades, o metros para partes de tipo "wire".
     pub quantity_needed: f64,
+    /// Repuesto (% de la categoría, en unidades enteras si la parte va por unidad).
+    pub spare: f64,
     pub unit: String,
-    /// Redondeada hacia arriba al múltiplo de `qty_per_pack`.
+    /// Usado + repuesto, redondeado hacia arriba al múltiplo de `qty_per_pack`.
     pub quantity_to_buy: f64,
     pub unit_price_usd: Option<f64>,
-    /// Costo sobre lo usado (`quantity_needed × precio`), no sobre lo comprado.
+    /// Sobre lo usado (`(necesario + repuesto) × precio`) o, si el proyecto lo
+    /// pide, sobre lo comprado (`a comprar × precio`).
     pub subtotal_usd: Option<f64>,
     pub price_date: Option<String>,
 }
@@ -379,23 +408,46 @@ fn round_up_to_pack(quantity_needed: f64, qty_per_pack: f64) -> f64 {
     (quantity_needed / qty_per_pack).ceil() * qty_per_pack
 }
 
-fn bom_row(library: &Library, part_id: i64, quantity_needed: f64) -> Option<BomRow> {
+fn bom_row(
+    project: &Project,
+    library: &Library,
+    part_id: i64,
+    quantity_needed: f64,
+) -> Option<BomRow> {
     let part = library.parts.iter().find(|p| p.id == part_id)?;
+    let spare_pct = project
+        .spare_pcts
+        .get(&part.category)
+        .copied()
+        .unwrap_or(0.0);
+    let spare = quantity_needed * spare_pct / 100.0;
+    let spare = if part.purchase_unit == "meter" {
+        spare
+    } else {
+        spare.ceil()
+    };
+    let quantity_to_buy = round_up_to_pack(quantity_needed + spare, part.qty_per_pack);
+    let billed = if project.cost_on_purchased {
+        quantity_to_buy
+    } else {
+        quantity_needed + spare
+    };
     Some(BomRow {
         library_part_id: part_id,
         category: part.category.clone(),
         part_number: part.part_number.clone(),
         quantity_needed,
+        spare,
         unit: part.purchase_unit.clone(),
-        quantity_to_buy: round_up_to_pack(quantity_needed, part.qty_per_pack),
+        quantity_to_buy,
         unit_price_usd: part.price_usd,
-        subtotal_usd: part.price_usd.map(|price| price * quantity_needed),
+        subtotal_usd: part.price_usd.map(|price| price * billed),
         price_date: part.price_date.clone(),
     })
 }
 
-/// BOM agrupado por parte de biblioteca (plan 8.2). Repuesto por categoría
-/// queda en 0% por ahora (sección 14: pendiente calibrar con el uso).
+/// BOM agrupado por parte de biblioteca (plan 8.2), con el repuesto por
+/// categoría del proyecto (plan 5.4).
 pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
     let mut quantities: HashMap<i64, f64> = HashMap::new();
 
@@ -421,6 +473,39 @@ pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
     for splice in &data.splice_instances {
         *quantities.entry(splice.library_part_id).or_default() += 1.0;
     }
+    // Boots y moldes en T elegidos, y la pieza de termo con adhesivo de cada
+    // conector (con el largo de su ConnectorDef; en un breakout no tiene largo).
+    for connector in &data.connector_instances {
+        let Some(id) = connector.termination_library_part_id else {
+            continue;
+        };
+        match connector.termination.as_deref() {
+            Some("boot_straight") | Some("boot_90") => *quantities.entry(id).or_default() += 1.0,
+            Some("adhesive_heatshrink") => {
+                let length = library
+                    .connector_defs
+                    .iter()
+                    .find(|d| d.part_id == connector.library_part_id)
+                    .and_then(|d| d.adhesive_heatshrink_length_mm);
+                if let Some(mm) = length {
+                    *quantities.entry(id).or_default() += mm / 1000.0;
+                }
+            }
+            _ => {}
+        }
+    }
+    for node in &data.nodes {
+        if node.termination.as_deref() == Some("t_mold") {
+            if let Some(id) = node.termination_library_part_id {
+                *quantities.entry(id).or_default() += 1.0;
+            }
+        }
+    }
+    for cut in covering_cut_list(data, library) {
+        if let Some(id) = cut.library_part_id {
+            *quantities.entry(id).or_default() += cut.cut_length_mm / 1000.0;
+        }
+    }
     for component in &data.component_instances {
         *quantities.entry(component.library_part_id).or_default() += 1.0;
     }
@@ -433,7 +518,7 @@ pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
 
     let mut rows: Vec<BomRow> = quantities
         .into_iter()
-        .filter_map(|(part_id, qty)| bom_row(library, part_id, qty))
+        .filter_map(|(part_id, qty)| bom_row(&data.project, library, part_id, qty))
         .collect();
     rows.sort_by(|a, b| {
         a.category
@@ -607,6 +692,90 @@ pub fn breakout_terminations(
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CoveringCut {
+    pub segment_id: i64,
+    /// El termo asignado al segmento, o si no tiene, el sugerido. `None` si
+    /// ninguno de la biblioteca sirve.
+    pub library_part_id: Option<i64>,
+    pub suggested: bool,
+    pub segment_length_mm: f64,
+    /// Largo de las patas de boots/moldes que ocupan las puntas del tramo.
+    pub legs_mm: f64,
+    /// Lo que el termo se monta sobre esas patas.
+    pub overlap_mm: f64,
+    pub cut_length_mm: f64,
+}
+
+/// Pata (largo, solape) del boot o molde en T que ocupa la punta `node_id` del
+/// segmento, si hay uno elegido ahí.
+fn leg_at_end(
+    data: &ProjectData,
+    library: &Library,
+    segment_id: i64,
+    node_id: i64,
+) -> Option<(f64, f64)> {
+    if let Some(connector) = data
+        .connector_instances
+        .iter()
+        .find(|c| c.node_id == node_id)
+    {
+        if !matches!(
+            connector.termination.as_deref(),
+            Some("boot_straight") | Some("boot_90")
+        ) {
+            return None;
+        }
+        let boot = library
+            .accessory_defs
+            .iter()
+            .find(|a| Some(a.part_id) == connector.termination_library_part_id)?;
+        return Some((boot.leg_length_mm, boot.overlap_mm));
+    }
+    let node = data.nodes.iter().find(|n| n.id == node_id)?;
+    if node.termination.as_deref() != Some("t_mold") {
+        return None;
+    }
+    let t_mold = library
+        .t_mold_defs
+        .iter()
+        .find(|t| Some(t.part_id) == node.termination_library_part_id)?;
+    let position = node_segments_by_diameter(data, library, node_id)
+        .iter()
+        .position(|&(id, _)| id == segment_id)?;
+    let leg = legs_by_size(t_mold).get(position)?.clone();
+    Some((leg.leg_length_mm, t_mold.overlap_mm))
+}
+
+/// Lista de corte de coberturas (plan 8.1/9.2): un tramo de termo por segmento
+/// con cables. Largo = segmento − patas de boots/moldes en sus puntas + solape
+/// sobre cada pata.
+pub fn covering_cut_list(data: &ProjectData, library: &Library) -> Vec<CoveringCut> {
+    data.segments
+        .iter()
+        .filter(|s| bundle_diameter_mm(data, library, s.id) > 0.0)
+        .map(|s| {
+            let suggested = coverings_for_segment(data, library, s.id)
+                .into_iter()
+                .find(|f| f.fits)
+                .map(|f| f.library_part_id);
+            let (legs_mm, overlap_mm) = [s.node_a_id, s.node_b_id]
+                .iter()
+                .filter_map(|&n| leg_at_end(data, library, s.id, n))
+                .fold((0.0, 0.0), |(l, o), (leg, overlap)| (l + leg, o + overlap));
+            CoveringCut {
+                segment_id: s.id,
+                library_part_id: s.covering_library_part_id.or(suggested),
+                suggested: s.covering_library_part_id.is_none() && suggested.is_some(),
+                segment_length_mm: s.length_mm,
+                legs_mm,
+                overlap_mm,
+                cut_length_mm: (s.length_mm - legs_mm + overlap_mm).max(0.0),
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CostReport {
     pub cut_list: Vec<WireCutLength>,
     pub bom: Vec<BomRow>,
@@ -615,6 +784,7 @@ pub struct CostReport {
     pub connector_terminations: Vec<ConnectorTerminationInfo>,
     pub breakout_terminations: Vec<BreakoutTerminationInfo>,
     pub splice_output_gauges: Vec<SpliceOutputGaugeInfo>,
+    pub covering_cuts: Vec<CoveringCut>,
 }
 
 pub fn compute_cost_report(data: &ProjectData, library: &Library) -> CostReport {
@@ -628,6 +798,7 @@ pub fn compute_cost_report(data: &ProjectData, library: &Library) -> CostReport 
         connector_terminations: connector_terminations(data, library),
         breakout_terminations: breakout_terminations(data, library),
         splice_output_gauges: splice_output_gauges(data, library),
+        covering_cuts: covering_cut_list(data, library),
     }
 }
 
@@ -709,6 +880,8 @@ mod tests {
                 fill_factor: 0.75,
                 labor_hours: 0.0,
                 labor_rate_usd: 0.0,
+                cost_on_purchased: false,
+                spare_pcts: Default::default(),
             },
             nodes: vec![
                 Node {
@@ -964,6 +1137,67 @@ mod tests {
     }
 
     #[test]
+    fn bom_adds_spare_by_category_and_can_bill_what_is_bought() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        data.project.spare_pcts = [("connector".to_string(), 10.0)].into();
+        let mut library = Library::default();
+        library.parts = vec![part(10, "connector", 5.0, Some(2.0))];
+
+        let row = bill_of_materials(&data, &library).remove(0);
+        assert_eq!(row.quantity_needed, 2.0);
+        assert_eq!(row.spare, 1.0); // 10% de 2 conectores, redondeado a uno entero
+        assert_eq!(row.quantity_to_buy, 5.0); // 3 redondeado al pack de 5
+        assert_eq!(row.subtotal_usd, Some(6.0)); // sobre lo usado: 3 × 2
+
+        data.project.cost_on_purchased = true;
+        let row = bill_of_materials(&data, &library).remove(0);
+        assert_eq!(row.subtotal_usd, Some(10.0)); // sobre lo comprado: 5 × 2
+    }
+
+    #[test]
+    fn bom_adds_the_adhesive_heatshrink_piece_of_each_connector() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        data.connector_instances[0].termination = Some("adhesive_heatshrink".into());
+        data.connector_instances[0].termination_library_part_id = Some(7);
+        let mut library = Library::default();
+        library.parts = vec![part(7, "covering", 1.0, None)];
+        library
+            .connector_defs
+            .push(crate::model::library::ConnectorDef {
+                adhesive_heatshrink_length_mm: Some(40.0),
+                ..connector_def_with_series(10, "AMP", "CE")
+            });
+        let row = bill_of_materials(&data, &library)
+            .into_iter()
+            .find(|r| r.library_part_id == 7)
+            .unwrap();
+        assert_eq!(row.quantity_needed, 0.04); // una pieza de 40 mm (solo X1 tiene termo con adhesivo)
+    }
+
+    #[test]
+    fn covering_cut_is_segment_minus_boot_leg_plus_overlap() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None));
+        let d_bundle = (36.0f64 / 0.75).sqrt();
+        library.covering_defs = vec![covering(7, d_bundle * 1.2, d_bundle * 0.8, 0.4)];
+        library.accessory_defs = vec![accessory(50, 0.0, 20.0, "AMP", "CE")];
+
+        // Sin boots: el termo va de punta a punta, y es el sugerido.
+        let cut = covering_cut_list(&data, &library).remove(0);
+        assert_eq!(
+            (cut.library_part_id, cut.suggested, cut.cut_length_mm),
+            (Some(7), true, 1000.0)
+        );
+
+        // Boot en X1 (pata 30, solape 15): 1000 − 30 + 15.
+        data.connector_instances[0].termination = Some("boot_straight".into());
+        data.connector_instances[0].termination_library_part_id = Some(50);
+        let cut = covering_cut_list(&data, &library).remove(0);
+        assert_eq!(cut.cut_length_mm, 985.0);
+    }
+
+    #[test]
     fn cost_summary_adds_labor_and_optional_markup() {
         let project = Project {
             name: "T".into(),
@@ -978,12 +1212,15 @@ mod tests {
             fill_factor: 0.75,
             labor_hours: 2.0,
             labor_rate_usd: 25.0,
+            cost_on_purchased: false,
+            spare_pcts: Default::default(),
         };
         let bom = vec![BomRow {
             library_part_id: 1,
             category: "wire".into(),
             part_number: "P1".into(),
             quantity_needed: 10.0,
+            spare: 0.0,
             unit: "meter".into(),
             quantity_to_buy: 10.0,
             unit_price_usd: Some(1.0),
@@ -1004,7 +1241,7 @@ mod tests {
             supplied_diameter_mm: supplied,
             shrunk_diameter_mm: shrunk,
             shrunk_wall_thickness_mm: wall,
-            has_adhesive: true,
+            has_adhesive: false,
         }
     }
 
@@ -1019,6 +1256,10 @@ mod tests {
             covering(1, d_bundle * 0.5, d_bundle * 0.5, 0.3), // contraído no aprieta lo suficiente igual sirve (shrunk<=d_bundle) pero suministrado no entra
             covering(2, d_bundle * 1.2, d_bundle * 0.8, 0.4), // sirve: shrunk<=d_bundle y supplied>=d_bundle*1.1
             covering(3, d_bundle * 2.0, d_bundle * 1.5, 0.5), // shrunk > d_bundle: no aprieta
+            CoveringDef {
+                has_adhesive: true, // serviría por medidas, pero el adhesivo es para las puntas
+                ..covering(4, d_bundle * 1.15, d_bundle * 0.5, 0.4)
+            },
         ];
 
         let fits = coverings_for_segment(&data, &library, 1);
@@ -1144,6 +1385,7 @@ mod tests {
             suggested_termination: None,
             contact_part_id: None,
             seal_plug_part_id: None,
+            adhesive_heatshrink_length_mm: None,
             image_side: None,
             image_front: None,
             image_back: None,

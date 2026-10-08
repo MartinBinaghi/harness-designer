@@ -3,8 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ProjectData } from "./types";
 import { partLabel, type Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
-import { connectorHeatShrink, cutListGroups, cutListRows, labelRows, pinoutRows, toCsv, wireTotals, type CutSort } from "./sheets";
+import { connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
 import { ConnectorFaceView } from "./ConnectorFaceView";
+import { AssemblySheet } from "./AssemblySheet";
 import { usedCavities } from "./Inspector";
 import { fileName, pickFileToSave } from "./fileDialogs";
 
@@ -14,10 +15,11 @@ import { fileName, pickFileToSave } from "./fileDialogs";
  * impresas; el resto de la ventana se oculta al imprimir (App.css, @media print).
  */
 
-type Doc = "cut" | "pinout" | "labels";
+type Doc = "cut" | "pinout" | "assembly" | "labels";
 const DOCS: [Doc, string, string][] = [
-  ["cut", "Cut list", "One row per wire, divided by connector, with metres per wire type."],
+  ["cut", "Cut list", "One row per wire, divided by connector, with metres per wire type, heat-shrink pieces and boots."],
   ["pinout", "Pinout sheets", "Workshop format: one block per connector with its pins, where each one ends, and its front view."],
+  ["assembly", "Assembly drawing", "The harness diagram with its lengths, for the table: fitted to one sheet (A3 for big harnesses)."],
   ["labels", "Label list", "Harness, connectors and labelled wires, for the label printer."],
 ];
 const CUT_SORTS: [CutSort, string][] = [
@@ -40,6 +42,9 @@ export default function Impresion({ project, library }: Props) {
   const [landscape, setLandscape] = useState(false);
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState("");
+  const [toScale, setToScale] = useState(false);
+  const [showDistances, setShowDistances] = useState(true);
+  const [distances, setDistances] = useState<Record<string, number> | null>(null);
   const [data, setData] = useState<{ report: CostReport; nets: Map<number, number[]> } | null>(null);
 
   // Largos de corte y nets: los calcula el backend, igual que en Costs y el diagrama.
@@ -58,6 +63,19 @@ export default function Impresion({ project, library }: Props) {
       cancelled = true;
     };
   }, [project, library]);
+
+  // Distancia acumulada desde el conector principal (hoja de armado, plan 10.2).
+  const mainNode = project?.connector_instances.find((c) => c.id === project.project.main_connector_instance_id)?.node_id;
+  useEffect(() => {
+    if (!project || mainNode === undefined || !showDistances) return setDistances(null);
+    let cancelled = false;
+    void invoke<Record<string, number>>("node_distances", { project, fromNodeId: mainNode }).then((d) => {
+      if (!cancelled) setDistances(d);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, mainNode, showDistances]);
 
   if (!project) return <p>Open or load a project first (Topology tab).</p>;
 
@@ -135,6 +153,7 @@ export default function Impresion({ project, library }: Props) {
             ))}
           </tbody>
         </table>
+        <CoveringSheet project={project} library={library} report={data.report} />
       </section>
     );
   } else if (doc === "pinout") {
@@ -157,6 +176,14 @@ export default function Impresion({ project, library }: Props) {
               <PinoutBlock key={c.id} first={i === 0} project={project} library={library} connectorId={c.id} netOf={netOf} />
             ))}
         </table>
+      </section>
+    );
+  } else if (doc === "assembly") {
+    sheets = (
+      <section className="sheet" style={{ width: sheetWidth }}>
+        <SheetHeader project={project} title="Assembly drawing" />
+        {/* Alto de la hoja menos márgenes (10 mm × 2) y encabezado: el dibujo entra en una sola hoja. */}
+        <AssemblySheet project={project} library={library} report={data.report} distances={distances} toScale={toScale} maxHeightMm={(landscape ? w : h) - 38} />
       </section>
     );
   } else {
@@ -195,7 +222,7 @@ export default function Impresion({ project, library }: Props) {
                 checked={doc === key}
                 onChange={() => {
                   setDoc(key);
-                  setLandscape(key === "pinout"); // la hoja de pinout del taller es apaisada
+                  setLandscape(key === "pinout" || key === "assembly"); // pinout del taller y diagrama, apaisados
                 }}
               />
               <span>
@@ -213,6 +240,19 @@ export default function Impresion({ project, library }: Props) {
               {CUT_SORTS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </label>
+        )}
+
+        {doc === "assembly" && (
+          <fieldset>
+            <legend className="field-label">Drawing</legend>
+            <label className="print-check">
+              <input type="checkbox" checked={toScale} onChange={(e) => setToScale(e.currentTarget.checked)} /> To scale
+            </label>
+            <label className="print-check">
+              <input type="checkbox" checked={showDistances} onChange={(e) => setShowDistances(e.currentTarget.checked)} disabled={mainNode === undefined} />
+              Distance from the main connector
+            </label>
+          </fieldset>
         )}
 
         {doc === "pinout" && (
@@ -331,6 +371,53 @@ function PinoutBlock({ first, project, library, connectorId, netOf }: {
           ))
         )}
       </tbody>
+    </>
+  );
+}
+
+/** Lista de corte de coberturas (plan 8.1/9.2) y lo que va en cada punta. */
+function CoveringSheet({ project, library, report }: { project: ProjectData; library: Library; report: CostReport }) {
+  const rows = coveringRows(project, library, report.covering_cuts);
+  const ends = terminationRows(project, library);
+  return (
+    <>
+      <h4>Heat-shrink per segment</h4>
+      {rows.length === 0 ? (
+        <p className="hint">No segment carries wires yet.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Segment</th><th>Between</th><th>Heat-shrink</th>
+              <th className="num">Segment (mm)</th><th className="num">− Legs</th><th className="num">+ Overlap</th><th className="num">Cut (mm)</th><th className="check" aria-label="Done">✓</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.segmentId}>
+                <td className="strong">S{r.segmentId}</td><td>{r.between}</td>
+                <td>{r.size}{r.part && ` · ${r.part}`}{r.suggested && " (suggested)"}</td>
+                <td className="num">{r.segmentMm.toFixed(0)}</td><td className="num">{r.legsMm ? r.legsMm.toFixed(0) : ""}</td>
+                <td className="num">{r.overlapMm ? r.overlapMm.toFixed(0) : ""}</td><td className="num strong">{r.cutMm.toFixed(0)}</td>
+                <td className="check"><span className="tick-box" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {ends.length > 0 && (
+        <>
+          <h4>Boots, T-molds and adhesive pieces</h4>
+          <table>
+            <thead><tr><th>Where</th><th>What</th><th>Part</th><th className="check" aria-label="Done">✓</th></tr></thead>
+            <tbody>
+              {ends.map(([where, what, part], i) => (
+                <tr key={i}><td className="strong">{where}</td><td>{what}</td><td>{part}</td><td className="check"><span className="tick-box" /></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </>
   );
 }
