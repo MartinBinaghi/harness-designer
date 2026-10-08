@@ -85,7 +85,7 @@ export default function Costs({ project, library, selection, onSelect }: Props) 
                       <td>{to}</td>
                       <td>{cut.length_with_twist_mm.toFixed(1)}</td>
                       <td style={belowMinimum ? { color: "var(--warning)" } : undefined}>
-                        {cut.margin_pct.toFixed(1)}%
+                        {cut.manual ? "by hand" : `${cut.margin_pct.toFixed(1)}%`}
                         {belowMinimum && ` (min ${cut.twist_min_margin_pct.toFixed(1)}%)`}
                       </td>
                       <td>{cut.twist_min_margin_pct.toFixed(1)}%</td>

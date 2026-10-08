@@ -41,6 +41,11 @@ pub struct ConnectorDef {
     pub back_width_mm: Option<f64>,
     pub back_height_mm: Option<f64>,
     pub suggested_termination: Option<String>,
+    /// Contacto (ContactDef) de las vías con cable y tapón (SealPlugDef) de las
+    /// vías sin usar: uno por conector, como se trabaja en el taller. El
+    /// proyecto no los carga vía por vía (ver contacts.rs).
+    pub contact_part_id: Option<i64>,
+    pub seal_plug_part_id: Option<i64>,
     /// Vistas del conector (lateral, frontal con numeración de pines, trasera)
     /// como data URL ("data:image/webp;base64,…"): la imagen vive dentro del
     /// archivo de la biblioteca, así se puede copiar y llevar a otra máquina.
@@ -234,7 +239,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut connector_defs_stmt = conn.prepare(
-        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back FROM connector_defs",
+        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id FROM connector_defs",
     )?;
     let mut connector_defs = connector_defs_stmt
         .query_map([], |row| {
@@ -252,6 +257,8 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 image_side: row.get(10)?,
                 image_front: row.get(11)?,
                 image_back: row.get(12)?,
+                contact_part_id: row.get(13)?,
+                seal_plug_part_id: row.get(14)?,
                 cavities: Vec::new(),
             })
         })?
@@ -566,8 +573,8 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
 
     for connector_def in &library.connector_defs {
         tx.execute(
-            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 connector_def.part_id,
                 connector_def.gender,
@@ -582,6 +589,8 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
                 connector_def.image_side,
                 connector_def.image_front,
                 connector_def.image_back,
+                connector_def.contact_part_id,
+                connector_def.seal_plug_part_id,
             ],
         )?;
         for cavity in &connector_def.cavities {
@@ -762,6 +771,8 @@ mod tests {
             back_width_mm: Some(12.0),
             back_height_mm: Some(9.5),
             suggested_termination: None,
+            contact_part_id: None,
+            seal_plug_part_id: None,
             image_side: None,
             image_front: None,
             image_back: None,
@@ -864,6 +875,8 @@ mod tests {
                 back_width_mm: Some(12.0),
                 back_height_mm: Some(9.5),
                 suggested_termination: Some("boot".into()),
+                contact_part_id: None,
+                seal_plug_part_id: None,
                 image_side: None,
                 image_front: Some("data:image/webp;base64,UklGRhIAAABXRUJQVlA4".into()),
                 image_back: None,

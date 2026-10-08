@@ -3,12 +3,13 @@
 //! (etapa 2). No se guarda solo: es punto de partida para "Nuevo".
 
 use crate::model::library::{
-    AccessoryDef, AccessoryDefConnectorMatch, ContactDef, CoveringDef, Library, Part, TMoldDef,
-    TMoldLeg, WireDef,
+    AccessoryDef, AccessoryDefConnectorMatch, ConnectorDef, ConnectorDefCavity, ContactDef,
+    CoveringDef, DeviceDef, DeviceDefConnector, DeviceDefPin, Library, Part, TMoldDef, TMoldLeg,
+    WireDef,
 };
 use crate::model::project::{
-    CavityAssignment, ComponentInstance, ConnectorInstance, DeviceInstance, GroundPoint, Node,
-    Project, ProjectData, Segment, SpliceInstance, WireEnd, WireInstance,
+    CavityAssignment, ComponentInstance, ConnectorInstance, GroundPoint, Node, Project,
+    ProjectData, Segment, SpliceInstance, WireEnd, WireInstance,
 };
 
 fn end(
@@ -50,11 +51,6 @@ pub fn sample_project() -> ProjectData {
             labor_hours: 0.0,
             labor_rate_usd: 0.0,
         },
-        device_instances: vec![DeviceInstance {
-            id: 1,
-            name: "PDM30".into(),
-            library_part_id: None,
-        }],
         nodes: vec![
             Node {
                 id: 1,
@@ -137,7 +133,7 @@ pub fn sample_project() -> ProjectData {
                 short_id: "X1".into(),
                 name: "Damper FL".into(),
                 library_part_id: 1,
-                device_instance_id: None,
+                device_connector_id: None,
                 node_id: 1,
                 termination: Some("adhesive_heatshrink".into()),
                 termination_library_part_id: Some(30),
@@ -148,8 +144,6 @@ pub fn sample_project() -> ProjectData {
                 cavities: vec![CavityAssignment {
                     id: 100,
                     cavity_id: "1".into(),
-                    contact_library_part_id: Some(40),
-                    seal_plug_library_part_id: None,
                     external_reference: None,
                 }],
             },
@@ -158,7 +152,7 @@ pub fn sample_project() -> ProjectData {
                 short_id: "X9".into(),
                 name: "PDM30".into(),
                 library_part_id: 2,
-                device_instance_id: Some(1),
+                device_connector_id: Some(1), // PDM30 · A (biblioteca de ejemplo)
                 node_id: 3,
                 termination: Some("boot_straight".into()),
                 termination_library_part_id: Some(31),
@@ -169,8 +163,6 @@ pub fn sample_project() -> ProjectData {
                 cavities: vec![CavityAssignment {
                     id: 101,
                     cavity_id: "1".into(),
-                    contact_library_part_id: Some(41),
-                    seal_plug_library_part_id: None,
                     external_reference: None,
                 }],
             },
@@ -179,7 +171,7 @@ pub fn sample_project() -> ProjectData {
                 short_id: "X4".into(),
                 name: "Brake Pressure Sensor".into(),
                 library_part_id: 3,
-                device_instance_id: None,
+                device_connector_id: None,
                 node_id: 4,
                 termination: Some("adhesive_heatshrink".into()),
                 termination_library_part_id: None,
@@ -191,15 +183,11 @@ pub fn sample_project() -> ProjectData {
                     CavityAssignment {
                         id: 104,
                         cavity_id: "1".into(),
-                        contact_library_part_id: None,
-                        seal_plug_library_part_id: None,
                         external_reference: None,
                     },
                     CavityAssignment {
                         id: 105,
                         cavity_id: "2".into(),
-                        contact_library_part_id: None,
-                        seal_plug_library_part_id: None,
                         external_reference: None,
                     },
                 ],
@@ -240,6 +228,7 @@ pub fn sample_project() -> ProjectData {
                 signal_type_id: None,
                 specific_name: Some("Damper FL".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("cavity", Some(100), None, None, None),
                 end_b: end("splice", None, Some(1), None, None),
@@ -252,6 +241,7 @@ pub fn sample_project() -> ProjectData {
                 signal_type_id: None,
                 specific_name: Some("Damper FL".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("cavity", Some(101), None, None, None),
@@ -264,6 +254,7 @@ pub fn sample_project() -> ProjectData {
                 signal_type_id: None,
                 specific_name: Some("Signal Ground".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("ground", None, None, Some(1), None),
@@ -276,6 +267,7 @@ pub fn sample_project() -> ProjectData {
                 signal_type_id: None,
                 specific_name: Some("CAN H".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("cavity", Some(104), None, None, None),
                 end_b: end("component", None, None, None, Some(1)),
@@ -288,6 +280,7 @@ pub fn sample_project() -> ProjectData {
                 signal_type_id: None,
                 specific_name: Some("CAN L".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("component", None, None, None, Some(1)),
                 end_b: end("cavity", Some(105), None, None, None),
@@ -323,12 +316,71 @@ fn part(
 /// a mano. Solo tiene los `Part`/`WireDef`/`CoveringDef`/`AccessoryDef` que el
 /// proyecto de ejemplo usa (X1/X9/X4, R1, SP1, W001-W005) — no las fichas
 /// completas de conector/splice/componente, que no hacen falta para BOM/costos.
+/// Conector de la biblioteca de ejemplo: `ways` vías numeradas de un tamaño, con
+/// su contacto por defecto (el contacto sale de acá, no de cada vía del proyecto).
+fn connector_def(
+    part_id: i64,
+    gender: &str,
+    series: &str,
+    shell_size: &str,
+    ways: usize,
+    size: &str,
+    contact: Option<i64>,
+) -> ConnectorDef {
+    ConnectorDef {
+        part_id,
+        gender: gender.into(),
+        series: Some(series.into()),
+        shell_size: Some(shell_size.into()),
+        counterpart_id: None,
+        back_shape: None,
+        back_diameter_mm: None,
+        back_width_mm: None,
+        back_height_mm: None,
+        suggested_termination: None,
+        contact_part_id: contact,
+        seal_plug_part_id: None,
+        image_side: None,
+        image_front: None,
+        image_back: None,
+        cavities: (1..=ways)
+            .map(|n| ConnectorDefCavity {
+                cavity_id: n.to_string(),
+                contact_size: size.into(),
+            })
+            .collect(),
+    }
+}
+
 pub fn sample_library() -> Library {
     Library {
+        connector_defs: vec![
+            connector_def(1, "female", "AMP", "CE", 6, "20", Some(40)),
+            connector_def(2, "female", "MoTeC", "PDM30 A", 34, "16", Some(41)),
+            // Sin contacto cargado: Checks lo avisa (ejemplo de dato faltante).
+            connector_def(3, "male", "DT", "", 2, "16", None),
+        ],
+        // El PDM30 con su conector A: el pin 1 se llama OUT1 (los demás, a cargar del datasheet).
+        device_defs: vec![DeviceDef {
+            part_id: 5,
+            connectors: vec![DeviceDefConnector {
+                id: 1,
+                label: "A".into(),
+                connector_def_id: 2,
+                pins: vec![DeviceDefPin {
+                    id: 1,
+                    cavity_id: "1".into(),
+                    name: "OUT1".into(),
+                    function: Some("20 A output 1".into()),
+                }],
+            }],
+            pin_groups: vec![],
+        }],
         parts: vec![
             part(1, "connector", "AMP-CE-6P", "unit", 1.0, 12.50),
             part(2, "connector", "MOTEC-PDM30-CONN-A", "unit", 1.0, 45.00),
             part(3, "connector", "DT04-2P", "unit", 10.0, 3.20),
+            part(5, "device", "MOTEC-PDM30", "unit", 1.0, 0.0),
             part(4, "component", "RES-120R-1/4W", "unit", 100.0, 0.15),
             part(10, "splice", "SPLICE-2W", "unit", 100.0, 0.40),
             part(20, "wire", "M22759/32-22", "meter", 30.5, 0.55),

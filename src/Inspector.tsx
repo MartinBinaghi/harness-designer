@@ -1,7 +1,9 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { CostReport, WireCutLength } from "./costTypes";
 import { changeConnectorPart, patchItem, wireCategoryPatch } from "./projectEdit";
-import type { ConnectorInstance, Node, ProjectData, Selection, SpliceInstance } from "./types";
-import { CONNECTOR_VIEWS, partLabel, type Library } from "./libraryTypes";
+import type { ConnectorInstance, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
+import { choiceKey, CONNECTOR_VIEWS, connectorChoices, partLabel, type ConnectorChoice, type Library } from "./libraryTypes";
 import { EndEditor } from "./Cables";
 import { ConnectorFaceView } from "./ConnectorFaceView";
 import { NODE_KINDS, NODE_KIND_LABELS, TERMINATIONS, TERMINATION_LABELS as NODE_TERMINATION_LABELS } from "./Topologia";
@@ -122,10 +124,81 @@ export function ConnectorViews({ library, partId, only, used }: { library: Libra
   );
 }
 
+/**
+ * Parte de un conector del proyecto: los conectores de dispositivos (PDM30 · A,
+ * con los nombres de sus pines) y las carcasas de la biblioteca.
+ */
+export function ConnectorPartSelect({ library, partId, deviceConnectorId, onChange, placeholder, className }: {
+  library: Library;
+  partId: number | null;
+  deviceConnectorId: number | null;
+  onChange: (choice: ConnectorChoice) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const choices = connectorChoices(library);
+  const value = partId == null ? "" : choiceKey(partId, deviceConnectorId);
+  const group = (devices: boolean) =>
+    choices.filter((c) => (c.deviceConnectorId != null) === devices).map((c) => <option key={c.key} value={c.key}>{c.label}</option>);
+  return (
+    <select
+      className={className}
+      value={value}
+      onChange={(e) => {
+        const choice = choices.find((c) => c.key === e.currentTarget.value);
+        if (choice) onChange(choice);
+      }}
+    >
+      {placeholder !== undefined && <option value="">{placeholder}</option>}
+      {value && !choices.some((c) => c.key === value) && <option value={value}>{partLabel(library, partId)} (missing)</option>}
+      {library.device_defs.length > 0 && <optgroup label="Device connectors">{group(true)}</optgroup>}
+      <optgroup label="Connectors">{group(false)}</optgroup>
+    </select>
+  );
+}
+
 /** Vías del conector que tienen al menos un cable. */
 export function usedCavities(project: ProjectData, connector: ConnectorInstance): Set<string> {
   const ends = new Set(project.wire_instances.flatMap((w) => [w.end_a.cavity_assignment_id, w.end_b.cavity_assignment_id]));
   return new Set(connector.cavities.filter((cav) => ends.has(cav.id)).map((cav) => cav.cavity_id));
+}
+
+/**
+ * Recorrido y largo de un cable: los segmentos por los que pasa, el largo con
+ * trenzado, el margen y el de corte (o el puesto a mano). Lo calcula el backend.
+ */
+function WireLength({ project, library, wire }: { project: ProjectData; library: Library; wire: WireInstance }) {
+  const [info, setInfo] = useState<{ route: number[] | null; cut: WireCutLength | undefined } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      invoke<number[] | null>("wire_route", { project, wireId: wire.id }),
+      invoke<CostReport>("compute_costs", { project, library }),
+    ]).then(([route, report]) => {
+      if (!cancelled) setInfo({ route, cut: report.cut_list.find((c) => c.wire_id === wire.id) });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, library, wire.id]);
+  if (!info) return <span className="hint">…</span>;
+  const segments = (info.route ?? []).map((id) => project.segments.find((s) => s.id === id)).filter((s) => s !== undefined);
+  return (
+    <div className="inspector-length">
+      {info.route === null ? (
+        <span className="hint">No route: both ends need a place in the topology.</span>
+      ) : (
+        <span>{segments.map((s) => `S${s.id} ${s.length_mm.toFixed(0)}`).join(" → ") || "same node"} = {segments.reduce((t, s) => t + s.length_mm, 0).toFixed(0)} mm</span>
+      )}
+      {info.cut && (
+        <span>
+          {info.cut.manual
+            ? `Cut ${info.cut.cut_length_mm.toFixed(0)} mm, set by hand`
+            : `With twist ${info.cut.length_with_twist_mm.toFixed(0)} mm + ${info.cut.margin_pct.toFixed(0)}% → cut ${info.cut.cut_length_mm.toFixed(0)} mm`}
+        </span>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -219,16 +292,15 @@ export default function Inspector({ project, setProject, library, selection }: P
           <Field label="ID"><TextInput value={c.short_id} onChange={(v) => set({ short_id: v })} placeholder="X1" /></Field>
           <Field label="Name"><TextInput value={c.name} onChange={(v) => set({ name: v })} placeholder="descriptive name (label)" /></Field>
           <Field label="Part">
-            <Select
-              value={c.library_part_id}
-              options={parts(library.connector_defs)}
-              onChange={(v) => v !== null && v !== c.library_part_id && setProject(changeConnectorPart(project, library, c.id, v))}
+            <ConnectorPartSelect
+              className="inspector-input inspector-input-wide"
+              library={library}
+              partId={c.library_part_id}
+              deviceConnectorId={c.device_connector_id}
+              onChange={(choice) => setProject(changeConnectorPart(project, library, c.id, choice.partId, choice.deviceConnectorId))}
             />
           </Field>
           <Field label="Node"><Select value={c.node_id} options={nodeOptions} onChange={(v) => v !== null && set({ node_id: v })} /></Field>
-          <Field label="Device">
-            <Select value={c.device_instance_id} empty="—" options={project.device_instances.map((d) => ({ value: d.id, label: d.name }))} onChange={(v) => set({ device_instance_id: v })} />
-          </Field>
           <Field label="Status">
             <Select value={c.status} options={[{ value: "complete", label: "Complete" }, { value: "pending", label: "Pending" }]} onChange={(v) => v && set({ status: v as ConnectorInstance["status"] })} />
           </Field>
@@ -258,7 +330,7 @@ export default function Inspector({ project, setProject, library, selection }: P
           {c.is_interconnect && (
             <Field label="Mates with"><TextInput value={c.mates_with ?? ""} onChange={(v) => set({ mates_with: v || null })} placeholder="other harness / connector" /></Field>
           )}
-          <p className="hint inspector-hint">Contacts, seal plugs and external references per cavity: Connectors tab.</p>
+          <p className="hint inspector-hint">Its pinout (wires per pin) and external references: Connectors tab.</p>
         </>
       );
     }
@@ -368,8 +440,28 @@ export default function Inspector({ project, setProject, library, selection }: P
           </Field>
           <Field label="From"><EndEditor end={w.end_a} project={project} onChange={(end_a) => set({ end_a })} /></Field>
           <Field label="To"><EndEditor end={w.end_b} project={project} onChange={(end_b) => set({ end_b })} /></Field>
+          <Field label="Length"><WireLength project={project} library={library} wire={w} /></Field>
+          <Field label="Cut length by hand">
+            <NumberInput value={w.manual_length_mm} nullable unit="mm" placeholder="from the route" onCommit={(v) => set({ manual_length_mm: v })} />
+          </Field>
           <Field label="Cut margin">
             <NumberInput value={w.manual_cut_margin_pct} nullable unit="%" placeholder="default" onCommit={(v) => set({ manual_cut_margin_pct: v })} />
+          </Field>
+          <Field label="Twist group">
+            <Select
+              value={project.twist_groups.find((g) => g.wire_instance_ids.includes(w.id))?.id ?? null}
+              empty="—"
+              options={project.twist_groups.map((g) => ({ value: g.id, label: g.name }))}
+              onChange={(v) =>
+                setProject({
+                  ...project,
+                  twist_groups: project.twist_groups.map((g) => ({
+                    ...g,
+                    wire_instance_ids: g.id === v ? [...g.wire_instance_ids.filter((id) => id !== w.id), w.id] : g.wire_instance_ids.filter((id) => id !== w.id),
+                  })),
+                })
+              }
+            />
           </Field>
           <Field label="Label"><TextInput value={w.label ?? ""} onChange={(v) => set({ label: v || null })} placeholder="optional wire label" /></Field>
         </>

@@ -10,7 +10,6 @@ const seg = (id: number, a: number, b: number, len: number) => ({ id, node_a_id:
 // 1 --S1 (301 mm)-- 2, con un splice a 250 mm del nodo 1 y otro a 30 mm del nodo 2.
 const base = {
   project: {} as ProjectData["project"],
-  device_instances: [],
   nodes: [node(1, "connector_end"), node(2, "connector_end")],
   segments: [seg(1, 1, 2, 301)],
   connector_instances: [],
@@ -95,9 +94,9 @@ console.log("project edit: ok");
   const before = {
     ...p,
     connector_instances: [{ id: 1, library_part_id: 5, cavities: [
-      { id: 50, cavity_id: "1", contact_library_part_id: 9, seal_plug_library_part_id: null, external_reference: "ECU pin 12" },
-      { id: 51, cavity_id: "2", contact_library_part_id: null, seal_plug_library_part_id: null, external_reference: null },
-      { id: 52, cavity_id: "B", contact_library_part_id: null, seal_plug_library_part_id: null, external_reference: null },
+      { id: 50, cavity_id: "1", external_reference: "ECU pin 12" },
+      { id: 51, cavity_id: "2", external_reference: null },
+      { id: 52, cavity_id: "B", external_reference: null },
     ] }],
   } as unknown as ProjectData;
   const after = changeConnectorPart(before, lib, 1, 7).connector_instances[0];
@@ -108,3 +107,47 @@ console.log("project edit: ok");
   assert.ok(![50, 51, 52].includes(after.cavities[2].id)); // la vía nueva tiene id propio
   console.log("project edit (change connector part keeps cavities): ok");
 }
+
+// Pinout por conector: destinos escritos a mano, cables que salen de una vía, varios cables por vía.
+{
+  const { addWireAtCavity, deleteWire, endChoices, otherEnd, parseEnd, setOtherEnd, wiresAtCavity } = await import("../src/projectEdit.ts");
+  const lib = {
+    wire_defs: [{ part_id: 100 }],
+    device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "A6", name: "OUT11", function: null }] }], pin_groups: [] }],
+  } as unknown as Library;
+  const proj = {
+    ...p,
+    connector_instances: [
+      { id: 1, short_id: "X4", name: "Fuel pump", device_connector_id: null, cavities: [{ id: 41, cavity_id: "1" }, { id: 42, cavity_id: "2" }] },
+      { id: 2, short_id: "X9", name: "PDM30", device_connector_id: 3, cavities: [{ id: 91, cavity_id: "A6" }, { id: 92, cavity_id: "a6" }] },
+    ],
+    ground_points: [{ id: 1, short_id: "G1" }],
+    wire_instances: [],
+    twist_groups: [],
+  } as unknown as ProjectData;
+
+  assert.ok(endChoices(proj, lib).some((c) => c.label === "PDM30 OUT11"));
+  assert.equal(parseEnd(proj, lib, "X9:A6")?.cavity_assignment_id, 91);
+  assert.equal(parseEnd(proj, lib, "x9:a6")?.cavity_assignment_id, 92); // la vía distingue mayúsculas
+  assert.equal(parseEnd(proj, lib, "pdm30 out11")?.cavity_assignment_id, 91); // por nombre de pin del dispositivo
+  assert.equal(parseEnd(proj, lib, "g1")?.ground_point_id, 1);
+  assert.equal(parseEnd(proj, lib, "X9:B1"), null);
+
+  // Dos cables desde X4:2: uno a PDM30 OUT11 y otro a masa.
+  const a = addWireAtCavity(proj, lib, 42);
+  assert.ok(typeof a !== "string");
+  const b = addWireAtCavity(a.project, lib, 42);
+  assert.ok(typeof b !== "string");
+  let q = setOtherEnd(b.project, a.wireId, 42, parseEnd(b.project, lib, "PDM30 OUT11")!);
+  assert.ok(typeof q !== "string");
+  q = setOtherEnd(q, b.wireId, 42, parseEnd(q, lib, "G1")!);
+  assert.ok(typeof q !== "string");
+  assert.equal(wiresAtCavity(q, 42).length, 2);
+  assert.equal(otherEnd(q.wire_instances[0], 42).cavity_assignment_id, 91);
+  // Visto desde la otra punta, el mismo cable vuelve a X4:2.
+  assert.equal(otherEnd(q.wire_instances[0], 91).cavity_assignment_id, 42);
+  assert.equal(typeof setOtherEnd(q, a.wireId, 42, parseEnd(q, lib, "X4:2")!), "string"); // no puede volver a su propio pin
+  assert.equal(wiresAtCavity(deleteWire(q, a.wireId), 42).length, 1);
+  console.log("project edit (pinout per connector): ok");
+}
+

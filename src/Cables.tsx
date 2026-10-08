@@ -102,6 +102,7 @@ export default function Cables({ project, setProject, library, selection, onSele
       signal_type_id: null,
       specific_name: null,
       manual_cut_margin_pct: null,
+      manual_length_mm: null,
       label: null,
       end_a: blankEnd(),
       end_b: blankEnd(),

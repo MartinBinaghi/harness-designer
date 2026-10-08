@@ -4,7 +4,7 @@ import { colorWord, connectorHeatShrink, cutListGroups, cutListRows, heatShrinkS
 import type { Library } from "../src/libraryTypes.ts";
 import type { ProjectData } from "../src/types.ts";
 
-const cav = (id: number, pin: string, extra = {}) => ({ id, cavity_id: pin, contact_library_part_id: null, seal_plug_library_part_id: null, external_reference: null, ...extra });
+const cav = (id: number, pin: string, extra = {}) => ({ id, cavity_id: pin, external_reference: null, ...extra });
 const conn = (id: number, short_id: string, name: string, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name, library_part_id: 1, node_id: id, cavities });
 const end = (kind: string, ids: { cavity?: number; splice?: number; ground?: number }) => ({ kind, cavity_assignment_id: ids.cavity ?? null, splice_id: ids.splice ?? null, ground_point_id: ids.ground ?? null, component_instance_id: null });
 const wire = (id: number, part: number, name: string, a: ReturnType<typeof end>, b: ReturnType<typeof end>) => ({ id, short_id: `W00${id}`, library_part_id: part, color: "red", signal_type_id: null, specific_name: name, label: id === 1 ? "5V REF" : null, end_a: a, end_b: b });
@@ -13,7 +13,7 @@ const wire = (id: number, part: number, name: string, a: ReturnType<typeof end>,
 const project = {
   project: { name: "Engine", harness_code: "MOT-01", main_connector_instance_id: 1 },
   connector_instances: [
-    conn(1, "X1", "ECU", [cav(11, "1"), cav(12, "2"), cav(13, "3", { seal_plug_library_part_id: 5 }), cav(14, "4", { external_reference: "Dash CAN" })]),
+    conn(1, "X1", "ECU", [cav(11, "1"), cav(12, "2"), cav(13, "3"), cav(14, "4", { external_reference: "Dash CAN" })]),
     conn(2, "X2", "MAP", [cav(21, "1")]),
     conn(3, "X3", "TPS", [cav(31, "1")]),
   ],
@@ -31,6 +31,7 @@ const project = {
 const library = {
   parts: [],
   signal_types: [],
+  device_defs: [],
   wire_defs: [{ part_id: 20, gauge: "22 AWG", spec: "M22759/32" }, { part_id: 21, gauge: "20 AWG", spec: null }],
 } as unknown as Library;
 const cuts = [
@@ -60,9 +61,9 @@ assert.deepEqual(byPin.find((g) => g.connectorId === 1)!.rows.map((r) => [r.id, 
 assert.deepEqual(wireTotals(byType), [{ wireType: "20 AWG", count: 2, meters: 0.275 }, { wireType: "22 AWG M22759/32", count: 2, meters: 0.44 }]);
 
 // Termina en: los otros pines de la net, pasando por el splice.
-assert.equal(terminatesAt(project, 11, net), "X2:1 · MAP, X3:1 · TPS (via SP1)");
-assert.equal(terminatesAt(project, 21, net), "X1:1 · ECU, X3:1 · TPS (via SP1)");
-assert.equal(terminatesAt(project, 12, net), "G1 · Chassis");
+assert.equal(terminatesAt(project, library, 11, net), "X2:1 · MAP, X3:1 · TPS (via SP1)");
+assert.equal(terminatesAt(project, library, 21, net), "X1:1 · ECU, X3:1 · TPS (via SP1)");
+assert.equal(terminatesAt(project, library, 12, net), "G1 · Chassis");
 
 // Pinout con el formato del taller: un renglón por vía; sin cable, "n/c" y la referencia externa.
 assert.deepEqual(pinoutRows(project, library, 1, net), [
@@ -104,5 +105,13 @@ const diameters = [
 assert.deepEqual(connectorHeatShrink(withSegments, covLib, 2, diameters), ['1/4"']);
 assert.deepEqual(connectorHeatShrink(withSegments, covLib, 3, diameters), ['3/16" (suggested)']);
 assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none in library fits · bundle Ø 7.4 mm"]);
+
+// Conector de un dispositivo: la función es el nombre del pin, y quien termina ahí lo ve con ese nombre.
+{
+  const devLib = { ...library, device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "1", name: "OUT11", function: null }] }], pin_groups: [] }] } as unknown as Library;
+  const pdm = { ...project, connector_instances: project.connector_instances.map((c) => (c.id === 2 ? { ...c, name: "PDM30", device_connector_id: 3 } : c)) } as ProjectData;
+  assert.equal(pinoutRows(pdm, devLib, 2, net)[0].fn, "OUT11");
+  assert.equal(terminatesAt(pdm, devLib, 11, net), "PDM30 · OUT11 (X2:1), X3:1 · TPS (via SP1)");
+}
 
 console.log("sheets: ok");

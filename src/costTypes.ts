@@ -6,6 +6,8 @@ export interface WireCutLength {
   margin_pct: number;
   twist_min_margin_pct: number;
   cut_length_mm: number;
+  /** El largo de corte se puso a mano. */
+  manual: boolean;
 }
 
 export interface BomRow {

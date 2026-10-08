@@ -69,21 +69,6 @@ export function RedoIcon() {
   );
 }
 
-export function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      style={{ transform: open ? "rotate(90deg)" : undefined, transition: "transform 0.1s" }}
-    >
-      <path d="M9 6l6 6-6 6" />
-    </svg>
-  );
-}
 
 /** Ventana con una franja lateral rellena: mostrar/ocultar el panel de ese lado. */
 export function PanelIcon({ side }: { side: "left" | "right" }) {

@@ -131,6 +131,8 @@ pub fn base_library() -> Library {
                     back_width_mm: None,
                     back_height_mm: None,
                     suggested_termination: family.suggested_termination.map(Into::into),
+                    contact_part_id: None,
+                    seal_plug_part_id: None,
                     image_side: None,
                     image_front: None,
                     image_back: None,

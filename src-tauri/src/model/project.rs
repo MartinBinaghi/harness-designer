@@ -24,13 +24,6 @@ pub struct Project {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DeviceInstance {
-    pub id: i64,
-    pub name: String,
-    pub library_part_id: Option<i64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: i64,
     pub kind: String,
@@ -54,12 +47,13 @@ pub struct Segment {
     pub covering_library_part_id: Option<i64>,
 }
 
+/// Una vía del conector en el proyecto. El contacto (vía con cable) y el tapón
+/// (vía sin usar) no se cargan acá: salen del ConnectorDef de la biblioteca
+/// (ver contacts.rs).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CavityAssignment {
     pub id: i64,
     pub cavity_id: String,
-    pub contact_library_part_id: Option<i64>,
-    pub seal_plug_library_part_id: Option<i64>,
     pub external_reference: Option<String>,
 }
 
@@ -69,7 +63,10 @@ pub struct ConnectorInstance {
     pub short_id: String,
     pub name: String,
     pub library_part_id: i64,
-    pub device_instance_id: Option<i64>,
+    /// Si el conector es el de un dispositivo (ej. "PDM30 · A"): el
+    /// DeviceDefConnector de la biblioteca, que da el nombre de cada pin (OUT11,
+    /// AV3). `library_part_id` sigue siendo la carcasa (su ConnectorDef).
+    pub device_connector_id: Option<i64>,
     pub node_id: i64,
     pub termination: Option<String>,
     /// `AccessoryDef` si `termination` es boot_straight/boot_90, `CoveringDef` si es adhesive_heatshrink.
@@ -132,6 +129,9 @@ pub struct WireInstance {
     pub signal_type_id: Option<i64>,
     pub specific_name: Option<String>,
     pub manual_cut_margin_pct: Option<f64>,
+    /// Largo de corte puesto a mano (mm): manda sobre el calculado por el
+    /// recorrido (destino sin recorrido dibujado, o corrección del taller).
+    pub manual_length_mm: Option<f64>,
     pub label: Option<String>,
     pub end_a: WireEnd,
     pub end_b: WireEnd,
@@ -149,7 +149,6 @@ pub struct TwistGroup {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectData {
     pub project: Project,
-    pub device_instances: Vec<DeviceInstance>,
     pub nodes: Vec<Node>,
     pub segments: Vec<Segment>,
     pub connector_instances: Vec<ConnectorInstance>,
@@ -199,18 +198,6 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         },
     )?;
 
-    let mut device_instances_stmt =
-        conn.prepare("SELECT id, name, library_part_id FROM device_instances")?;
-    let device_instances = device_instances_stmt
-        .query_map([], |row| {
-            Ok(DeviceInstance {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                library_part_id: row.get(2)?,
-            })
-        })?
-        .collect::<Result<Vec<_>>>()?;
-
     let mut nodes_stmt =
         conn.prepare("SELECT id, kind, termination, termination_library_part_id, diagram_x, diagram_y FROM nodes")?;
     let nodes = nodes_stmt
@@ -243,7 +230,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut connector_instances_stmt = conn.prepare(
-        "SELECT id, short_id, name, library_part_id, device_instance_id, node_id, termination, termination_library_part_id, backshell_library_part_id, status, is_interconnect, mates_with FROM connector_instances",
+        "SELECT id, short_id, name, library_part_id, device_connector_id, node_id, termination, termination_library_part_id, backshell_library_part_id, status, is_interconnect, mates_with FROM connector_instances",
     )?;
     let mut connector_instances = connector_instances_stmt
         .query_map([], |row| {
@@ -252,7 +239,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 short_id: row.get(1)?,
                 name: row.get(2)?,
                 library_part_id: row.get(3)?,
-                device_instance_id: row.get(4)?,
+                device_connector_id: row.get(4)?,
                 node_id: row.get(5)?,
                 termination: row.get(6)?,
                 termination_library_part_id: row.get(7)?,
@@ -266,16 +253,14 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
     for connector_instance in &mut connector_instances {
         let mut cavities_stmt = conn.prepare(
-            "SELECT id, cavity_id, contact_library_part_id, seal_plug_library_part_id, external_reference FROM cavity_assignments WHERE connector_instance_id = ?1 ORDER BY rowid",
+            "SELECT id, cavity_id, external_reference FROM cavity_assignments WHERE connector_instance_id = ?1 ORDER BY rowid",
         )?;
         connector_instance.cavities = cavities_stmt
             .query_map(params![connector_instance.id], |row| {
                 Ok(CavityAssignment {
                     id: row.get(0)?,
                     cavity_id: row.get(1)?,
-                    contact_library_part_id: row.get(2)?,
-                    seal_plug_library_part_id: row.get(3)?,
-                    external_reference: row.get(4)?,
+                    external_reference: row.get(2)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -332,7 +317,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut wire_instances_stmt = conn.prepare(
-        "SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, label,
+        "SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label,
                 end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
                 end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id
          FROM wire_instances",
@@ -347,20 +332,21 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 signal_type_id: row.get(4)?,
                 specific_name: row.get(5)?,
                 manual_cut_margin_pct: row.get(6)?,
-                label: row.get(7)?,
+                manual_length_mm: row.get(7)?,
+                label: row.get(8)?,
                 end_a: wire_end(
-                    row.get(8)?,
                     row.get(9)?,
                     row.get(10)?,
                     row.get(11)?,
                     row.get(12)?,
+                    row.get(13)?,
                 ),
                 end_b: wire_end(
-                    row.get(13)?,
                     row.get(14)?,
                     row.get(15)?,
                     row.get(16)?,
                     row.get(17)?,
+                    row.get(18)?,
                 ),
             })
         })?
@@ -389,7 +375,6 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
 
     Ok(ProjectData {
         project,
-        device_instances,
         nodes,
         segments,
         connector_instances,
@@ -416,7 +401,6 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
         "connector_instances",
         "segments",
         "nodes",
-        "device_instances",
         "project",
     ] {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
@@ -442,13 +426,6 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
         ],
     )?;
 
-    for d in &data.device_instances {
-        tx.execute(
-            "INSERT INTO device_instances (id, name, library_part_id) VALUES (?1, ?2, ?3)",
-            params![d.id, d.name, d.library_part_id],
-        )?;
-    }
-
     for n in &data.nodes {
         tx.execute(
             "INSERT INTO nodes (id, kind, termination, termination_library_part_id, diagram_x, diagram_y) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -465,14 +442,14 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for c in &data.connector_instances {
         tx.execute(
-            "INSERT INTO connector_instances (id, short_id, name, library_part_id, device_instance_id, node_id, termination, termination_library_part_id, backshell_library_part_id, status, is_interconnect, mates_with)
+            "INSERT INTO connector_instances (id, short_id, name, library_part_id, device_connector_id, node_id, termination, termination_library_part_id, backshell_library_part_id, status, is_interconnect, mates_with)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 c.id,
                 c.short_id,
                 c.name,
                 c.library_part_id,
-                c.device_instance_id,
+                c.device_connector_id,
                 c.node_id,
                 c.termination,
                 c.termination_library_part_id,
@@ -484,16 +461,9 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
         )?;
         for cav in &c.cavities {
             tx.execute(
-                "INSERT INTO cavity_assignments (id, connector_instance_id, cavity_id, contact_library_part_id, seal_plug_library_part_id, external_reference)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    cav.id,
-                    c.id,
-                    cav.cavity_id,
-                    cav.contact_library_part_id,
-                    cav.seal_plug_library_part_id,
-                    cav.external_reference,
-                ],
+                "INSERT INTO cavity_assignments (id, connector_instance_id, cavity_id, external_reference)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![cav.id, c.id, cav.cavity_id, cav.external_reference],
             )?;
         }
     }
@@ -540,10 +510,10 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for w in &data.wire_instances {
         tx.execute(
-            "INSERT INTO wire_instances (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, label,
+            "INSERT INTO wire_instances (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label,
                                           end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
                                           end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![
                 w.id,
                 w.short_id,
@@ -552,6 +522,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
                 w.signal_type_id,
                 w.specific_name,
                 w.manual_cut_margin_pct,
+                w.manual_length_mm,
                 w.label,
                 w.end_a.kind,
                 w.end_a.cavity_assignment_id,
@@ -604,11 +575,6 @@ mod tests {
                 labor_hours: 3.5,
                 labor_rate_usd: 25.0,
             },
-            device_instances: vec![DeviceInstance {
-                id: 1,
-                name: "PDM30".into(),
-                library_part_id: Some(2),
-            }],
             nodes: vec![
                 Node {
                     id: 1,
@@ -648,7 +614,7 @@ mod tests {
                 short_id: "X1".into(),
                 name: "Damper FL".into(),
                 library_part_id: 1,
-                device_instance_id: None,
+                device_connector_id: None,
                 node_id: 1,
                 termination: Some("boot_straight".into()),
                 termination_library_part_id: None,
@@ -659,8 +625,6 @@ mod tests {
                 cavities: vec![CavityAssignment {
                     id: 1,
                     cavity_id: "1".into(),
-                    contact_library_part_id: Some(10),
-                    seal_plug_library_part_id: None,
                     external_reference: None,
                 }],
             }],
@@ -698,6 +662,7 @@ mod tests {
                 signal_type_id: Some(1),
                 specific_name: Some("Damper FL".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: wire_end("cavity".into(), Some(1), None, None, None),
                 end_b: wire_end("splice".into(), None, Some(1), None, None),

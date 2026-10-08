@@ -1,6 +1,7 @@
 mod base_library;
 mod calc;
 mod checks;
+mod contacts;
 mod db;
 mod demo;
 mod gauge;

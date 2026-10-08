@@ -23,9 +23,9 @@ import "@xyflow/react/dist/style.css";
 import { infoFor } from "./TreePanel";
 import { constrainDrag, pxPerMm, rootedTree, scaledCenters } from "./diagramScale";
 import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, endLabel, setSegmentLength, splitSegment } from "./projectEdit";
-import { ConnectorViews, usedCavities } from "./Inspector";
+import { ConnectorPartSelect, ConnectorViews, usedCavities } from "./Inspector";
 import type { Finding, ProjectData, Selection } from "./types";
-import type { Library } from "./libraryTypes";
+import type { ConnectorChoice, Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
 
 /**
@@ -776,8 +776,8 @@ export default function Diagrama({ project, setProject, library, findings, selec
             report={report}
             nodeId={openNodeId}
             onClose={() => setOpenNodeId(null)}
-            onAssign={(partId, name) => {
-              const result = assignConnector(project, library, openNodeId, partId, name);
+            onAssign={(partId, name, deviceConnectorId) => {
+              const result = assignConnector(project, library, openNodeId, partId, name, deviceConnectorId);
               setProject(result.project);
               onSelect({ kind: "connector", id: result.connectorId });
             }}
@@ -799,11 +799,11 @@ function NodePanel({ project, library, report, nodeId, onClose, onAssign }: {
   report: CostReport | null;
   nodeId: number;
   onClose: () => void;
-  onAssign: (connectorDefId: number, name: string) => void;
+  onAssign: (connectorDefId: number, name: string, deviceConnectorId: number | null) => void;
 }) {
   const connector = project.connector_instances.find((c) => c.node_id === nodeId);
   const node = project.nodes.find((n) => n.id === nodeId)!;
-  const [partId, setPartId] = useState<number | "">("");
+  const [choice, setChoice] = useState<ConnectorChoice | null>(null);
   const [name, setName] = useState("");
   const partNumber = (id: number) => library.parts.find((p) => p.id === id)?.part_number ?? `#${id}`;
 
@@ -832,7 +832,7 @@ function NodePanel({ project, library, report, nodeId, onClose, onAssign }: {
               wires.length === 0 ? (
                 <tr key={cav.id} className="dg-pin-unused">
                   <td>{cav.cavity_id}</td>
-                  <td colSpan={5}>{cav.external_reference ?? (cav.seal_plug_library_part_id != null ? "plugged" : "—")}</td>
+                  <td colSpan={5}>{cav.external_reference ?? "—"}</td>
                 </tr>
               ) : (
                 wires.map(({ w, here }) => (
@@ -856,20 +856,19 @@ function NodePanel({ project, library, report, nodeId, onClose, onAssign }: {
       <div className="dg-panel-form">
         <label>
           Part
-          <select value={partId} onChange={(e) => setPartId(e.currentTarget.value ? Number(e.currentTarget.value) : "")}>
-            <option value="">choose…</option>
-            {library.connector_defs.map((d) => (
-              <option key={d.part_id} value={d.part_id}>
-                {partNumber(d.part_id)} · {d.series ?? ""} {d.cavities.length}-way {d.gender}
-              </option>
-            ))}
-          </select>
+          <ConnectorPartSelect
+            library={library}
+            partId={choice?.partId ?? null}
+            deviceConnectorId={choice?.deviceConnectorId ?? null}
+            placeholder="choose…"
+            onChange={setChoice}
+          />
         </label>
         <label>
           Name
           <input value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="e.g. Oil Temp" />
         </label>
-        <button className="button-primary" disabled={partId === ""} onClick={() => partId !== "" && onAssign(partId, name)}>
+        <button className="button-primary" disabled={!choice} onClick={() => choice && onAssign(choice.partId, name, choice.deviceConnectorId)}>
           Assign connector
         </button>
         {library.connector_defs.length === 0 && <p className="hint">The library has no connectors — add them in Library → Connectors.</p>}

@@ -1058,6 +1058,8 @@ function blankConnectorDef(partId: number): ConnectorDef {
     back_width_mm: null,
     back_height_mm: null,
     suggested_termination: null,
+    contact_part_id: null,
+    seal_plug_part_id: null,
     image_side: null,
     image_front: null,
     image_back: null,
@@ -1070,6 +1072,7 @@ function missingData(cd: ConnectorDef, part: Part): string[] {
   const out: string[] = [];
   if (part.price_usd == null) out.push("no price");
   if (cd.cavities.length === 0) out.push("no cavities");
+  if (cd.contact_part_id == null) out.push("no contact");
   const backKnown =
     cd.back_shape === "round"
       ? cd.back_diameter_mm != null
@@ -1272,6 +1275,27 @@ function ConnectorDetail({ library, project, cd, part, missing, onPart, onCd, on
                 <option value="">—</option>
                 {others.map((d) => (
                   <option key={d.part_id} value={d.part_id}>{partLabel(library, d.part_id)}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="field-label" title="Crimped on every wired cavity">Contact</span>
+              <select value={cd.contact_part_id ?? ""} onChange={(e) => onCd({ contact_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+                <option value="">—</option>
+                {library.contact_defs.map((c) => (
+                  <option key={c.part_id} value={c.part_id}>
+                    {partLabel(library, c.part_id)} · size {c.contact_size}
+                    {c.gauge_min || c.gauge_max ? ` · ${c.gauge_min ?? "?"}–${c.gauge_max ?? "?"}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="field-label" title="Goes in every unused cavity">Seal plug</span>
+              <select value={cd.seal_plug_part_id ?? ""} onChange={(e) => onCd({ seal_plug_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+                <option value="">—</option>
+                {library.seal_plug_defs.map((p) => (
+                  <option key={p.part_id} value={p.part_id}>{partLabel(library, p.part_id)} · size {p.contact_size}</option>
                 ))}
               </select>
             </label>

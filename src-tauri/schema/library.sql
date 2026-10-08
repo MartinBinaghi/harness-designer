@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS connector_defs (
     back_width_mm           REAL,
     back_height_mm          REAL,
     suggested_termination   TEXT CHECK (suggested_termination IN ('boot', 'adhesive_heatshrink', 'none')),
+    -- contacto de cada vía con cable y tapón de las vías sin usar (uno por
+    -- conector); sin FK: si se borra la parte, Checks avisa que falta
+    contact_part_id         INTEGER,
+    seal_plug_part_id       INTEGER,
     -- vistas del conector como data URL (la imagen viaja dentro de la biblioteca)
     image_side         TEXT,
     image_front        TEXT,

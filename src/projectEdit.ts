@@ -5,7 +5,7 @@
  * chequearlas con `node tools/check_project_edit.ts`.
  */
 import type { CavityAssignment, ConnectorInstance, Node, ProjectData, Segment, WireEnd, WireInstance } from "./types";
-import type { Library } from "./libraryTypes";
+import { devicePinName, type Library } from "./libraryTypes.ts";
 
 export function nextId(ids: number[]): number {
   return ids.length === 0 ? 1 : Math.max(...ids) + 1;
@@ -19,8 +19,6 @@ export function cavitiesFromDef(project: ProjectData, connectorDefId: number, li
   return def.cavities.map((cav) => ({
     id: nextCavityId++,
     cavity_id: cav.cavity_id,
-    contact_library_part_id: null,
-    seal_plug_library_part_id: null,
     external_reference: null,
   }));
 }
@@ -158,7 +156,14 @@ const TERMINATION_FROM_SUGGESTED: Record<string, ConnectorInstance["termination"
 };
 
 /** Conector nuevo (X{n}) en un nodo, con las vías y la terminación sugerida de su ConnectorDef. Queda pendiente hasta cargar su pinout. */
-export function assignConnector(project: ProjectData, library: Library, nodeId: number, connectorDefId: number, name: string): { project: ProjectData; connectorId: number } {
+export function assignConnector(
+  project: ProjectData,
+  library: Library,
+  nodeId: number,
+  connectorDefId: number,
+  name: string,
+  deviceConnectorId: number | null = null,
+): { project: ProjectData; connectorId: number } {
   const id = nextId(project.connector_instances.map((c) => c.id));
   const def = library.connector_defs.find((cd) => cd.part_id === connectorDefId);
   const connector: ConnectorInstance = {
@@ -166,7 +171,7 @@ export function assignConnector(project: ProjectData, library: Library, nodeId: 
     short_id: `X${id}`,
     name,
     library_part_id: connectorDefId,
-    device_instance_id: null,
+    device_connector_id: deviceConnectorId,
     node_id: nodeId,
     termination: def?.suggested_termination ? TERMINATION_FROM_SUGGESTED[def.suggested_termination] ?? null : null,
     termination_library_part_id: null,
@@ -209,6 +214,7 @@ export function addWire(project: ProjectData, library: Library, endA: WireEnd, e
     signal_type_id: null,
     specific_name: null,
     manual_cut_margin_pct: null,
+    manual_length_mm: null,
     label: null,
     end_a: endA,
     end_b: endB,
@@ -231,12 +237,19 @@ export function patchItem<K extends ListKey>(project: ProjectData, key: K, id: n
  * externa. Antes se regeneraban todas y los cables quedaban sueltos. Las vías
  * que la parte nueva no tiene se descartan (Checks marca sus cables sin extremo).
  */
-export function changeConnectorPart(project: ProjectData, library: Library, connectorId: number, connectorDefId: number): ProjectData {
+export function changeConnectorPart(
+  project: ProjectData,
+  library: Library,
+  connectorId: number,
+  connectorDefId: number,
+  deviceConnectorId: number | null = null,
+): ProjectData {
   const connector = project.connector_instances.find((c) => c.id === connectorId);
   const previous = new Map((connector?.cavities ?? []).map((cav) => [cav.cavity_id, cav]));
   const fresh = cavitiesFromDef(project, connectorDefId, library);
   return patchItem(project, "connector_instances", connectorId, {
     library_part_id: connectorDefId,
+    device_connector_id: deviceConnectorId,
     cavities: fresh.map((cav) => previous.get(cav.cavity_id) ?? cav),
   });
 }
@@ -291,3 +304,86 @@ export function endLabel(project: ProjectData, end: WireEnd): string {
       return "—";
   }
 }
+
+// --- Pinout por conector (pantalla Conectores) ---------------------------------
+
+/** Extremo sin destino todavía: el cable queda incompleto hasta que se completa (plan 7.1). */
+export const BLANK_END: WireEnd = { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null };
+
+const cavityEnd = (id: number): WireEnd => ({ ...BLANK_END, cavity_assignment_id: id });
+
+/**
+ * Destinos que se pueden escribir en "Goes to", con su extremo: "X4:2" por cada
+ * vía, el nombre del pin en conectores de dispositivo ("PDM30 OUT11"), splices,
+ * masas y componentes. Sirve para el autocompletado y para interpretar el texto.
+ */
+export function endChoices(project: ProjectData, library: Library): { label: string; end: WireEnd }[] {
+  const out: { label: string; end: WireEnd }[] = [];
+  for (const c of project.connector_instances) {
+    for (const cav of c.cavities) {
+      out.push({ label: `${c.short_id}:${cav.cavity_id}`, end: cavityEnd(cav.id) });
+      const pin = devicePinName(library, c.device_connector_id, cav.cavity_id);
+      if (pin) out.push({ label: `${c.name || c.short_id} ${pin}`, end: cavityEnd(cav.id) });
+    }
+  }
+  for (const s of project.splice_instances) out.push({ label: s.short_id, end: { ...BLANK_END, kind: "splice", cavity_assignment_id: null, splice_id: s.id } });
+  for (const g of project.ground_points) out.push({ label: g.short_id, end: { ...BLANK_END, kind: "ground", cavity_assignment_id: null, ground_point_id: g.id } });
+  for (const k of project.component_instances) out.push({ label: k.short_id, end: { ...BLANK_END, kind: "component", cavity_assignment_id: null, component_instance_id: k.id } });
+  return out;
+}
+
+/**
+ * El extremo que corresponde a un texto de "Goes to", o null si no existe. El
+ * conector, splice o nombre de pin no distinguen mayúsculas; la vía sí ("N" y
+ * "n" son pines distintos en un Amphenol).
+ */
+export function parseEnd(project: ProjectData, library: Library, text: string): WireEnd | null {
+  const t = text.trim();
+  if (!t) return null;
+  const choices = endChoices(project, library);
+  const exact = choices.find((c) => c.label === t);
+  if (exact) return exact.end;
+  const [head, ...rest] = t.split(":");
+  const tail = rest.join(":");
+  const loose = choices.find((c) => {
+    if (!c.label.includes(":") || rest.length === 0) return c.label.toLowerCase() === t.toLowerCase();
+    const [ch, ...cr] = c.label.split(":");
+    return ch.toLowerCase() === head.toLowerCase() && cr.join(":") === tail;
+  });
+  return loose?.end ?? null;
+}
+
+const isCavityEnd = (end: WireEnd, cavityId: number) => end.kind === "cavity" && end.cavity_assignment_id === cavityId;
+
+/** Cables que salen de una vía, en el orden del proyecto. */
+export function wiresAtCavity(project: ProjectData, cavityId: number): WireInstance[] {
+  return project.wire_instances.filter((w) => isCavityEnd(w.end_a, cavityId) || isCavityEnd(w.end_b, cavityId));
+}
+
+/** El otro extremo de un cable, visto desde la vía `cavityId`. */
+export function otherEnd(wire: WireInstance, cavityId: number): WireEnd {
+  return isCavityEnd(wire.end_a, cavityId) ? wire.end_b : wire.end_a;
+}
+
+/** Un cable nuevo que sale de la vía, todavía sin destino (se completa en "Goes to"). */
+export function addWireAtCavity(project: ProjectData, library: Library, cavityId: number): { project: ProjectData; wireId: number } | string {
+  return addWire(project, library, cavityEnd(cavityId), BLANK_END);
+}
+
+/** Cambia el destino de un cable visto desde la vía `cavityId` (el extremo que no es esa vía). */
+export function setOtherEnd(project: ProjectData, wireId: number, cavityId: number, end: WireEnd): ProjectData | string {
+  const wire = project.wire_instances.find((w) => w.id === wireId);
+  if (!wire) return "That wire no longer exists.";
+  if (isCavityEnd(end, cavityId)) return "A wire can't go back to its own pin.";
+  return patchItem(project, "wire_instances", wireId, isCavityEnd(wire.end_a, cavityId) ? { end_b: end } : { end_a: end });
+}
+
+/** Borra un cable (y lo saca de su grupo de trenzado). */
+export function deleteWire(project: ProjectData, wireId: number): ProjectData {
+  return {
+    ...project,
+    wire_instances: project.wire_instances.filter((w) => w.id !== wireId),
+    twist_groups: project.twist_groups.map((g) => ({ ...g, wire_instance_ids: g.wire_instance_ids.filter((id) => id !== wireId) })),
+  };
+}
+

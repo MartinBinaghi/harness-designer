@@ -285,23 +285,20 @@ pub struct WireCutLength {
     /// Mínimo margen que impone el trenzado del tramo más exigente de este cable.
     pub twist_min_margin_pct: f64,
     pub cut_length_mm: f64,
+    /// El largo de corte se puso a mano (`WireInstance::manual_length_mm`).
+    pub manual: bool,
 }
 
-/// Largo de corte de un cable (plan 5.1): recorre sus segmentos aplicando el
-/// factor de trenzado de cada uno, y le suma el margen de seguridad (cascada
-/// manual → `WireDef` → proyecto). `None` si el cable no tiene recorrido
-/// resoluble (extremo sin ubicación, plan 4.3).
-pub fn wire_cut_length(
+/// Largo del recorrido con el factor de trenzado de cada segmento, y el peor
+/// factor del recorrido. `None` si el cable no tiene recorrido resoluble.
+fn route_length_with_twist(
     data: &ProjectData,
     library: &Library,
     wire_id: i64,
-) -> Option<WireCutLength> {
-    let wire = data.wire_instances.iter().find(|w| w.id == wire_id)?;
-    let route = wire_route(data, wire_id)?;
-
+) -> Option<(f64, f64)> {
     let mut length_with_twist_mm = 0.0;
     let mut worst_factor: f64 = 1.0;
-    for segment_id in &route {
+    for segment_id in &wire_route(data, wire_id)? {
         let segment = data.segments.iter().find(|s| s.id == *segment_id)?;
         let d_bundle = bundle_diameter_mm(data, library, *segment_id);
         let pitch = effective_pitch_mm(&data.project, segment.twist_pitch_mm, d_bundle);
@@ -309,6 +306,32 @@ pub fn wire_cut_length(
         length_with_twist_mm += segment.length_mm * factor;
         worst_factor = worst_factor.max(factor);
     }
+    Some((length_with_twist_mm, worst_factor))
+}
+
+/// Largo de corte de un cable (plan 5.1): recorre sus segmentos aplicando el
+/// factor de trenzado de cada uno, y le suma el margen de seguridad (cascada
+/// manual → `WireDef` → proyecto). Un largo puesto a mano manda (sin margen,
+/// aunque no haya recorrido). `None` si no hay largo a mano ni recorrido
+/// resoluble (extremo sin ubicación, plan 4.3).
+pub fn wire_cut_length(
+    data: &ProjectData,
+    library: &Library,
+    wire_id: i64,
+) -> Option<WireCutLength> {
+    let wire = data.wire_instances.iter().find(|w| w.id == wire_id)?;
+    let route = route_length_with_twist(data, library, wire_id);
+    if let Some(manual) = wire.manual_length_mm {
+        return Some(WireCutLength {
+            wire_id,
+            length_with_twist_mm: route.map_or(manual, |(length, _)| length),
+            margin_pct: 0.0,
+            twist_min_margin_pct: 0.0,
+            cut_length_mm: manual,
+            manual: true,
+        });
+    }
+    let (length_with_twist_mm, worst_factor) = route?;
 
     let margin_pct = wire
         .manual_cut_margin_pct
@@ -321,6 +344,7 @@ pub fn wire_cut_length(
         margin_pct,
         twist_min_margin_pct: (worst_factor - 1.0) * 100.0,
         cut_length_mm: length_with_twist_mm * (1.0 + margin_pct / 100.0),
+        manual: false,
     })
 }
 
@@ -380,11 +404,11 @@ pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
         if let Some(id) = connector.backshell_library_part_id {
             *quantities.entry(id).or_default() += 1.0;
         }
+        // Contacto en cada vía con cable, tapón en cada vía sin usar (del ConnectorDef).
         for cavity in &connector.cavities {
-            if let Some(id) = cavity.contact_library_part_id {
-                *quantities.entry(id).or_default() += 1.0;
-            }
-            if let Some(id) = cavity.seal_plug_library_part_id {
+            let part = crate::contacts::cavity_contact(data, library, connector, cavity)
+                .or_else(|| crate::contacts::cavity_seal_plug(data, library, connector, cavity));
+            if let Some(id) = part {
                 *quantities.entry(id).or_default() += 1.0;
             }
         }
@@ -686,7 +710,6 @@ mod tests {
                 labor_hours: 0.0,
                 labor_rate_usd: 0.0,
             },
-            device_instances: vec![],
             nodes: vec![
                 Node {
                     id: 1,
@@ -719,7 +742,7 @@ mod tests {
                     short_id: "X1".into(),
                     name: "A".into(),
                     library_part_id: 10,
-                    device_instance_id: None,
+                    device_connector_id: None,
                     node_id: 1,
                     termination: None,
                     termination_library_part_id: None,
@@ -730,8 +753,6 @@ mod tests {
                     cavities: vec![CavityAssignment {
                         id: 1,
                         cavity_id: "1".into(),
-                        contact_library_part_id: None,
-                        seal_plug_library_part_id: None,
                         external_reference: None,
                     }],
                 },
@@ -740,7 +761,7 @@ mod tests {
                     short_id: "X2".into(),
                     name: "B".into(),
                     library_part_id: 10,
-                    device_instance_id: None,
+                    device_connector_id: None,
                     node_id: 2,
                     termination: None,
                     termination_library_part_id: None,
@@ -751,8 +772,6 @@ mod tests {
                     cavities: vec![CavityAssignment {
                         id: 2,
                         cavity_id: "1".into(),
-                        contact_library_part_id: None,
-                        seal_plug_library_part_id: None,
                         external_reference: None,
                     }],
                 },
@@ -768,6 +787,7 @@ mod tests {
                 signal_type_id: None,
                 specific_name: None,
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: cavity_end(1),
                 end_b: cavity_end(2),
@@ -795,6 +815,24 @@ mod tests {
     fn default_pitch_factor_of_16_gives_the_plans_worked_outer_layer_margin() {
         let factor = twist_factor(10.0, 16.0 * 10.0);
         assert!((factor - 1.0191).abs() < 0.001, "got {factor}");
+    }
+
+    #[test]
+    fn a_manual_length_wins_even_without_a_route() {
+        let mut data = one_segment_project(1000.0, Some(120.0));
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 9.0, None));
+        data.wire_instances[0].manual_length_mm = Some(1400.0);
+        let cut = wire_cut_length(&data, &library, 1).unwrap();
+        assert!(cut.manual);
+        assert_eq!(cut.cut_length_mm, 1400.0); // sin margen: el largo a mano es el de corte
+        assert!(cut.length_with_twist_mm > 1000.0); // el recorrido se sigue informando
+                                                    // Sin recorrido (extremo suelto), el largo a mano igual da un renglón de corte.
+        data.wire_instances[0].end_b.cavity_assignment_id = None;
+        assert_eq!(
+            wire_cut_length(&data, &library, 1).unwrap().cut_length_mm,
+            1400.0
+        );
     }
 
     #[test]
@@ -846,6 +884,7 @@ mod tests {
             signal_type_id: None,
             specific_name: None,
             manual_cut_margin_pct: None,
+            manual_length_mm: None,
             label: None,
             end_a: cavity_end(1),
             end_b: cavity_end(2),
@@ -853,15 +892,11 @@ mod tests {
         data.connector_instances[0].cavities.push(CavityAssignment {
             id: 3,
             cavity_id: "2".into(),
-            contact_library_part_id: None,
-            seal_plug_library_part_id: None,
             external_reference: None,
         });
         data.connector_instances[1].cavities.push(CavityAssignment {
             id: 4,
             cavity_id: "2".into(),
-            contact_library_part_id: None,
-            seal_plug_library_part_id: None,
             external_reference: None,
         });
         data.wire_instances[1].end_a = cavity_end(3);
@@ -887,10 +922,25 @@ mod tests {
 
     #[test]
     fn bom_counts_connectors_contacts_and_wire_meterage() {
-        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
-        data.connector_instances[0].cavities[0].contact_library_part_id = Some(200);
+        let data = one_segment_project(1000.0, Some(1_000_000.0));
 
         let mut library = Library::default();
+        // El contacto sale del conector de la biblioteca, uno por vía con cable.
+        library
+            .connector_defs
+            .push(crate::model::library::ConnectorDef {
+                contact_part_id: Some(200),
+                ..connector_def_with_series(10, "AMP", "CE")
+            });
+        library
+            .contact_defs
+            .push(crate::model::library::ContactDef {
+                part_id: 200,
+                gender: "female".into(),
+                contact_size: "20".into(),
+                gauge_min: None,
+                gauge_max: None,
+            });
         library.parts = vec![
             part(10, "connector", 1.0, Some(5.0)),
             part(100, "wire", 100.0, Some(0.5)),
@@ -905,7 +955,7 @@ mod tests {
         assert_eq!(connector_row.quantity_to_buy, 2.0);
 
         let contact_row = bom.iter().find(|r| r.library_part_id == 200).unwrap();
-        assert_eq!(contact_row.quantity_needed, 1.0);
+        assert_eq!(contact_row.quantity_needed, 2.0); // el cable va de X1 a X2: un contacto en cada punta
         assert_eq!(contact_row.quantity_to_buy, 50.0); // redondeado al pack
 
         let wire_row = bom.iter().find(|r| r.library_part_id == 100).unwrap();
@@ -1002,6 +1052,7 @@ mod tests {
                 signal_type_id: None,
                 specific_name: None,
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: splice_end(1),
                 end_b: splice_end(1),
@@ -1091,6 +1142,8 @@ mod tests {
             back_width_mm: None,
             back_height_mm: None,
             suggested_termination: None,
+            contact_part_id: None,
+            seal_plug_part_id: None,
             image_side: None,
             image_front: None,
             image_back: None,

@@ -19,12 +19,6 @@ CREATE TABLE IF NOT EXISTS project (
     labor_rate_usd              REAL NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS device_instances (
-    id                  INTEGER PRIMARY KEY,
-    name                TEXT NOT NULL,
-    library_part_id     INTEGER
-);
-
 CREATE TABLE IF NOT EXISTS nodes (
     id                          INTEGER PRIMARY KEY,
     kind                        TEXT NOT NULL CHECK (kind IN ('connector_end', 'breakout', 'splice_point', 'ground_point')),
@@ -52,7 +46,8 @@ CREATE TABLE IF NOT EXISTS connector_instances (
     short_id                    TEXT NOT NULL UNIQUE,
     name                        TEXT NOT NULL,
     library_part_id             INTEGER NOT NULL,
-    device_instance_id          INTEGER REFERENCES device_instances(id),
+    -- conector de un dispositivo de la biblioteca (device_def_connectors.id): nombres de pin
+    device_connector_id         INTEGER,
     node_id                     INTEGER NOT NULL REFERENCES nodes(id),
     termination                 TEXT CHECK (termination IN ('boot_straight', 'boot_90', 'adhesive_heatshrink', 'none')),
     -- accessory_defs si termination es boot_straight/boot_90, covering_defs si es adhesive_heatshrink
@@ -67,8 +62,7 @@ CREATE TABLE IF NOT EXISTS cavity_assignments (
     id                          INTEGER PRIMARY KEY,
     connector_instance_id       INTEGER NOT NULL REFERENCES connector_instances(id) ON DELETE CASCADE,
     cavity_id                   TEXT NOT NULL,
-    contact_library_part_id     INTEGER,
-    seal_plug_library_part_id   INTEGER,
+    -- contacto y tapón: del connector_def de la biblioteca, no por vía
     external_reference          TEXT,
     UNIQUE (connector_instance_id, cavity_id)
 );
@@ -122,6 +116,7 @@ CREATE TABLE IF NOT EXISTS wire_instances (
     signal_type_id                   INTEGER,
     specific_name                    TEXT,
     manual_cut_margin_pct            REAL,
+    manual_length_mm                 REAL,   -- largo de corte a mano: manda sobre el calculado
     label                            TEXT,
 
     end_a_kind                       TEXT NOT NULL CHECK (end_a_kind IN ('cavity', 'splice', 'ground', 'component')),

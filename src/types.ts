@@ -15,12 +15,6 @@ export interface Project {
   labor_rate_usd: number;
 }
 
-export interface DeviceInstance {
-  id: number;
-  name: string;
-  library_part_id: number | null;
-}
-
 export interface Node {
   id: number;
   kind: "connector_end" | "breakout" | "splice_point" | "ground_point";
@@ -41,11 +35,10 @@ export interface Segment {
   covering_library_part_id: number | null;
 }
 
+/** Una vía del conector. El contacto y el tapón no se cargan acá: salen del ConnectorDef (contacts.rs). */
 export interface CavityAssignment {
   id: number;
   cavity_id: string;
-  contact_library_part_id: number | null;
-  seal_plug_library_part_id: number | null;
   external_reference: string | null;
 }
 
@@ -54,7 +47,12 @@ export interface ConnectorInstance {
   short_id: string;
   name: string;
   library_part_id: number;
-  device_instance_id: number | null;
+  /**
+   * Si es el conector de un dispositivo (ej. "MOTEC-PDM30 · A"): el
+   * DeviceDefConnector de la biblioteca, que da el nombre de cada pin (OUT11,
+   * AV3). `library_part_id` sigue siendo la carcasa.
+   */
+  device_connector_id: number | null;
   node_id: number;
   termination: string | null;
   /** AccessoryDef si termination es boot_straight/boot_90, CoveringDef si es adhesive_heatshrink. */
@@ -111,6 +109,8 @@ export interface WireInstance {
   signal_type_id: number | null;
   specific_name: string | null;
   manual_cut_margin_pct: number | null;
+  /** Largo de corte puesto a mano (mm): manda sobre el calculado por el recorrido. */
+  manual_length_mm: number | null;
   label: string | null;
   end_a: WireEnd;
   end_b: WireEnd;
@@ -156,7 +156,6 @@ export interface Finding {
 
 export interface ProjectData {
   project: Project;
-  device_instances: DeviceInstance[];
   nodes: Node[];
   segments: Segment[];
   connector_instances: ConnectorInstance[];

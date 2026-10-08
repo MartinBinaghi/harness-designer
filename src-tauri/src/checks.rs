@@ -180,12 +180,6 @@ fn check_splices_within_capacity(data: &ProjectData, library: &Library) -> Vec<F
     findings
 }
 
-fn gauge_range_mm2(gauge_min: Option<&str>, gauge_max: Option<&str>) -> Option<(f64, f64)> {
-    let a = crate::gauge::gauge_to_mm2(gauge_min?)?;
-    let b = crate::gauge::gauge_to_mm2(gauge_max?)?;
-    Some((a.min(b), a.max(b)))
-}
-
 /// Calibre total fuera del rango del splice (plan sección 12: "splice con...
 /// calibre fuera de lo que admite su SpliceDef"), mismo patrón que el chequeo
 /// de calibre vs. contacto: suma la sección de todos los cables que llegan al
@@ -201,7 +195,7 @@ fn check_gauge_within_splice_range(data: &ProjectData, library: &Library) -> Vec
             continue;
         };
         let Some((range_min, range_max)) =
-            gauge_range_mm2(def.gauge_min.as_deref(), def.gauge_max.as_deref())
+            crate::contacts::gauge_range_mm2(def.gauge_min.as_deref(), def.gauge_max.as_deref())
         else {
             continue;
         };
@@ -254,22 +248,56 @@ fn check_pending_connectors(data: &ProjectData) -> Vec<Finding> {
         .collect()
 }
 
-fn check_unused_cavities_without_seal_plug(data: &ProjectData) -> Vec<Finding> {
-    let mut findings = Vec::new();
-    for connector in &data.connector_instances {
-        for cav in &connector.cavities {
-            if cav.contact_library_part_id.is_none() && cav.seal_plug_library_part_id.is_none() {
-                findings.push(
-                    warning(format!(
-                        "{}: cavity {} is unused and has no seal plug",
-                        connector.short_id, cav.cavity_id
-                    ))
-                    .at(FindingTarget::Connector { id: connector.id }),
-                );
-            }
-        }
-    }
-    findings
+/// Vías sin cable a las que la biblioteca no les da tapón (el del conector, o
+/// uno del mismo tamaño): un aviso por conector, no uno por vía.
+fn check_unused_cavities_without_seal_plug(data: &ProjectData, library: &Library) -> Vec<Finding> {
+    data.connector_instances
+        .iter()
+        .filter_map(|connector| {
+            let missing = connector
+                .cavities
+                .iter()
+                .filter(|cav| {
+                    crate::contacts::wires_in_cavity(data, cav).is_empty()
+                        && crate::contacts::cavity_seal_plug(data, library, connector, cav).is_none()
+                })
+                .count();
+            (missing > 0).then(|| {
+                warning(format!(
+                    "{}: {missing} unused cavit{} without seal plug (set the seal plug of its part in the library)",
+                    connector.short_id,
+                    if missing == 1 { "y" } else { "ies" }
+                ))
+                .at(FindingTarget::Connector { id: connector.id })
+            })
+        })
+        .collect()
+}
+
+/// Vías con cable a las que la biblioteca no les da contacto: sin él no entran
+/// en la lista de materiales ni se chequea el calibre. Un aviso por conector.
+fn check_used_cavities_without_contact(data: &ProjectData, library: &Library) -> Vec<Finding> {
+    data.connector_instances
+        .iter()
+        .filter_map(|connector| {
+            let missing = connector
+                .cavities
+                .iter()
+                .filter(|cav| {
+                    !crate::contacts::wires_in_cavity(data, cav).is_empty()
+                        && crate::contacts::cavity_contact(data, library, connector, cav).is_none()
+                })
+                .count();
+            (missing > 0).then(|| {
+                warning(format!(
+                    "{}: no contact for {missing} wired cavit{} (set the contact of its part in the library)",
+                    connector.short_id,
+                    if missing == 1 { "y" } else { "ies" }
+                ))
+                .at(FindingTarget::Connector { id: connector.id })
+            })
+        })
+        .collect()
 }
 
 fn check_same_net_different_function(data: &ProjectData) -> Vec<Finding> {
@@ -409,17 +437,14 @@ fn check_t_mold_assigned_does_not_fit(data: &ProjectData, library: &Library) -> 
     findings
 }
 
-fn contact_gauge_range_mm2(contact: &crate::model::library::ContactDef) -> Option<(f64, f64)> {
-    gauge_range_mm2(contact.gauge_min.as_deref(), contact.gauge_max.as_deref())
-}
-
 /// Calibre fuera del rango del contacto, incluyendo la sección total cuando
 /// hay varios cables en la misma cavidad (plan sección 12 y 4.2).
 fn check_gauge_within_contact_range(data: &ProjectData, library: &Library) -> Vec<Finding> {
     let mut findings = Vec::new();
     for connector in &data.connector_instances {
         for cav in &connector.cavities {
-            let Some(contact_id) = cav.contact_library_part_id else {
+            let Some(contact_id) = crate::contacts::cavity_contact(data, library, connector, cav)
+            else {
                 continue;
             };
             let Some(contact) = library
@@ -429,7 +454,10 @@ fn check_gauge_within_contact_range(data: &ProjectData, library: &Library) -> Ve
             else {
                 continue;
             };
-            let Some((range_min, range_max)) = contact_gauge_range_mm2(contact) else {
+            let Some((range_min, range_max)) = crate::contacts::gauge_range_mm2(
+                contact.gauge_min.as_deref(),
+                contact.gauge_max.as_deref(),
+            ) else {
                 continue;
             };
 
@@ -493,7 +521,8 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
     findings.extend(check_splices_within_capacity(data, library));
     findings.extend(check_gauge_within_splice_range(data, library));
     findings.extend(check_pending_connectors(data));
-    findings.extend(check_unused_cavities_without_seal_plug(data));
+    findings.extend(check_unused_cavities_without_seal_plug(data, library));
+    findings.extend(check_used_cavities_without_contact(data, library));
     findings.extend(check_same_net_different_function(data));
     findings.extend(check_cut_margin_below_twist_minimum(data, library));
     findings.extend(check_covering_fit(data, library));
@@ -547,7 +576,6 @@ mod tests {
                 labor_hours: 0.0,
                 labor_rate_usd: 0.0,
             },
-            device_instances: vec![],
             nodes: vec![],
             segments: vec![],
             connector_instances: vec![],
@@ -684,6 +712,7 @@ mod tests {
             signal_type_id: None,
             specific_name: None,
             manual_cut_margin_pct: None,
+            manual_length_mm: None,
             label: None,
             end_a: end("cavity", None, None, None, None), // never picked in the UI
             end_b: end("ground", None, None, Some(1), None),
@@ -721,6 +750,7 @@ mod tests {
                 signal_type_id: None,
                 specific_name: None,
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
@@ -773,6 +803,7 @@ mod tests {
                 signal_type_id: None,
                 specific_name: None,
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
@@ -837,7 +868,7 @@ mod tests {
             short_id: "X1".into(),
             name: "TBD".into(),
             library_part_id: 1,
-            device_instance_id: None,
+            device_connector_id: None,
             node_id: 1,
             termination: None,
             termination_library_part_id: None,
@@ -848,8 +879,6 @@ mod tests {
             cavities: vec![CavityAssignment {
                 id: 1,
                 cavity_id: "1".into(),
-                contact_library_part_id: None,
-                seal_plug_library_part_id: None,
                 external_reference: None,
             }],
         }];
@@ -857,7 +886,7 @@ mod tests {
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].target, Some(FindingTarget::Connector { id: 1 }));
 
-        let unused = check_unused_cavities_without_seal_plug(&data);
+        let unused = check_unused_cavities_without_seal_plug(&data, &empty_library());
         assert_eq!(unused.len(), 1);
         assert_eq!(unused[0].target, Some(FindingTarget::Connector { id: 1 }));
     }
@@ -883,6 +912,7 @@ mod tests {
                 signal_type_id: None,
                 specific_name: Some("Damper FL".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
@@ -895,6 +925,7 @@ mod tests {
                 signal_type_id: None,
                 specific_name: Some("Damper FR".into()),
                 manual_cut_margin_pct: None,
+                manual_length_mm: None,
                 label: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
@@ -947,7 +978,7 @@ mod tests {
                 short_id: "X1".into(),
                 name: "A".into(),
                 library_part_id: 10,
-                device_instance_id: None,
+                device_connector_id: None,
                 node_id: 1,
                 termination: None,
                 termination_library_part_id: None,
@@ -958,8 +989,6 @@ mod tests {
                 cavities: vec![CavityAssignment {
                     id: 1,
                     cavity_id: "1".into(),
-                    contact_library_part_id: None,
-                    seal_plug_library_part_id: None,
                     external_reference: None,
                 }],
             },
@@ -968,7 +997,7 @@ mod tests {
                 short_id: "X2".into(),
                 name: "B".into(),
                 library_part_id: 10,
-                device_instance_id: None,
+                device_connector_id: None,
                 node_id: 2,
                 termination: None,
                 termination_library_part_id: None,
@@ -979,8 +1008,6 @@ mod tests {
                 cavities: vec![CavityAssignment {
                     id: 2,
                     cavity_id: "1".into(),
-                    contact_library_part_id: None,
-                    seal_plug_library_part_id: None,
                     external_reference: None,
                 }],
             },
@@ -993,11 +1020,37 @@ mod tests {
             signal_type_id: None,
             specific_name: None,
             manual_cut_margin_pct: None,
+            manual_length_mm: None,
             label: None,
             end_a: end("cavity", Some(1), None, None, None),
             end_b: end("cavity", Some(2), None, None, None),
         }];
         data
+    }
+
+    /// ConnectorDef mínimo cuyo contacto por defecto es `contact_part_id`.
+    fn connector_def_with_contact(
+        part_id: i64,
+        contact_part_id: i64,
+    ) -> crate::model::library::ConnectorDef {
+        crate::model::library::ConnectorDef {
+            part_id,
+            gender: "female".into(),
+            series: None,
+            shell_size: None,
+            counterpart_id: None,
+            back_shape: None,
+            back_diameter_mm: None,
+            back_width_mm: None,
+            back_height_mm: None,
+            suggested_termination: None,
+            contact_part_id: Some(contact_part_id),
+            seal_plug_part_id: None,
+            image_side: None,
+            image_front: None,
+            image_back: None,
+            cavities: vec![],
+        }
     }
 
     fn library_with_wire_def(outer_diameter_mm: f64) -> Library {
@@ -1084,6 +1137,8 @@ mod tests {
             back_width_mm: None,
             back_height_mm: None,
             suggested_termination: None,
+            contact_part_id: None,
+            seal_plug_part_id: None,
             image_side: None,
             image_front: None,
             image_back: None,
@@ -1141,9 +1196,12 @@ mod tests {
 
     #[test]
     fn no_gauge_finding_when_the_wire_fits_the_contact_range() {
-        let mut data = segment_with_one_wire();
-        data.connector_instances[0].cavities[0].contact_library_part_id = Some(500);
+        let data = segment_with_one_wire();
         let mut library = library_with_wire_def(6.0); // WireDef 100 = "22 AWG" ≈ 0.326mm²
+        library.connector_defs = vec![connector_def_with_contact(
+            data.connector_instances[0].library_part_id,
+            500,
+        )];
         library.contact_defs = vec![crate::model::library::ContactDef {
             part_id: 500,
             gender: "female".into(),
@@ -1156,9 +1214,12 @@ mod tests {
 
     #[test]
     fn flags_a_wire_gauge_outside_its_contacts_range() {
-        let mut data = segment_with_one_wire();
-        data.connector_instances[0].cavities[0].contact_library_part_id = Some(500);
+        let data = segment_with_one_wire();
         let mut library = library_with_wire_def(6.0); // WireDef 100 = "22 AWG" ≈ 0.326mm²
+        library.connector_defs = vec![connector_def_with_contact(
+            data.connector_instances[0].library_part_id,
+            500,
+        )];
         library.contact_defs = vec![crate::model::library::ContactDef {
             part_id: 500,
             gender: "female".into(),
@@ -1167,8 +1228,9 @@ mod tests {
             gauge_max: Some("10 AWG".into()),
         }];
         let findings = check_gauge_within_contact_range(&data, &library);
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, "error");
+        // El cable llega a X1 y a X2, los dos con ese contacto: un error en cada punta.
+        assert_eq!(findings.len(), 2);
+        assert!(findings.iter().all(|f| f.severity == "error"));
         assert!(findings[0].message.contains("X1"));
     }
 }

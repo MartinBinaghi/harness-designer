@@ -119,7 +119,7 @@ export default function Impresion({ project, library }: Props) {
               {g.rows.map((r) => (
                 <tr key={r.wireId}>
                   <td className="strong">{r.id}</td><td>{r.fn}</td><td>{r.wireType}</td><td>{r.color}</td><td>{r.from}</td><td>{r.to}</td><td>{r.twist ?? ""}</td>
-                  <td className="num">{r.withTwistMm.toFixed(0)}</td><td className="num">{r.marginPct.toFixed(0)}%</td>
+                  <td className="num">{r.withTwistMm.toFixed(0)}</td><td className="num">{r.manual ? "by hand" : `${r.marginPct.toFixed(0)}%`}</td>
                   <td className="num strong">{r.cutMm.toFixed(0)}</td><td className="check"><span className="tick-box" /></td>
                 </tr>
               ))}

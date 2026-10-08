@@ -28,9 +28,13 @@ fn open_existing(path: &str) -> Result<(Connection, HashSet<String>), String> {
     if !Path::new(path).is_file() {
         return Err(format!("File not found: {path}"));
     }
-    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX)
-        .map_err(|e| format!("Can't open {}: {e}", file_name(path)))?;
-    conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Can't open {}: {e}", file_name(path)))?;
+    conn.pragma_update(None, "foreign_keys", true)
+        .map_err(|e| e.to_string())?;
     let tables = conn
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
         .and_then(|mut stmt| stmt.query_map([], |row| row.get::<_, String>(0))?.collect())
@@ -39,19 +43,33 @@ fn open_existing(path: &str) -> Result<(Connection, HashSet<String>), String> {
 }
 
 fn file_name(path: &str) -> String {
-    Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string())
+    Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
 }
 
 pub fn open_existing_project(path: &str) -> Result<Connection, String> {
     let (conn, tables) = open_existing(path)?;
     let has_project = tables.contains("project")
-        && conn.query_row("SELECT COUNT(*) FROM project", [], |row| row.get::<_, i64>(0)).unwrap_or(0) > 0;
+        && conn
+            .query_row("SELECT COUNT(*) FROM project", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap_or(0)
+            > 0;
     if has_project {
         Ok(conn)
     } else if tables.contains("parts") {
-        Err(format!("{} is a parts library, not a harness project — open it from the Library tab.", file_name(path)))
+        Err(format!(
+            "{} is a parts library, not a harness project — open it from the Library tab.",
+            file_name(path)
+        ))
     } else {
-        Err(format!("{} isn't a harness project (it's empty or from another program).", file_name(path)))
+        Err(format!(
+            "{} isn't a harness project (it's empty or from another program).",
+            file_name(path)
+        ))
     }
 }
 
@@ -60,9 +78,15 @@ pub fn open_existing_library(path: &str) -> Result<Connection, String> {
     if tables.contains("parts") {
         Ok(conn)
     } else if tables.contains("project") {
-        Err(format!("{} is a harness project, not a parts library — open it from the Topology tab.", file_name(path)))
+        Err(format!(
+            "{} is a harness project, not a parts library — open it from the Topology tab.",
+            file_name(path)
+        ))
     } else {
-        Err(format!("{} isn't a parts library (it's empty or from another program).", file_name(path)))
+        Err(format!(
+            "{} isn't a parts library (it's empty or from another program).",
+            file_name(path)
+        ))
     }
 }
 
@@ -78,15 +102,22 @@ mod tests {
 
     fn table_names(path: &str) -> Vec<String> {
         let conn = Connection::open(path).unwrap();
-        let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").unwrap();
-        stmt.query_map([], |row| row.get(0)).unwrap().map(|r| r.unwrap()).collect()
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .unwrap();
+        stmt.query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
     }
 
     #[test]
     fn opening_never_creates_or_alters_a_file() {
         // Ruta inexistente: error, y no aparece un archivo vacío.
         let missing = temp_path("missing.db");
-        assert!(open_existing_project(&missing).unwrap_err().starts_with("File not found"));
+        assert!(open_existing_project(&missing)
+            .unwrap_err()
+            .starts_with("File not found"));
         assert!(!Path::new(&missing).exists());
 
         // Biblioteca abierta como proyecto: mensaje claro, y no se le agregan tablas de proyecto.
@@ -101,8 +132,12 @@ mod tests {
         // Proyecto con tablas pero sin datos (los archivos vacíos que dejaba el bug): no es un proyecto.
         let empty = temp_path("empty.harness.db");
         drop(create_or_open_project(&empty).unwrap());
-        assert!(open_existing_project(&empty).unwrap_err().contains("isn't a harness project"));
-        assert!(open_existing_library(&empty).unwrap_err().contains("harness project"));
+        assert!(open_existing_project(&empty)
+            .unwrap_err()
+            .contains("isn't a harness project"));
+        assert!(open_existing_library(&empty)
+            .unwrap_err()
+            .contains("harness project"));
 
         for p in [library, empty] {
             let _ = std::fs::remove_file(p);

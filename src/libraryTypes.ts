@@ -40,6 +40,9 @@ export interface ConnectorDef {
   back_width_mm: number | null;
   back_height_mm: number | null;
   suggested_termination: "boot" | "adhesive_heatshrink" | "none" | null;
+  /** Contacto de las vías con cable y tapón de las vías sin usar: uno por conector. */
+  contact_part_id: number | null;
+  seal_plug_part_id: number | null;
   image_side: string | null;
   image_front: string | null;
   image_back: string | null;
@@ -196,6 +199,49 @@ export const CONNECTOR_VIEWS = [
   { key: "image_side", label: "Side" },
   { key: "image_back", label: "Back" },
 ] as const;
+
+/**
+ * Lo que se puede elegir como parte de un conector del proyecto: una carcasa
+ * de la biblioteca, o el conector de un dispositivo ("MOTEC-PDM30 · A"), que
+ * trae su carcasa y el nombre de cada pin.
+ */
+export interface ConnectorChoice {
+  key: string;
+  label: string;
+  partId: number;
+  deviceConnectorId: number | null;
+}
+
+export const choiceKey = (partId: number, deviceConnectorId: number | null) =>
+  deviceConnectorId != null ? `d${deviceConnectorId}` : `c${partId}`;
+
+export function connectorChoices(library: Library): ConnectorChoice[] {
+  const devices = library.device_defs.flatMap((dd) =>
+    dd.connectors.map((dc) => ({
+      key: choiceKey(dc.connector_def_id, dc.id),
+      label: `${partLabel(library, dd.part_id)} · ${dc.label}`,
+      partId: dc.connector_def_id,
+      deviceConnectorId: dc.id,
+    })),
+  );
+  const housings = library.connector_defs.map((cd) => ({
+    key: choiceKey(cd.part_id, null),
+    label: partLabel(library, cd.part_id),
+    partId: cd.part_id,
+    deviceConnectorId: null,
+  }));
+  return [...devices, ...housings];
+}
+
+/** Nombre del pin del dispositivo en esa vía ("OUT11"), si el conector es de un dispositivo. */
+export function devicePinName(library: Library, deviceConnectorId: number | null, cavityId: string): string | null {
+  if (deviceConnectorId == null) return null;
+  for (const dd of library.device_defs) {
+    const dc = dd.connectors.find((c) => c.id === deviceConnectorId);
+    if (dc) return dc.pins.find((p) => p.cavity_id === cavityId)?.name || null;
+  }
+  return null;
+}
 
 /** Número de parte para mostrar en listas y selects ("—" si no hay parte). */
 export function partLabel(library: Library, partId: number | null | undefined): string {

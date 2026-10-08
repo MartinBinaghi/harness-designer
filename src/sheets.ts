@@ -5,7 +5,7 @@
  * sin React, para chequearlas con `node tools/check_sheets.ts`.
  */
 import type { SegmentDiameterInfo, WireCutLength } from "./costTypes";
-import type { Library } from "./libraryTypes";
+import { devicePinName, type Library } from "./libraryTypes.ts";
 import { endLabel } from "./projectEdit.ts";
 import type { ProjectData, WireEnd, WireInstance } from "./types";
 
@@ -22,6 +22,8 @@ export interface CutRow {
   withTwistMm: number;
   marginPct: number;
   cutMm: number;
+  /** Largo de corte puesto a mano (sin margen). */
+  manual: boolean;
   twist: string | null;
   /** Conector bajo el que va el cable en la lista de corte (ver `cutGroupConnector`). */
   connectorId: number | null;
@@ -108,6 +110,7 @@ export function cutListRows(project: ProjectData, library: Library, cuts: WireCu
       withTwistMm: cut.length_with_twist_mm,
       marginPct: cut.margin_pct,
       cutMm: cut.cut_length_mm,
+      manual: cut.manual,
       twist: twistOf.get(wire.id) ?? null,
       connectorId: cutGroupConnector(project, wire),
       pin: groupPin(project, wire),
@@ -230,7 +233,7 @@ const isCavity = (end: WireEnd, cavityId: number) => end.kind === "cavity" && en
  * uniones — pines de conector, masas, componentes —, y por qué splices pasa.
  * `netOf` devuelve los cables de la net de un cable (comando `wire_net`).
  */
-export function terminatesAt(project: ProjectData, cavityId: number, netOf: (wireId: number) => number[]): string {
+export function terminatesAt(project: ProjectData, library: Library, cavityId: number, netOf: (wireId: number) => number[]): string {
   const here = project.wire_instances.filter((w) => isCavity(w.end_a, cavityId) || isCavity(w.end_b, cavityId));
   const netIds = new Set(here.flatMap((w) => [w.id, ...netOf(w.id)]));
   const dests: string[] = [];
@@ -240,7 +243,7 @@ export function terminatesAt(project: ProjectData, cavityId: number, netOf: (wir
       if (isCavity(end, cavityId)) continue;
       const label =
         end.kind === "cavity"
-          ? cavityLabel(project, end.cavity_assignment_id)
+          ? cavityLabel(project, library, end.cavity_assignment_id)
           : end.kind === "ground"
             ? groundLabel(project, end.ground_point_id)
             : endLabel(project, end);
@@ -259,12 +262,19 @@ function groundLabel(project: ProjectData, groundId: number | null): string {
   return g.name ? `${g.short_id} · ${g.name}` : g.short_id;
 }
 
-/** "X9:28 · PDM30": el pin y el nombre de su conector. */
-function cavityLabel(project: ProjectData, cavityId: number | null): string {
+/**
+ * "X9:28 · PDM30": el pin y el nombre de su conector; si es el conector de un
+ * dispositivo, primero el nombre del pin, como en las planillas del taller:
+ * "PDM30 · OUT11 (X9:A6)".
+ */
+function cavityLabel(project: ProjectData, library: Library, cavityId: number | null): string {
   const connector = project.connector_instances.find((c) => c.cavities.some((cav) => cav.id === cavityId));
   const cav = connector?.cavities.find((c) => c.id === cavityId);
   if (!connector || !cav) return "—";
-  return connector.name ? `${connector.short_id}:${cav.cavity_id} · ${connector.name}` : `${connector.short_id}:${cav.cavity_id}`;
+  const pin = `${connector.short_id}:${cav.cavity_id}`;
+  const pinName = devicePinName(library, connector.device_connector_id, cav.cavity_id);
+  if (pinName) return `${connector.name || connector.short_id} · ${pinName} (${pin})`;
+  return connector.name ? `${pin} · ${connector.name}` : pin;
 }
 
 /**
@@ -277,12 +287,14 @@ export function pinoutRows(project: ProjectData, library: Library, connectorId: 
   const connector = project.connector_instances.find((c) => c.id === connectorId);
   if (!connector) return [];
   return connector.cavities.map((cav) => {
+    // En el conector de un dispositivo, la función es el nombre del pin (OUT11), como en la planilla del PDM.
+    const pinName = devicePinName(library, connector.device_connector_id, cav.cavity_id);
     const wires = project.wire_instances.filter((w) => isCavity(w.end_a, cav.id) || isCavity(w.end_b, cav.id));
-    if (wires.length === 0) return { pin: cav.cavity_id, fn: "n/c", goesTo: cav.external_reference ?? "" };
-    const goesTo = terminatesAt(project, cav.id, netOf);
+    if (wires.length === 0) return { pin: cav.cavity_id, fn: pinName ?? "n/c", goesTo: cav.external_reference ?? "" };
+    const goesTo = terminatesAt(project, library, cav.id, netOf);
     return {
       pin: cav.cavity_id,
-      fn: [...new Set(wires.map((w) => wireFunction(library, w)))].join(" / "),
+      fn: pinName ?? [...new Set(wires.map((w) => wireFunction(library, w)))].join(" / "),
       goesTo: goesTo === "—" ? (cav.external_reference ?? "—") : goesTo,
     };
   });
