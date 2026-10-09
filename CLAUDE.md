@@ -40,8 +40,8 @@ Uso inicial: personal. A futuro, posibilidad de venderlo, así que las decisione
 | Plataforma | Windows primero. Mac/Linux más adelante. |
 | Stack | Tauri (frontend web + núcleo Rust) con SQLite. |
 | Portabilidad | No usar APIs exclusivas de Windows (rutas fijas, registro, etc.) para que el paso a Mac/Linux sea compilar y probar. |
-| Archivos | Un archivo por proyecto (arnés), copiable y respaldable. El archivo guarda la **versión del formato** para poder migrar archivos viejos. |
-| Biblioteca de partes | Separada de los proyectos. Exportable/importable. Incluye imágenes de conectores. Hay una **biblioteca base** de conectores estandarizados (DT/DTM/DTP con su contacto y tapón, Superseal 1.5, Superseal 1.0 hembra de 26 y 34 vías para el MoTeC PDM30, con sus pines y tapón), cable M22759/32 y termocontraíble Raychem (DR-25 sin adhesivo, ATUM con adhesivo) que se suma con un botón; sus datos están marcados como no verificados hasta confirmarlos con el datasheet. |
+| Archivos | Un archivo por proyecto (arnés), copiable y respaldable. El archivo guarda la **versión del formato** para poder migrar archivos viejos. El proyecto se guarda a mano; si tiene cambios sin guardar, el programa pregunta antes de cerrar, de abrir otro o de empezar uno nuevo (y lo marca con "•" en la barra de estado). Un proyecto con referencias colgadas (algo que apunta a un elemento borrado) no se guarda: Checks lo muestra como error. |
+| Biblioteca de partes | Separada de los proyectos. Exportable/importable. Incluye imágenes de conectores. Hay una **biblioteca base** de conectores estandarizados (DT/DTM/DTP con su contacto y tapón, Superseal 1.5, Superseal 1.0 hembra de 26 y 34 vías para el MoTeC PDM30, con sus pines y tapón), cable M22759/32 y termocontraíble Raychem (DR-25 sin adhesivo, ATUM con adhesivo) que se suma con un botón; sus datos están marcados como no verificados hasta confirmarlos con el datasheet. **No hay que cargarla cada vez:** al iniciar se abre sola la última biblioteca usada; la primera vez, la que trae el instalador (la biblioteca de ejemplo), copiada a la carpeta de datos del usuario (`%APPDATA%\com.martinbinaghi.arneses\library.db`). Cada cambio se **guarda solo** en su archivo; "Save as" la copia a otro archivo, que pasa a ser el que se abre. |
 | Configuración | Nada específico del taller en el código: moneda, markup, márgenes, unidades, valor hora, prefijos de nomenclatura, colores por tipo de señal, etc. van en configuración. |
 | Moneda | Precios en USD, con fecha de actualización de cada precio. |
 | Deshacer/rehacer | Contemplarlo desde el inicio en la arquitectura. |
@@ -58,6 +58,7 @@ Uso inicial: personal. A futuro, posibilidad de venderlo, así que las decisione
 5. **Editor visual**: diagrama de armado (no escalado, con medidas) + vista esquemática pin a pin generada automáticamente. Detalle en la sección 10.
 6. **Exportaciones e impresión**: PDF de lista de corte, hojas de pinout por conector (mismo formato que las hojas actuales del taller), etiquetas, **hoja de armado** (el diagrama con medidas, en A4/A3, para llevar a la mesa). Pestaña **Print**: las hojas se arman en HTML (vista previa = lo que sale impreso, A4/A3) y se imprimen con el diálogo del sistema, que también guarda como PDF; las etiquetas además se exportan a CSV.
 7. **Módulo de construcción concéntrica** (opcional), con y sin fillers.
+Entre la 6 y la 7: **release de prueba 0.1.0** (instalador de Windows, biblioteca y arnés de ejemplo incluidos) para armar un arnés real del taller y ajustar con el uso.
 8. **Futuro**: Mac/Linux, licencia, biblioteca distribuible, importación de pinouts desde CSV/Excel, revisiones, proyectos multi-arnés (vínculo real entre conectores de interconexión), inventario/stock (descontar del BOM lo que ya hay en el taller), **vista realista/3D o simulación del cableado** (requiere agregar coordenadas espaciales al modelo; se puede sumar sin romper lo existente).
 
 La idea es que desde la etapa 3 el programa ya sea útil en el taller.
@@ -226,6 +227,7 @@ Ejemplo: bundle de 10 mm, paso 120 mm, cable en capa exterior (D ≈ 9 mm) → f
 - Si se usa el módulo concéntrico, `D` sale de la capa real de cada cable.
 - Si no, se estima con el peor caso (capa exterior del diámetro estimado del bundle): resultado conservador.
 - Si el margen configurado es menor que el mínimo por trenzado, el programa avisa.
+- Un **cable solo** en un tramo no se trenza con nada: factor 1 (un par trenzado solo sí se trenza).
 
 **Paso de trenzado por defecto**: en el taller se trenza a ojo, sin un paso fijo. Por eso el paso por defecto se expresa como **múltiplo del diámetro del bundle** (configurable), con un valor conservador (paso corto = más largo de cable):
 - Referencia orientativa: paso entre 8 y 16 veces el diámetro del bundle.

@@ -5,7 +5,7 @@ import type { Library } from "./libraryTypes";
 import { buildTreeText } from "./tree";
 import { FolderIcon, SaveIcon, TrashIcon } from "./icons";
 import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "./fileDialogs";
-import { nextId } from "./projectEdit";
+import { deleteNode, deleteSegment, nextId } from "./projectEdit";
 
 export const NODE_KIND_LABELS: Record<Node["kind"], string> = {
   connector_end: "Connector end",
@@ -25,12 +25,16 @@ export const TERMINATIONS = Object.keys(TERMINATION_LABELS) as NonNullable<Node[
 interface Props {
   project: ProjectData | null;
   setProject: (p: ProjectData | null) => void;
-  /** El backend ya tiene el proyecto nuevo (open_project/demo_project); esto solo refleja el espejo local. */
+  /** El backend ya tiene el proyecto nuevo (open_project/sample_project/new_project); esto solo refleja el espejo local. */
   loadProject: (p: ProjectData) => void;
   /** Descarta cualquier edición pendiente antes de reemplazar el documento entero. */
   cancelProjectEdits: () => void;
   /** Manda cualquier edición pendiente al backend ya, sin esperar la pausa de tipeo. */
   flushProjectEdits: () => Promise<void>;
+  /** Pregunta si se descartan los cambios sin guardar; false = no seguir. */
+  confirmDiscard: () => Promise<boolean>;
+  /** Después de guardar: refresca el estado (cambios sin guardar). */
+  afterSave: () => Promise<void>;
   filePath: string;
   setFilePath: (p: string) => void;
   library: Library;
@@ -38,7 +42,7 @@ interface Props {
   onSelect: (s: Selection) => void;
 }
 
-export default function Topologia({ project, setProject, loadProject, cancelProjectEdits, flushProjectEdits, filePath, setFilePath, library, selection, onSelect }: Props) {
+export default function Topologia({ project, setProject, loadProject, cancelProjectEdits, flushProjectEdits, confirmDiscard, afterSave, filePath, setFilePath, library, selection, onSelect }: Props) {
   const [status, setStatus] = useState("");
   const [selectedWireId, setSelectedWireId] = useState<number | null>(null);
   const [route, setRoute] = useState<number[] | null>(null);
@@ -52,17 +56,27 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     return buildTreeText(project.nodes, project.segments, rootId ?? project.nodes[0].id);
   }, [project]);
 
+  // El arnés de ejemplo que trae el instalador, como proyecto sin guardar.
   async function loadDemo() {
+    if (!(await confirmDiscard())) return;
     cancelProjectEdits();
-    const data = await invoke<ProjectData>("demo_project");
-    loadProject(data);
+    let notice: string | null;
+    try {
+      const sample = await invoke<{ project: ProjectData; notice: string | null }>("sample_project");
+      loadProject(sample.project);
+      notice = sample.notice;
+    } catch (err) {
+      setStatus(`Couldn't open the sample: ${err}`);
+      return;
+    }
     setRoute(null);
     setNet(null);
     setFilePath("");
-    setStatus("Sample project loaded (not saved to disk yet).");
+    setStatus(notice ?? "Sample harness loaded (Save as… to keep a copy).");
   }
 
   async function newProject() {
+    if (!(await confirmDiscard())) return;
     cancelProjectEdits();
     loadProject(await invoke<ProjectData>("new_project"));
     setFilePath("");
@@ -72,6 +86,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
   }
 
   async function openProject() {
+    if (!(await confirmDiscard())) return;
     const path = await pickFileToOpen("project");
     if (!path) return;
     cancelProjectEdits();
@@ -98,6 +113,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     try {
       await flushProjectEdits();
       await invoke("save_project", { path });
+      await afterSave();
       setFilePath(path);
       setStatus(`Saved ${fileName(path)}`);
     } catch (err) {
@@ -119,13 +135,13 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     setProject({ ...project, nodes: [...project.nodes, { id, kind: "connector_end", termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null }] });
   }
 
+  // Igual que en el diagrama: no se borra un nodo con algo ubicado ni un tramo
+  // con un splice encima (quedarían referencias colgadas y no se podría guardar).
   function removeNode(id: number) {
     if (!project) return;
-    setProject({
-      ...project,
-      nodes: project.nodes.filter((n) => n.id !== id),
-      segments: project.segments.filter((s) => s.node_a_id !== id && s.node_b_id !== id),
-    });
+    const result = deleteNode(project, id);
+    if (typeof result === "string") setStatus(result);
+    else setProject(result);
   }
 
   function updateSegment(id: number, patch: Partial<Segment>) {
@@ -157,7 +173,9 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
 
   function removeSegment(id: number) {
     if (!project) return;
-    setProject({ ...project, segments: project.segments.filter((s) => s.id !== id) });
+    const result = deleteSegment(project, id);
+    if (typeof result === "string") setStatus(result);
+    else setProject(result);
   }
 
   async function queryWire() {

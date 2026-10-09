@@ -328,7 +328,19 @@ fn route_length_with_twist(
         let segment = data.segments.iter().find(|s| s.id == *segment_id)?;
         let d_bundle = bundle_diameter_mm(data, library, *segment_id);
         let pitch = effective_pitch_mm(&data.project, segment.twist_pitch_mm, d_bundle);
-        let factor = twist_factor(d_bundle, pitch);
+        // Un cable solo en el tramo no se trenza con nada: va derecho. (Un par
+        // trenzado solo sí: sus cables siguen la hélice.)
+        let alone = data
+            .wire_instances
+            .iter()
+            .filter(|w| wire_route(data, w.id).is_some_and(|r| r.contains(segment_id)))
+            .count()
+            <= 1;
+        let factor = if alone {
+            1.0
+        } else {
+            twist_factor(d_bundle, pitch)
+        };
         length_with_twist_mm += segment.length_mm * factor;
         worst_factor = worst_factor.max(factor);
     }
@@ -871,6 +883,16 @@ mod tests {
         }
     }
 
+    /// Otro cable igual al primero (mismos extremos), para que el tramo tenga
+    /// más de un elemento y se trence.
+    fn second_wire(data: &ProjectData) -> WireInstance {
+        WireInstance {
+            id: 2,
+            short_id: "W002".into(),
+            ..data.wire_instances[0].clone()
+        }
+    }
+
     /// Dos nodos, un segmento de 1000 mm entre ellos, y un cable de X1:1 a X2:1.
     fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -> ProjectData {
         ProjectData {
@@ -1002,6 +1024,7 @@ mod tests {
     #[test]
     fn a_manual_length_wins_even_without_a_route() {
         let mut data = one_segment_project(1000.0, Some(120.0));
+        data.wire_instances.push(second_wire(&data)); // con dos cables el tramo se trenza
         let mut library = Library::default();
         library.wire_defs.push(wire_def(100, 9.0, None));
         data.wire_instances[0].manual_length_mm = Some(1400.0);
@@ -1019,13 +1042,14 @@ mod tests {
 
     #[test]
     fn cut_length_applies_twist_factor_then_margin_cascade() {
-        let data = one_segment_project(1000.0, Some(120.0));
+        let mut data = one_segment_project(1000.0, Some(120.0));
+        data.wire_instances.push(second_wire(&data));
         let mut library = Library::default();
         library.wire_defs.push(wire_def(100, 9.0, None));
 
         let cut = wire_cut_length(&data, &library, 1).unwrap();
-        // D_bundle de un solo cable de 9mm con f=0.75: sqrt(81/0.75) ≈ 10.392
-        let expected_d_bundle = (81.0f64 / 0.75).sqrt();
+        // D_bundle de dos cables de 9mm con f=0.75: sqrt(2·81/0.75) ≈ 14.697
+        let expected_d_bundle = (2.0 * 81.0f64 / 0.75).sqrt();
         let expected_factor = twist_factor(expected_d_bundle, 120.0);
         let expected_length = 1000.0 * expected_factor;
         assert!((cut.length_with_twist_mm - expected_length).abs() < 0.001);
@@ -1100,6 +1124,9 @@ mod tests {
         let group_diameter = bundle_diameter(&[6.0, 6.0], 0.75);
         let expected = bundle_diameter(&[group_diameter], 0.75);
         assert!((grouped - expected).abs() < 0.001);
+        // El par trenzado es lo único en el tramo, pero sus cables siguen la hélice.
+        let cut = wire_cut_length(&data, &library, 1).unwrap();
+        assert!(cut.length_with_twist_mm > 1000.0);
     }
 
     #[test]
@@ -1196,6 +1223,16 @@ mod tests {
             .find(|r| r.library_part_id == 7)
             .unwrap();
         assert_eq!(row.quantity_needed, 0.06);
+    }
+
+    #[test]
+    fn a_wire_alone_in_its_segments_is_not_twisted() {
+        let data = one_segment_project(500.0, None);
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 0.81, None));
+        let cut = wire_cut_length(&data, &library, 1).unwrap();
+        assert_eq!(cut.length_with_twist_mm, 500.0);
+        assert_eq!(cut.twist_min_margin_pct, 0.0);
     }
 
     #[test]

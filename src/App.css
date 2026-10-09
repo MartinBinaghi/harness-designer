@@ -2562,3 +2562,18 @@ table.dev-pin-table {
 .dev-detail section {
   margin-bottom: 0;
 }
+
+/* Aviso general en la barra de estado (clic para cerrarlo). */
+.status-notice {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  color: var(--warning);
+  font: inherit;
+  cursor: pointer;
+}

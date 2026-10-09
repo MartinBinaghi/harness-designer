@@ -175,3 +175,40 @@ console.log("project edit: ok");
   assert.equal(gone.wire_instances[0].end_b.splice_id, 1);
   console.log("project edit (splices, grounds, components): ok");
 }
+
+// Cable nuevo desde un pin: un tipo que entre en el contacto de esa vía (no el primero de la biblioteca).
+{
+  const { addWireAtCavity } = await import("../src/projectEdit.ts");
+  const { gaugeMm2 } = await import("../src/libraryTypes.ts");
+  assert.ok(Math.abs(gaugeMm2("20 AWG")! - 0.517) < 0.01);
+  assert.equal(gaugeMm2("0.5 mm²"), 0.5);
+  const lib = {
+    wire_defs: [{ part_id: 26, gauge: "26 AWG" }, { part_id: 20, gauge: "20 AWG" }, { part_id: 18, gauge: "18 AWG" }],
+    connector_defs: [{ part_id: 1, contact_part_id: 50 }],
+    contact_defs: [{ part_id: 50, gauge_min: "20 AWG", gauge_max: "16 AWG" }],
+  } as unknown as Library;
+  const proj = { ...base, connector_instances: [{ id: 1, short_id: "X1", library_part_id: 1, cavities: [{ id: 11, cavity_id: "1" }] }], wire_instances: [], twist_groups: [] } as unknown as ProjectData;
+  const r = addWireAtCavity(proj, lib, 11);
+  assert.ok(typeof r !== "string");
+  assert.equal(r.project.wire_instances[0].library_part_id, 20);
+  console.log("project edit (new wire fits the contact): ok");
+}
+
+// Cambiar a una parte con menos vías: los cables de las vías que desaparecen quedan sueltos de ese lado (no colgados).
+{
+  const { changeConnectorPart } = await import("../src/projectEdit.ts");
+  const lib = { connector_defs: [{ part_id: 7, cavities: [{ cavity_id: "1", contact_size: "20" }] }] } as unknown as Library;
+  const end = (cav: number | null) => ({ kind: "cavity", cavity_assignment_id: cav, splice_id: null, ground_point_id: null, component_instance_id: null });
+  const proj = {
+    ...base,
+    connector_instances: [{ id: 1, short_id: "X1", library_part_id: 5, cavities: [{ id: 11, cavity_id: "1" }, { id: 12, cavity_id: "2" }] }],
+    wire_instances: [{ id: 1, short_id: "W001", end_a: end(11), end_b: end(null) }, { id: 2, short_id: "W002", end_a: end(12), end_b: end(null) }],
+    twist_groups: [],
+  } as unknown as ProjectData;
+  const changed = changeConnectorPart(proj, lib, 1, 7);
+  assert.deepEqual(changed.connector_instances[0].cavities.map((c) => c.id), [11]);
+  assert.equal(changed.wire_instances[0].end_a.cavity_assignment_id, 11);
+  assert.equal(changed.wire_instances[1].end_a.cavity_assignment_id, null);
+  console.log("project edit (change to a smaller part loosens wires): ok");
+}
+

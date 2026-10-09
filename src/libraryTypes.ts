@@ -239,6 +239,22 @@ export function devicePinName(library: Library, deviceConnectorId: number | null
   return null;
 }
 
+/**
+ * Calibre en texto ("22 AWG", "22", "0.5 mm²", "4/0") a mm² de sección, o
+ * null si no se entiende. Mismo criterio que gauge.rs en el backend.
+ */
+export function gaugeMm2(text: string | null | undefined): number | null {
+  const t = (text ?? "").trim().toLowerCase();
+  const digits = /^[\d.]+/.exec(t)?.[0];
+  if (!digits) return null;
+  if (t.includes("mm")) return Number(digits);
+  const rest = t.slice(digits.length);
+  const awg = rest.startsWith("/0") ? 1 - Number(digits) : digits.length >= 2 && /^0+$/.test(digits) ? 1 - digits.length : Number(digits);
+  if (Number.isNaN(awg)) return null;
+  const d = 0.127 * 92 ** ((36 - awg) / 39);
+  return (Math.PI / 4) * d * d;
+}
+
 /** Número de parte para mostrar en listas y selects ("—" si no hay parte). */
 export function partLabel(library: Library, partId: number | null | undefined): string {
   if (partId == null) return "—";

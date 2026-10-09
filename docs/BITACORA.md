@@ -12,10 +12,12 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 
 ## Estado actual
 
-**Etapa en curso:** 6 (exportaciones e impresión) **completa**: pestaña Print con lista de corte (por conector, con termos por tramo y lo que va en cada punta), hojas de pinout con el formato del taller, **hoja de armado** (el diagrama con medidas, ajustado a la hoja) y lista de etiquetas (imprimir o CSV). Etapas 1–6 hechas; la 7 (construcción concéntrica) es opcional y no empezó.
+**Etapa en curso:** **release de prueba 0.1.0** (instalador de Windows) para que Martin arme un arnés real del taller. La 6 (exportaciones e impresión) está **completa**: pestaña Print con lista de corte (por conector, con termos por tramo y lo que va en cada punta), hojas de pinout con el formato del taller, **hoja de armado** (el diagrama con medidas, ajustado a la hoja) y lista de etiquetas (imprimir o CSV). Etapas 1–6 hechas; la 7 (construcción concéntrica) es opcional y no empezó.
 
 **Para retomar (leer primero):**
-- **Commits**: Martin commitea él. Lo de 2026-10-08 (este bloque de pendientes) está sin commitear.
+- **Commits**: Martin commitea él. Lo de 2026-10-08 está sin commitear.
+- **Instalador**: `pnpm tauri build` → `src-tauri/target/release/bundle/nsis/Harness Designer_0.1.0_x64-setup.exe` (NSIS, instalación por usuario, sin permisos de administrador). Incluye `src-tauri/resources/default-library.db` (la biblioteca de ejemplo) y `sample-project.db` (el arnés de ejemplo). Si se cambia la biblioteca de ejemplo, copiarla también ahí (`examples/engine-demo-library.db` → `src-tauri/resources/default-library.db`); ojo: a un usuario que ya la tenía copiada en su carpeta de datos no se le actualiza.
+- **Datos del usuario**: `%APPDATA%\com.martinbinaghi.arneses\` → `library.db` (su biblioteca, autoguardada) y `settings.json` (qué biblioteca abrir). La app en modo desarrollo usa la misma carpeta.
 - **Probar la app**: herramientas en `tools/cdp/` (ver nota de entorno abajo). Abrir desde PowerShell: `$p = Join-Path (Get-Location) 'tools\cdp\launch.ps1'; Start-Process powershell -WindowStyle Minimized -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',"\`"$p\`""` (proceso aparte: una tarea en segundo plano de la sesión se corta y cierra la app; desde Git Bash con `$(pwd -W)` no arrancó). Esperar a que responda `http://127.0.0.1:9222/json`. Log en `%TEMP%\harness-designer-dev.log`. Cargar el ejemplo de motor sin diálogos: desde `tools/cdp`, `./run.sh "$(cat loadex.js) ..."`. Un cambio en Rust reinicia la app: hay que volver a cargar el ejemplo. No usar los botones de abrir/guardar en pruebas: abren diálogos nativos en la pantalla de Martin (si quedan abiertos, cerrarlos con `PostMessage WM_CLOSE` a las ventanas "#32770" del proceso `arneses`).
 - **Hot reload de Vite**: a veces queda un módulo viejo ("does not provide an export named…", ventana en blanco). Se arregla con `touch` a los archivos exportadores y recargando (`node cdp.mjs eval "location.reload()"`).
 - **Ejemplo**: `examples/engine-demo-library.db` + `examples/engine-demo.harness.db` (no versionados: `*.db` en `.gitignore`). Están en el formato actual (incluye `cost_on_purchased` y `spare_pcts` en `project`, `adhesive_heatshrink_length_mm` en `connector_defs`, DT de 3 vías con vías A/B/C). La biblioteca de ejemplo ya tiene la base completa (contactos y tapones Deutsch, termos DR-25/ATUM, Superseal 1.0 de 26 y 34 vías con sus pines y tapón) y el dispositivo MOTEC-PDM30 (A y B, sin nombres de pin: se pegan con el pinout real); se le sacaron las tablas viejas de pines en paralelo. Copia anterior en la carpeta temporal de la sesión, no versionada.
@@ -23,12 +25,13 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 
 **Qué funciona:**
 
-*Backend (`src-tauri/src/`)* — `cargo test`: **69/69 OK**
+*Backend (`src-tauri/src/`)* — `cargo test`: **72/72 OK**
 - `db.rs`: abrir (`open_existing_*`: el archivo tiene que existir, no se modifica, reconoce si es proyecto o biblioteca) y guardar (`create_or_open_*`, crea esquema). Esquemas en `schema/library.sql` y `project.sql`.
 - `model/library.rs`, `model/project.rs`: todo el modelo (plan 4.1/4.2) con load/save y tests de round-trip. `ProjectData::empty()` (proyecto nuevo con los valores por defecto). Project con `cost_on_purchased` y `spare_pcts` (JSON por categoría).
 - `contacts.rs`: contacto/tapón de cada vía deducidos del ConnectorDef. Usado por BOM y chequeos.
 - `topology.rs` (recorrido, net, distancias), `calc.rs` (bundle, largo de corte, lista de corte, **lista de corte de coberturas** `covering_cut_list`, BOM con repuesto por categoría, termos, boots y moldes, costo sobre lo usado o lo comprado, coverings/boots/moldes sugeridos, calibre de salida de splice), `checks.rs`, `gauge.rs`, `undo.rs` + `state.rs`, `demo.rs`, `base_library.rs` (DT/DTM/DTP con contacto y tapón por familia, Superseal, M22759/32, DR-25, ATUM; al volver a sumarla completa contacto/tapón de carcasas viejas).
-- Comandos: abrir/guardar/**nuevo**/demo/editar/deshacer de proyecto y biblioteca, `wire_route`, `wire_net`, `node_distances`, `merge_base_library`, `run_checks`, `compute_costs`, `write_text_file`.
+- `settings.rs`: biblioteca recordada y la de fábrica (recurso del instalador). Biblioteca con autoguardado (`edit/undo/redo_library` devuelven `LibraryChange` con el error de guardado si lo hubo). `History` sabe si hay cambios sin guardar. `dangling_references` (referencias colgadas: error en Checks y bloquea el guardado con el detalle).
+- Comandos: `startup_library`, abrir/guardar/**nuevo**/`sample_project`/editar/deshacer de proyecto y biblioteca, `wire_route`, `wire_net`, `node_distances`, `merge_base_library`, `run_checks`, `compute_costs`, `write_text_file`.
 
 *Frontend (`src/`)*
 - **Shell** (`App.tsx`): pestañas Library · Topology · Diagram · Schematic · Connectors · Wires · **Splices** · Checks · Costs · Print; árbol (izq.; el nombre del arnés arriba abre sus datos en el Inspector) e Inspector (der.) ocultables; contador de errores/avisos en vivo.
@@ -309,6 +312,23 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 - **Por qué:** Martin: no es tan relevante para el corte porque va encima de los termocontraíbles que llegan al breakout; hace falta por los costos.
 - **Alternativas descartadas:** un largo fijo para todos los breakouts, o calcularlo desde el solape (sin dato del taller que lo respalde).
 
+### 2026-10-08 — Release de prueba 0.1.0: biblioteca que se abre sola, autoguardado, instalador
+- **Decisión:** para el primer release de prueba (pedido de Martin: revisar bugs, instalador, no cargar la biblioteca cada vez y que la demo venga instalada):
+  - **Biblioteca:** al iniciar se abre sola la última usada (`settings.json`); la primera vez, la de ejemplo que trae el instalador, copiada a `%APPDATA%\com.martinbinaghi.arneses\library.db` para poder editarla. **Autoguardado**: cada cambio (y cada deshacer) se escribe en su archivo; se sacó el botón Guardar y "Load sample" de la biblioteca (la de ejemplo ya es la de fábrica). Si el autoguardado falla, se avisa en la barra de estado y se pregunta al cerrar. Si la biblioteca recordada no está (ej. un pendrive), se abre la de fábrica sin olvidar la recordada.
+  - **Proyecto:** se sigue guardando a mano (es un documento por trabajo), pero el programa sabe si hay cambios sin guardar ("•" en la barra de estado) y pregunta antes de cerrar la ventana, New, Open o Load sample. "Load sample" abre el arnés de ejemplo que trae el instalador, como proyecto sin guardar.
+  - **Instalador:** NSIS por usuario (sin administrador), nombre "Harness Designer", ícono nuevo (la "H" de la barra de título), ventana mínima 900×600.
+- **Por qué:** que la primera prueba en el taller no dependa de acordarse de cargar o guardar la biblioteca, y que no se pierda trabajo al cerrar.
+- **Alternativas descartadas:** autoguardar también el proyecto (es un archivo por trabajo, y Martin decide dónde y cuándo); MSI (pide más herramientas y permisos; NSIS alcanza).
+
+### 2026-10-08 — Revisión de bugs para el release
+- **Encontrados y corregidos** (en la prueba de punta a punta con un proyecto nuevo y en una revisión del código):
+  - "+ New connector" fallaba en un proyecto sin nodos, y la pantalla Connectors no dejaba empezar sin topología: ahora cada conector nuevo usa un extremo libre o crea su propio nodo suelto.
+  - **No se podía guardar** (claves foráneas) después de: borrar un nodo con conector o un tramo con splice desde la tabla de Topology (ahora usa las mismas reglas que el diagrama: avisa y no borra), borrar un cable que estaba en un trenzado desde Wires, o cambiar la parte de un conector por una con menos vías (los cables de las vías que desaparecen quedan sueltos de ese lado). En la biblioteca: borrar una carcasa que usa un dispositivo (ahora avisa). Red de seguridad: `dangling_references` muestra cualquier referencia colgada como error en Checks (clic lleva al elemento) y el guardado dice cuál es.
+  - **Cálculo:** un cable solo en un tramo se calculaba como trenzado (500 mm → 537 + margen). Un cable solo va derecho (factor 1); un par trenzado solo sí se trenza. Ver plan 5.1.
+  - Un cable nuevo tomaba el primer tipo de la biblioteca (26 AWG), que no entra en el contacto de un DT: ahora toma el más usado del proyecto si entra en el contacto de ese pin, o el más fino de la biblioteca que entre.
+  - Autoguardado y cierre: el aviso de cierre se registraba en cada render (podían quedar dos y cerrar igual); una falla al escribir la configuración dejaba la biblioteca a medio cambiar.
+- **Pendiente anotado:** el autoguardado reescribe la biblioteca entera en cada cambio (`ponytail:` en `lib.rs`); con muchas imágenes podría notarse.
+
 ## Registro de sesiones
 
 ### 2026-09-28 (planificación)
@@ -490,4 +510,9 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 - Biblioteca base: carcasas hembra AMP Superseal 1.0 de 26 (3-1437290-7) y 34 vías (4-1437290-0), las que enchufan en el PDM30 (números confirmados en TE/Mouser/Farnell; sin contacto ni tapón cargados todavía). Ejemplo de motor (`examples/engine-demo-library.db`) actualizado con la app (merge de la base + PDM30 con A y B): 47 → 71 partes; el proyecto de ejemplo pasa de 29 a 11 avisos (quedan reales: X1 sin contacto/tapón, sin diámetro trasero en los de termo con adhesivo, X8 pendiente).
 - Superseal 1.0: pines hembra 3-1447221-4 (20 AWG, el de las carcasas), -5 (22 AWG) y -3 (18–16 AWG), y tapón 4-1437284-3, en la biblioteca base (Martin: "el contacto de un superseal son los pines superseal"; antes no los había buscado). Ojo con el codificado (keying): TE tiene variantes de la carcasa (ej. 3-1437290-7 / -8) que solo cambian el código mecánico; confirmar cuál usa el PDM. Ejemplo actualizado (71 → 75 partes).
 - Largo de la pieza con adhesivo en breakouts (ver decisión): columna nueva en `nodes` (ejemplo migrado), Inspector, BOM y hoja de corte; test nuevo. `cargo test`: 69/69.
+
+### 2026-10-08 (release de prueba 0.1.0)
+- Ver decisiones "Release de prueba 0.1.0" y "Revisión de bugs para el release". Prueba de punta a punta en la app real (CDP): New → 2 conectores → tramo de 500 mm → cable desde el pinout (X1:1 → X2:1, 550 mm con 10%) → hoja de corte → guardar → volver a abrir → todas las pantallas y hojas, sin errores. Biblioteca: se abre sola, el cambio y el deshacer se escriben en el archivo. Cierre: sin cambios cierra; con cambios pregunta y cancelar deja la app abierta. Revisión de código (code-review) con 10 hallazgos, corregidos salvo la velocidad del autoguardado (anotada). `cargo test`: 72/72; chequeos node OK.
+- Instalador construido (`pnpm tauri build`, 4 min; `Harness Designer_0.1.0_x64-setup.exe`, 2,5 MB) e instalado en el usuario de Martin (`%LOCALAPPDATA%\Harness Designer`, acceso en el menú Inicio). Probado instalado (CDP en el puerto 9223, `CDP_PORT=9223` en `tools/cdp`): abre sola la biblioteca (41 conectores), "Load sample" carga el ejemplo (11 avisos), la vista previa de impresión funciona, cierra sin preguntar si no hay cambios.
+- Nota de entorno: la app de desarrollo y la instalada **no pueden estar abiertas a la vez** (comparten la carpeta de WebView2 del mismo identificador; la segunda no arranca). Para probar la instalada, cerrar antes la de desarrollo.
 

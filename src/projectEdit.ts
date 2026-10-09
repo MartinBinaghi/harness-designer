@@ -5,7 +5,7 @@
  * chequearlas con `node tools/check_project_edit.ts`.
  */
 import type { CavityAssignment, ConnectorInstance, Node, ProjectData, Segment, WireEnd, WireInstance } from "./types";
-import { devicePinName, type Library } from "./libraryTypes.ts";
+import { devicePinName, gaugeMm2, type Library } from "./libraryTypes.ts";
 
 export function nextId(ids: number[]): number {
   return ids.length === 0 ? 1 : Math.max(...ids) + 1;
@@ -203,7 +203,14 @@ export function addWire(project: ProjectData, library: Library, endA: WireEnd, e
   const counts = new Map<number, number>();
   for (const w of project.wire_instances) counts.set(w.library_part_id, (counts.get(w.library_part_id) ?? 0) + 1);
   const mostUsed = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const partId = mostUsed ?? library.wire_defs[0]?.part_id;
+  // Que entre en el contacto del pin: el más usado si sirve; si no, el más fino de la biblioteca que sirva.
+  const range = contactRange(project, library, endA) ?? contactRange(project, library, endB);
+  const fits = (partId: number) => {
+    const mm2 = gaugeMm2(library.wire_defs.find((d) => d.part_id === partId)?.gauge);
+    return !range || mm2 === null || (mm2 >= range[0] * 0.99 && mm2 <= range[1] * 1.01);
+  };
+  const byGauge = [...library.wire_defs].sort((a, b) => (gaugeMm2(a.gauge) ?? 0) - (gaugeMm2(b.gauge) ?? 0)).map((d) => d.part_id);
+  const partId = [mostUsed, ...byGauge].find((id) => id !== undefined && fits(id)) ?? mostUsed ?? library.wire_defs[0]?.part_id;
   if (partId === undefined) return "Add at least one wire type in Library → Wires first.";
   const id = nextId(project.wire_instances.map((w) => w.id));
   const wire: WireInstance = {
@@ -220,6 +227,18 @@ export function addWire(project: ProjectData, library: Library, endA: WireEnd, e
     end_b: endB,
   };
   return { project: { ...project, wire_instances: [...project.wire_instances, wire] }, wireId: id };
+}
+
+/** Rango de sección (mm²) del contacto de la vía de un extremo, si se conoce. */
+function contactRange(project: ProjectData, library: Library, end: WireEnd): [number, number] | null {
+  if (end.kind !== "cavity" || end.cavity_assignment_id == null) return null;
+  const connector = project.connector_instances.find((c) => c.cavities.some((cav) => cav.id === end.cavity_assignment_id));
+  if (!connector) return null;
+  const contactId = library.connector_defs?.find((d) => d.part_id === connector.library_part_id)?.contact_part_id;
+  const contact = library.contact_defs?.find((c) => c.part_id === contactId);
+  const a = gaugeMm2(contact?.gauge_min);
+  const b = gaugeMm2(contact?.gauge_max);
+  return a !== null && b !== null ? [Math.min(a, b), Math.max(a, b)] : null;
 }
 
 type ListKey = "nodes" | "segments" | "connector_instances" | "ground_points" | "splice_instances" | "component_instances" | "wire_instances";
@@ -247,11 +266,22 @@ export function changeConnectorPart(
   const connector = project.connector_instances.find((c) => c.id === connectorId);
   const previous = new Map((connector?.cavities ?? []).map((cav) => [cav.cavity_id, cav]));
   const fresh = cavitiesFromDef(project, connectorDefId, library);
-  return patchItem(project, "connector_instances", connectorId, {
+  const cavities = fresh.map((cav) => previous.get(cav.cavity_id) ?? cav);
+  // Las vías que la nueva parte no tiene desaparecen: sus cables quedan con ese extremo vacío.
+  const kept = new Set(cavities.map((cav) => cav.id));
+  const gone = (end: WireEnd) => end.kind === "cavity" && end.cavity_assignment_id != null && !kept.has(end.cavity_assignment_id) && previous.has(cavityIdOf(connector, end.cavity_assignment_id));
+  const loose = (end: WireEnd) => (gone(end) ? BLANK_END : end);
+  const patched = patchItem(project, "connector_instances", connectorId, {
     library_part_id: connectorDefId,
     device_connector_id: deviceConnectorId,
-    cavities: fresh.map((cav) => previous.get(cav.cavity_id) ?? cav),
+    cavities,
   });
+  return { ...patched, wire_instances: patched.wire_instances.map((w) => ({ ...w, end_a: loose(w.end_a), end_b: loose(w.end_b) })) };
+}
+
+/** El identificador de vía ("A6") de una CavityAssignment de un conector, o "" si no es suya. */
+function cavityIdOf(connector: ConnectorInstance | undefined, cavityAssignmentId: number): string {
+  return connector?.cavities.find((c) => c.id === cavityAssignmentId)?.cavity_id ?? "";
 }
 
 /**

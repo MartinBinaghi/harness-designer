@@ -19,8 +19,8 @@ import type {
   TMoldLeg,
   WireDef,
 } from "./libraryTypes";
-import { FolderIcon, PencilIcon, SaveIcon, TrashIcon } from "./icons";
-import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "./fileDialogs";
+import { FolderIcon, PencilIcon, TrashIcon } from "./icons";
+import { fileName, pickFileToOpen, pickFileToSave } from "./fileDialogs";
 import { readImageAsDataUrl } from "./imageFile";
 import { CONNECTOR_VIEWS, partLabel } from "./libraryTypes";
 import type { ProjectData } from "./types";
@@ -174,13 +174,11 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
     }
   }
 
-  // Guardar: al archivo abierto; si todavía no tiene (o es "Save as"), pregunta dónde.
-  async function saveLibrary(saveAs: boolean) {
-    let path: string | null = filePath;
-    if (saveAs || !isChosenPath(filePath)) {
-      path = await pickFileToSave("library", "library.db");
-      if (!path) return;
-    }
+  // Los cambios se guardan solos en el archivo abierto; "Save as" lo copia a
+  // otro archivo, que pasa a ser el de la biblioteca (y el que se abre al iniciar).
+  async function saveLibraryAs() {
+    const path = await pickFileToSave("library", "library.db");
+    if (!path) return;
     try {
       await flushLibraryEdits();
       await invoke("save_library", { path });
@@ -189,14 +187,6 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
     } catch (err) {
       setStatus(`Error saving file: ${err}`);
     }
-  }
-
-  async function loadDemo() {
-    cancelLibraryEdits();
-    const data = await invoke<Library>("demo_library");
-    loadLibrary(data);
-    setFilePath("");
-    setStatus("Sample library loaded (not saved to disk yet).");
   }
 
   // Suma las partes estandarizadas que falten (DT/DTM/DTP con contactos y tapones, Superseal, M22759/32, termos) como
@@ -215,15 +205,12 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
   return (
     <>
       <section className="toolbar">
-        <span className="file-name" title={filePath || undefined}>{filePath ? fileName(filePath) : "Not saved yet"}</span>
-        <button className="icon-button" onClick={() => void openLibrary()} title="Open…" aria-label="Open library file">
+        <span className="file-name" title={filePath ? `${filePath} — changes are saved automatically` : undefined}>{filePath ? fileName(filePath) : "No library file"}</span>
+        <span className="hint" style={{ margin: 0 }}>Saved automatically</span>
+        <button className="icon-button" onClick={() => void openLibrary()} title="Open another library…" aria-label="Open library file">
           <FolderIcon />
         </button>
-        <button className="icon-button" onClick={() => void saveLibrary(false)} title="Save" aria-label="Save library file">
-          <SaveIcon />
-        </button>
-        <button onClick={() => void saveLibrary(true)}>Save as…</button>
-        <button onClick={loadDemo}>Load sample</button>
+        <button onClick={() => void saveLibraryAs()}>Save as…</button>
         <button onClick={() => void addBaseParts()} title="Deutsch DT/DTM/DTP housings with their contacts and sealing plugs, TE Superseal 1.5 housings, M22759/32 wire 26–12 AWG, Raychem DR-25 and ATUM heat-shrink. No prices.">
           Add standard parts
         </button>
@@ -1135,6 +1122,12 @@ function ConnectorDefsTab({ library, setLibrary, partById, project }: TabProps &
     setSearch("");
   }
   function deleteConnector(partId: number) {
+    // Una carcasa que usa un dispositivo no se borra: el dispositivo quedaría sin conector.
+    const usedBy = library.device_defs.filter((d) => d.connectors.some((c) => c.connector_def_id === partId));
+    if (usedBy.length > 0) {
+      alert(`This housing is used by ${usedBy.map((d) => partById(d.part_id)?.part_number || "a device").join(", ")} (Devices tab). Change or delete that device connector first.`);
+      return;
+    }
     const index = visible.findIndex((r) => r.cd.part_id === partId);
     setSelectedId((visible[index + 1] ?? visible[index - 1])?.cd.part_id ?? null);
     setLibrary(removePart(setCounterpart(library, partId, null), "connector_defs", partId));

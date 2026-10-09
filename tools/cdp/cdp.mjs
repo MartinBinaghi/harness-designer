@@ -1,7 +1,8 @@
 // Driver mínimo por CDP para WebView2 (sin Playwright). Uso:
 //   node cdp.mjs eval "<js>"       -> Runtime.evaluate, imprime el resultado
 //   node cdp.mjs shot <archivo>    -> Page.captureScreenshot a PNG
-const targets = await (await fetch("http://localhost:9222/json")).json();
+// Puerto del depurador: 9222 (app en desarrollo) o el de CDP_PORT (ej. la app instalada).
+const targets = await (await fetch(`http://localhost:${process.env.CDP_PORT ?? 9222}/json`)).json();
 const target = targets.find((t) => t.type === "page") ?? targets[0];
 if (!target) throw new Error("no CDP targets");
 

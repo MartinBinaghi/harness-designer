@@ -140,6 +140,8 @@ export interface HistoryStatus {
 
 export interface ProjectStatus extends HistoryStatus {
   loaded: boolean;
+  /** Cambios sin guardar: se pregunta antes de cerrar o reemplazar el proyecto. */
+  unsaved: boolean;
 }
 
 /** Elemento seleccionado, compartido entre el árbol, el inspector y las tablas de cada pantalla. */

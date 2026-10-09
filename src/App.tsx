@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { ask } from "@tauri-apps/plugin-dialog";
 import Topologia from "./Topologia";
 import Diagrama from "./Diagrama";
 import Esquema from "./Esquema";
@@ -17,6 +18,12 @@ import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } 
 import { useBackedState } from "./useBackedState";
 import type { Finding, HistoryStatus, ProjectData, ProjectStatus, Selection } from "./types";
 import type { Library } from "./libraryTypes";
+
+/** Espejo de lib.rs LibraryChange: la biblioteca y, si el autoguardado falló, por qué. */
+interface LibraryChange {
+  library: Library;
+  save_error: string | null;
+}
 import { emptyLibrary } from "./libraryTypes";
 import "./App.css";
 
@@ -28,7 +35,7 @@ export default function App() {
 
   const [selection, setSelection] = useState<Selection>(null);
   const [projectPath, setProjectPath] = useState("");
-  const [projectStatus, setProjectStatus] = useState<ProjectStatus>({ loaded: false, can_undo: false, can_redo: false });
+  const [projectStatus, setProjectStatus] = useState<ProjectStatus>({ loaded: false, can_undo: false, can_redo: false, unsaved: false });
   const refreshProjectStatus = useCallback(async () => {
     setProjectStatus(await invoke<ProjectStatus>("project_status"));
   }, []);
@@ -57,17 +64,38 @@ export default function App() {
   );
   const cancelProjectEdits = projectHistory.cancel;
 
+  // Antes de cerrar o de reemplazar el proyecto (New, Open, Load sample): si
+  // tiene cambios sin guardar, se pregunta. Devuelve si se puede seguir.
+  const confirmDiscardProject = useCallback(async () => {
+    await projectHistory.flush();
+    const status = await invoke<ProjectStatus>("project_status");
+    setProjectStatus(status);
+    if (!status.unsaved) return true;
+    return ask("The project has unsaved changes. Discard them?", { title: "Harness Designer", kind: "warning", okLabel: "Discard changes", cancelLabel: "Cancel" });
+  }, [projectHistory]);
+
+  // Aviso general en la barra de estado (ej. un cambio de la biblioteca que no se pudo guardar).
+  const [appNotice, setAppNotice] = useState("");
+
   const [libraryPath, setLibraryPath] = useState("");
   const [libraryStatus, setLibraryStatus] = useState<HistoryStatus>({ can_undo: false, can_redo: false });
   const refreshLibraryStatus = useCallback(async () => {
     setLibraryStatus(await invoke<HistoryStatus>("library_status"));
   }, []);
+  // Cada cambio de la biblioteca se guarda solo en su archivo (backend,
+  // autosave). Si no se pudo guardar, se avisa y se recuerda para preguntar al cerrar.
+  const librarySaveFailed = useRef(false);
+  const noteLibrarySave = useCallback((saveError: string | null) => {
+    librarySaveFailed.current = saveError !== null;
+    if (saveError) setAppNotice(saveError);
+  }, []);
   const commitLibrary = useCallback(
     async (next: Library) => {
-      await invoke<Library>("edit_library", { library: next });
+      const change = await invoke<LibraryChange>("edit_library", { library: next });
+      noteLibrarySave(change.save_error);
       await refreshLibraryStatus();
     },
-    [refreshLibraryStatus],
+    [refreshLibraryStatus, noteLibrarySave],
   );
   const libraryHistory = useBackedState<Library>(emptyLibrary(), commitLibrary);
   const library = libraryHistory.value;
@@ -95,16 +123,57 @@ export default function App() {
   }, [projectHistory, refreshProjectStatus]);
   const undoLibrary = useCallback(async () => {
     await libraryHistory.flush();
-    const data = await invoke<Library>("undo_library");
-    libraryHistory.reset(data);
+    const change = await invoke<LibraryChange>("undo_library");
+    libraryHistory.reset(change.library);
+    noteLibrarySave(change.save_error);
     await refreshLibraryStatus();
-  }, [libraryHistory, refreshLibraryStatus]);
+  }, [libraryHistory, refreshLibraryStatus, noteLibrarySave]);
   const redoLibrary = useCallback(async () => {
     await libraryHistory.flush();
-    const data = await invoke<Library>("redo_library");
-    libraryHistory.reset(data);
+    const change = await invoke<LibraryChange>("redo_library");
+    libraryHistory.reset(change.library);
+    noteLibrarySave(change.save_error);
     await refreshLibraryStatus();
-  }, [libraryHistory, refreshLibraryStatus]);
+  }, [libraryHistory, refreshLibraryStatus, noteLibrarySave]);
+
+  // Al abrir el programa: la última biblioteca usada (la primera vez, la que
+  // trae el instalador). No hace falta cargarla a mano.
+  useEffect(() => {
+    void invoke<{ library: Library; path: string; notice: string | null }>("startup_library")
+      .then(({ library: opened, path, notice }) => {
+        loadLibrary(opened);
+        setLibraryPath(path);
+        if (notice) setAppNotice(notice);
+      })
+      .catch((err) => setAppNotice(`Couldn't open the library: ${err}`));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cerrar la ventana (botón o Alt+F4): la biblioteca termina de guardarse y,
+  // si algo quedó sin guardar (el proyecto, o la biblioteca porque falló el
+  // autoguardado), se pregunta. Se registra una sola vez; las funciones del
+  // render actual se leen de una ref.
+  const onClose = useRef(async () => true);
+  onClose.current = async () => {
+    await libraryHistory.flush();
+    if (librarySaveFailed.current) {
+      const discard = await ask("Library changes couldn't be saved to its file (see the message at the bottom). Close anyway and lose them?", {
+        title: "Harness Designer",
+        kind: "warning",
+        okLabel: "Close anyway",
+        cancelLabel: "Cancel",
+      });
+      if (!discard) return false;
+    }
+    return confirmDiscardProject();
+  };
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
+      if (!(await onClose.current())) event.preventDefault();
+    });
+    return () => {
+      void unlisten.then((f) => f());
+    };
+  }, []);
 
   const [findings, setFindings] = useState<Finding[]>([]);
 
@@ -235,6 +304,8 @@ export default function App() {
               loadProject={loadProject}
               cancelProjectEdits={cancelProjectEdits}
               flushProjectEdits={projectHistory.flush}
+              confirmDiscard={confirmDiscardProject}
+              afterSave={refreshProjectStatus}
               filePath={projectPath}
               setFilePath={setProjectPath}
               library={library}
@@ -278,7 +349,13 @@ export default function App() {
         <span><span className="status-dot status-dot-error" />{errorCount} error{errorCount === 1 ? "" : "s"}</span>
         <span><span className="status-dot status-dot-warning" />{warningCount} warning{warningCount === 1 ? "" : "s"}</span>
         <span style={{ flex: 1 }} />
-        <span>{project ? [project.project.name, project.project.harness_code].filter(Boolean).join(" · ") : "No project loaded"}</span>
+        {appNotice && (
+          <button className="status-notice" onClick={() => setAppNotice("")} title="Click to dismiss">{appNotice}</button>
+        )}
+        <span title={projectStatus.unsaved ? "Unsaved changes (Topology → Save)" : undefined}>
+          {project ? [project.project.name, project.project.harness_code].filter(Boolean).join(" · ") : "No project loaded"}
+          {projectStatus.unsaved && " •"}
+        </span>
       </div>
     </main>
   );

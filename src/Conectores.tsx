@@ -62,7 +62,6 @@ export default function Conectores({ project, setProject, library, selection, on
   }, [project, library]);
 
   if (!project) return <p>Open or load a project first (Topology tab).</p>;
-  if (project.nodes.length === 0) return <p>This project has no nodes yet. Create at least one in the Topology tab.</p>;
 
   const connector = project.connector_instances.find((c) => c.id === currentId) ?? project.connector_instances[0] ?? null;
   const visible = project.connector_instances.filter((c) =>
@@ -90,13 +89,20 @@ export default function Conectores({ project, setProject, library, selection, on
       return;
     }
     const id = nextId(project.connector_instances.map((c) => c.id));
+    // Un extremo de conector libre de la topología o, si no hay, uno nuevo
+    // suelto (se conecta después en Topology o en el diagrama).
+    const free = project.nodes.find((n) => n.kind === "connector_end" && !project.connector_instances.some((c) => c.node_id === n.id));
+    const nodeId = free?.id ?? nextId(project.nodes.map((n) => n.id));
+    const nodes = free
+      ? project.nodes
+      : [...project.nodes, { id: nodeId, kind: "connector_end" as const, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null }];
     const created: ConnectorInstance = {
       id,
       short_id: `X${id}`,
       name: "",
       library_part_id: def.part_id,
       device_connector_id: null,
-      node_id: project.nodes[0].id,
+      node_id: nodeId,
       termination: null,
       termination_library_part_id: null,
       backshell_library_part_id: null,
@@ -105,7 +111,7 @@ export default function Conectores({ project, setProject, library, selection, on
       mates_with: null,
       cavities: cavitiesFromDef(project, def.part_id, library),
     };
-    setProject({ ...project, connector_instances: [...project.connector_instances, created] });
+    setProject({ ...project, nodes, connector_instances: [...project.connector_instances, created] });
     setCurrentId(id);
   }
 

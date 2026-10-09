@@ -8,6 +8,8 @@ pub struct History<T: Clone> {
     current: T,
     undo_stack: Vec<T>,
     redo_stack: Vec<T>,
+    /// Hubo ediciones (o undo/redo) desde que se abrió o se guardó.
+    unsaved: bool,
 }
 
 impl<T: Clone> History<T> {
@@ -16,7 +18,16 @@ impl<T: Clone> History<T> {
             current: initial,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            unsaved: false,
         }
+    }
+
+    pub fn unsaved(&self) -> bool {
+        self.unsaved
+    }
+
+    pub fn mark_saved(&mut self) {
+        self.unsaved = false;
     }
 
     pub fn get(&self) -> &T {
@@ -30,6 +41,7 @@ impl<T: Clone> History<T> {
         self.undo_stack.push(self.current.clone());
         self.current = new_state;
         self.redo_stack.clear();
+        self.unsaved = true;
     }
 
     pub fn undo(&mut self) -> bool {
@@ -37,6 +49,7 @@ impl<T: Clone> History<T> {
             Some(prev) => {
                 self.redo_stack
                     .push(std::mem::replace(&mut self.current, prev));
+                self.unsaved = true;
                 true
             }
             None => false,
@@ -48,6 +61,7 @@ impl<T: Clone> History<T> {
             Some(next) => {
                 self.undo_stack
                     .push(std::mem::replace(&mut self.current, next));
+                self.unsaved = true;
                 true
             }
             None => false,
@@ -92,6 +106,18 @@ mod tests {
         h.edit(5);
         assert!(!h.redo());
         assert_eq!(*h.get(), 5);
+    }
+
+    #[test]
+    fn edits_mark_unsaved_until_saved() {
+        let mut h = History::new(0);
+        assert!(!h.unsaved());
+        h.edit(1);
+        assert!(h.unsaved());
+        h.mark_saved();
+        assert!(!h.unsaved());
+        h.undo();
+        assert!(h.unsaved());
     }
 
     #[test]

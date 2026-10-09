@@ -14,6 +14,9 @@ use crate::undo::History;
 pub struct AppState {
     pub project: Mutex<Option<History<ProjectData>>>,
     pub library: Mutex<History<Library>>,
+    /// Archivo de la biblioteca abierta: cada cambio se guarda ahí solo
+    /// (autoguardado). `None` mientras no hay archivo.
+    pub library_path: Mutex<Option<String>>,
 }
 
 impl Default for AppState {
@@ -21,6 +24,7 @@ impl Default for AppState {
         Self {
             project: Mutex::new(None),
             library: Mutex::new(History::new(Library::default())),
+            library_path: Mutex::new(None),
         }
     }
 }
@@ -36,4 +40,6 @@ pub struct ProjectStatus {
     pub loaded: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    /// Cambios sin guardar: se pregunta antes de cerrar o reemplazar el proyecto.
+    pub unsaved: bool,
 }

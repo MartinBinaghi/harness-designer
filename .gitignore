@@ -15,6 +15,8 @@ dist-ssr
 # Project/library files opened or saved while testing the app (user data,
 # not source — see CLAUDE.md sección 2 "Archivos").
 *.db
+# Salvo los que trae el instalador: biblioteca por defecto y arnés de ejemplo.
+!src-tauri/resources/*.db
 
 # Editor directories and files
 .vscode/*

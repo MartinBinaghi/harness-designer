@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ProjectData, Selection, WireEnd, WireInstance } from "./types";
 import { partLabel, type Library } from "./libraryTypes";
 import { TrashIcon } from "./icons";
-import { cavityOptions, componentOptions, endLabel, groundOptions, nextId, spliceOptions, wireCategoryPatch } from "./projectEdit";
+import { cavityOptions, componentOptions, deleteWire, endLabel, groundOptions, nextId, spliceOptions, wireCategoryPatch } from "./projectEdit";
 
 /** A cavity end's parent connector, if any — used by the connector filter. */
 function cavityConnectorShortId(project: ProjectData, cavityAssignmentId: number | null): string | null {
@@ -84,7 +84,7 @@ export default function Cables({ project, setProject, library, selection, onSele
 
   function remove(id: number) {
     if (!project) return;
-    setProject({ ...project, wire_instances: project.wire_instances.filter((w) => w.id !== id) });
+    setProject(deleteWire(project, id)); // también lo saca de su grupo de trenzado
   }
 
   function add() {

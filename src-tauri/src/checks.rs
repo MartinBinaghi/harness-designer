@@ -515,7 +515,25 @@ fn check_cut_margin_below_twist_minimum(data: &ProjectData, library: &Library) -
 }
 
 pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
-    let mut findings = Vec::new();
+    use crate::model::project::DanglingItem;
+    // Los extremos de cable rotos ya los informa check_wires_have_valid_endpoints.
+    let mut findings: Vec<Finding> = crate::model::project::dangling_references(data)
+        .into_iter()
+        .filter(|d| !matches!(d.item, DanglingItem::Wire(_)))
+        .map(|d| {
+            let finding = error(format!(
+                "{}: the project can't be saved until it's fixed",
+                d.message
+            ));
+            match d.item {
+                DanglingItem::Segment(id) => finding.at(FindingTarget::Segment { id }),
+                DanglingItem::Connector(id) => finding.at(FindingTarget::Connector { id }),
+                DanglingItem::Ground(id) => finding.at(FindingTarget::Ground { id }),
+                DanglingItem::Splice(id) => finding.at(FindingTarget::Splice { id }),
+                _ => finding,
+            }
+        })
+        .collect();
     findings.extend(check_topology_has_no_loops(data));
     findings.extend(check_wires_have_valid_endpoints(data));
     findings.extend(check_splices_within_capacity(data, library));
