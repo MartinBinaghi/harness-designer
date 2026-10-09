@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS nodes (
     termination_library_part_id INTEGER,
     -- posición en el diagrama de armado (no escalado); NULL hasta acomodarlo
     diagram_x                   REAL,
-    diagram_y                   REAL
+    diagram_y                   REAL,
+    -- largo de la pieza de termo con adhesivo sobre el breakout (mm; solo para BOM/costo)
+    adhesive_heatshrink_length_mm REAL
 );
 
 CREATE TABLE IF NOT EXISTS segments (

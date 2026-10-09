@@ -239,6 +239,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
                 Node {
                     id: 2,
@@ -247,6 +248,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
                 Node {
                     id: 3,
@@ -255,6 +257,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
                 Node {
                     id: 4,
@@ -263,6 +266,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
             ],
             segments: vec![

@@ -355,9 +355,15 @@ export default function Inspector({ project, setProject, library, selection }: P
             </Field>
           )}
           {node.termination === "adhesive_heatshrink" && (
-            <Field label="Covering">
-              <Select value={node.termination_library_part_id} empty="—" options={parts(library.covering_defs)} onChange={(v) => set({ termination_library_part_id: v })} />
-            </Field>
+            <>
+              <Field label="Covering">
+                <Select value={node.termination_library_part_id} empty="—" options={parts(library.covering_defs)} onChange={(v) => set({ termination_library_part_id: v })} />
+              </Field>
+              {/* Va sobre los termos que llegan al breakout: solo suma al BOM y al costo. */}
+              <Field label="Piece length">
+                <NumberInput value={node.adhesive_heatshrink_length_mm} nullable unit="mm" placeholder="for the cost" onCommit={(v) => set({ adhesive_heatshrink_length_mm: v })} />
+              </Field>
+            </>
           )}
         </>
       );

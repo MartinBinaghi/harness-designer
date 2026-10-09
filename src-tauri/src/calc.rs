@@ -474,7 +474,7 @@ pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
         *quantities.entry(splice.library_part_id).or_default() += 1.0;
     }
     // Boots y moldes en T elegidos, y la pieza de termo con adhesivo de cada
-    // conector (con el largo de su ConnectorDef; en un breakout no tiene largo).
+    // conector (largo de su ConnectorDef) y de cada breakout (largo del nodo).
     for connector in &data.connector_instances {
         let Some(id) = connector.termination_library_part_id else {
             continue;
@@ -495,10 +495,17 @@ pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
         }
     }
     for node in &data.nodes {
-        if node.termination.as_deref() == Some("t_mold") {
-            if let Some(id) = node.termination_library_part_id {
-                *quantities.entry(id).or_default() += 1.0;
+        let Some(id) = node.termination_library_part_id else {
+            continue;
+        };
+        match node.termination.as_deref() {
+            Some("t_mold") => *quantities.entry(id).or_default() += 1.0,
+            Some("adhesive_heatshrink") => {
+                if let Some(mm) = node.adhesive_heatshrink_length_mm {
+                    *quantities.entry(id).or_default() += mm / 1000.0;
+                }
             }
+            _ => {}
         }
     }
     for cut in covering_cut_list(data, library) {
@@ -891,6 +898,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
                 Node {
                     id: 2,
@@ -899,6 +907,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
             ],
             segments: vec![Segment {
@@ -1172,6 +1181,21 @@ mod tests {
             .find(|r| r.library_part_id == 7)
             .unwrap();
         assert_eq!(row.quantity_needed, 0.04); // una pieza de 40 mm (solo X1 tiene termo con adhesivo)
+    }
+
+    #[test]
+    fn bom_adds_the_adhesive_heatshrink_piece_of_a_breakout() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        data.nodes[1].termination = Some("adhesive_heatshrink".into());
+        data.nodes[1].termination_library_part_id = Some(7);
+        data.nodes[1].adhesive_heatshrink_length_mm = Some(60.0);
+        let mut library = Library::default();
+        library.parts = vec![part(7, "covering", 1.0, None)];
+        let row = bill_of_materials(&data, &library)
+            .into_iter()
+            .find(|r| r.library_part_id == 7)
+            .unwrap();
+        assert_eq!(row.quantity_needed, 0.06);
     }
 
     #[test]
@@ -1463,6 +1487,7 @@ mod tests {
             termination_library_part_id: None,
             diagram_x: None,
             diagram_y: None,
+            adhesive_heatshrink_length_mm: None,
         });
         data.nodes.push(Node {
             id: 4,
@@ -1471,6 +1496,7 @@ mod tests {
             termination_library_part_id: None,
             diagram_x: None,
             diagram_y: None,
+            adhesive_heatshrink_length_mm: None,
         });
         data.segments.push(Segment {
             id: 2,

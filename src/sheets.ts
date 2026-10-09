@@ -211,7 +211,7 @@ export function terminationRows(project: ProjectData, library: Library): [where:
   }
   for (const n of project.nodes) {
     if (n.termination === "t_mold") rows.push([nodeName(project, n.id), "T-mold", part(n.termination_library_part_id)]);
-    if (n.termination === "adhesive_heatshrink") rows.push([nodeName(project, n.id), "Adhesive heat-shrink", adhesive(n.termination_library_part_id)]);
+    if (n.termination === "adhesive_heatshrink") rows.push([nodeName(project, n.id), "Adhesive heat-shrink", adhesive(n.termination_library_part_id, n.adhesive_heatshrink_length_mm ?? null)]);
   }
   return rows;
 }

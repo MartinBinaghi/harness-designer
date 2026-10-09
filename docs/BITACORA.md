@@ -23,7 +23,7 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 
 **Qué funciona:**
 
-*Backend (`src-tauri/src/`)* — `cargo test`: **68/68 OK**
+*Backend (`src-tauri/src/`)* — `cargo test`: **69/69 OK**
 - `db.rs`: abrir (`open_existing_*`: el archivo tiene que existir, no se modifica, reconoce si es proyecto o biblioteca) y guardar (`create_or_open_*`, crea esquema). Esquemas en `schema/library.sql` y `project.sql`.
 - `model/library.rs`, `model/project.rs`: todo el modelo (plan 4.1/4.2) con load/save y tests de round-trip. `ProjectData::empty()` (proyecto nuevo con los valores por defecto). Project con `cost_on_purchased` y `spare_pcts` (JSON por categoría).
 - `contacts.rs`: contacto/tapón de cada vía deducidos del ConnectorDef. Usado por BOM y chequeos.
@@ -44,7 +44,6 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 - Chequeos node (`node tools/check_*.ts`): connector_face, device_pins, diagram_scale, project_edit, schematic, sheets — todos OK. `pnpm build` sin errores.
 
 **Qué falta / preguntas para Martin:**
-- Largo de la pieza de termo con adhesivo en un **breakout** (en conectores ya se carga por ConnectorDef).
 - **Datos de la biblioteca base para confirmar con datasheet**: contactos Deutsch (DT 0460-202-16141 / 0462-201-16141, 20–16 AWG; DTM 0460-202-20141 / 0462-201-20141, 24–20 AWG; DTP 0460-204-12141 / 0462-203-12141, 14–12 AWG), tapones (0413-217-1605, 0413-204-2005, 0413-003-1205), termos DR-25 (medidas de la tabla en pulgadas) y ATUM (pared contraída aproximada). Superseal 1.0 (pines 3-1447221-3/4/5 y tapón 4-1437284-3) cargados; Superseal 1.5: faltan terminales y sellos; codificado de la carcasa del PDM (ej. 3-1437290-7 o -8) a confirmar. Cable M22759/16: no se encontró una tabla de diámetros confiable (se buscó; solo aparecían 2 calibres sueltos).
 - Confirmar la numeración deducida (posiciones) de DTM 8/12, DTP, 2/3 vías y Superseal.
 - Más adelante: vista lateral dibujada del conector; insertos Autosport / MIL-DTL-26482; precios; etapa 7 (concéntrico).
@@ -305,6 +304,11 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 - **Por qué:** Martin preguntó por qué el PDM30 mostraba un DTM de 12 vías (era una prueba mía para ver la cara: la carcasa real no tenía serie dibujable) y pidió el dibujo correcto.
 - **Nota:** en una biblioteca propia, la carcasa del PDM tiene que tener serie "Superseal 1.0" para que se dibuje. La muestra (`demo.rs`) ya la tiene.
 
+### 2026-10-08 — Largo de la pieza con adhesivo en los breakouts
+- **Decisión:** cada breakout con termo con adhesivo tiene su **largo de pieza** (campo del nodo, en el Inspector). Suma los metros de ese termo al BOM y sale en la hoja de corte ("cut 60 mm"). No cambia el largo de los termos de los tramos.
+- **Por qué:** Martin: no es tan relevante para el corte porque va encima de los termocontraíbles que llegan al breakout; hace falta por los costos.
+- **Alternativas descartadas:** un largo fijo para todos los breakouts, o calcularlo desde el solape (sin dato del taller que lo respalde).
+
 ## Registro de sesiones
 
 ### 2026-09-28 (planificación)
@@ -485,4 +489,5 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 - Cara del Superseal 1.0 (ver decisión). Chequeos: connector_face (filas 9-8-8-9, numeración desde atrás) y device_pins ("A6" → 6). Verificado en la app real con la biblioteca de muestra: el PDM30 · A muestra su cara de 34 vías con OUT1 en la vía 1.
 - Biblioteca base: carcasas hembra AMP Superseal 1.0 de 26 (3-1437290-7) y 34 vías (4-1437290-0), las que enchufan en el PDM30 (números confirmados en TE/Mouser/Farnell; sin contacto ni tapón cargados todavía). Ejemplo de motor (`examples/engine-demo-library.db`) actualizado con la app (merge de la base + PDM30 con A y B): 47 → 71 partes; el proyecto de ejemplo pasa de 29 a 11 avisos (quedan reales: X1 sin contacto/tapón, sin diámetro trasero en los de termo con adhesivo, X8 pendiente).
 - Superseal 1.0: pines hembra 3-1447221-4 (20 AWG, el de las carcasas), -5 (22 AWG) y -3 (18–16 AWG), y tapón 4-1437284-3, en la biblioteca base (Martin: "el contacto de un superseal son los pines superseal"; antes no los había buscado). Ojo con el codificado (keying): TE tiene variantes de la carcasa (ej. 3-1437290-7 / -8) que solo cambian el código mecánico; confirmar cuál usa el PDM. Ejemplo actualizado (71 → 75 partes).
+- Largo de la pieza con adhesivo en breakouts (ver decisión): columna nueva en `nodes` (ejemplo migrado), Inspector, BOM y hoja de corte; test nuevo. `cargo test`: 69/69.
 

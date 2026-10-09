@@ -4,7 +4,7 @@ import { addBranch, addJunction, assignConnector, connectNodes, deleteJunction, 
 import type { ProjectData } from "../src/types.ts";
 import type { Library } from "../src/libraryTypes.ts";
 
-const node = (id: number, kind: "connector_end" | "breakout") => ({ id, kind, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null });
+const node = (id: number, kind: "connector_end" | "breakout") => ({ id, kind, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null });
 const seg = (id: number, a: number, b: number, len: number) => ({ id, node_a_id: a, node_b_id: b, length_mm: len, twist_pitch_mm: null, covering_library_part_id: 7 });
 
 // 1 --S1 (301 mm)-- 2, con un splice a 250 mm del nodo 1 y otro a 30 mm del nodo 2.

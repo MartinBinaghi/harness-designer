@@ -26,7 +26,7 @@ export function cavitiesFromDef(project: ProjectData, connectorDefId: number, li
 const DEFAULT_SEGMENT_MM = 100;
 
 function newNode(id: number, kind: Node["kind"], x: number | null, y: number | null): Node {
-  return { id, kind, termination: null, termination_library_part_id: null, diagram_x: x, diagram_y: y };
+  return { id, kind, termination: null, termination_library_part_id: null, diagram_x: x, diagram_y: y, adhesive_heatshrink_length_mm: null };
 }
 
 /** ¿Están `a` y `b` en la misma rama del árbol (unidos por segmentos)? */

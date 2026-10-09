@@ -138,7 +138,7 @@ Cada tipo de parte extiende `Part`:
 
 **Node** — punto de la topología
 - tipo: extremo de conector / breakout / punto de splice / punto de masa
-- en breakouts, **terminación**: molde en T / termo con adhesivo / nada
+- en breakouts, **terminación**: molde en T / termo con adhesivo / nada; con termo con adhesivo, el **largo de la pieza** (va encima de los termos que llegan al breakout: solo cuenta para el BOM y el costo)
 
 **Segment** — tramo físico entre dos nodos
 - nodo A, nodo B, **largo**
@@ -336,7 +336,7 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 - Los extremos de cable en el conector de un dispositivo llevan el nombre del pin ("X9:A6 OUT11").
 
 ### 8.2 BOM (lista de materiales)
-- Agrupado por categoría: conectores, contactos, tapones, splices, componentes, cables (m), coberturas (m, de la lista de corte de coberturas), accesorios (boots y moldes elegidos), etiquetas. Las piezas de termo con adhesivo de los conectores suman el largo cargado en su ConnectorDef; las de los breakouts todavía no tienen largo.
+- Agrupado por categoría: conectores, contactos, tapones, splices, componentes, cables (m), coberturas (m, de la lista de corte de coberturas), accesorios (boots y moldes elegidos), etiquetas. Las piezas de termo con adhesivo suman su largo: el cargado en el ConnectorDef (conectores) o en el nodo (breakouts).
 - Por parte: cantidad necesaria, repuesto (% configurable), **cantidad a comprar redondeada al pack** (sirve para el pedido aunque no se cobre así), precio unitario, subtotal, fecha del precio.
 - Sin umbral automático de desactualización: la fecha del precio se muestra siempre, y Martin decide cuándo recotizar una parte (ver sección 13).
 

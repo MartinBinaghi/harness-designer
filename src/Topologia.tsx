@@ -116,7 +116,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
   function addNode() {
     if (!project) return;
     const id = nextId(project.nodes.map((n) => n.id));
-    setProject({ ...project, nodes: [...project.nodes, { id, kind: "connector_end", termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null }] });
+    setProject({ ...project, nodes: [...project.nodes, { id, kind: "connector_end", termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null }] });
   }
 
   function removeNode(id: number) {
@@ -144,7 +144,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
     const connected = new Set(project.segments.flatMap((s) => [s.node_a_id, s.node_b_id]));
     const mainNode = project.connector_instances.find((c) => c.id === project.project.main_connector_instance_id)?.node_id;
     const free = [...project.nodes].reverse().find((n) => !connected.has(n.id) && n.id !== mainNode && n.id !== project.nodes[0].id);
-    const nodes = free ? project.nodes : [...project.nodes, { id: nextId(project.nodes.map((n) => n.id)), kind: "connector_end" as const, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null }];
+    const nodes = free ? project.nodes : [...project.nodes, { id: nextId(project.nodes.map((n) => n.id)), kind: "connector_end" as const, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null }];
     const to = free ?? nodes[nodes.length - 1];
     const from = mainNode ?? project.nodes[0].id;
     const id = nextId(project.segments.map((s) => s.id));

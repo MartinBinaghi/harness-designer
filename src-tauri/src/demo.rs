@@ -61,6 +61,7 @@ pub fn sample_project() -> ProjectData {
                 termination_library_part_id: None,
                 diagram_x: None,
                 diagram_y: None,
+                adhesive_heatshrink_length_mm: None,
             },
             Node {
                 id: 2,
@@ -69,6 +70,7 @@ pub fn sample_project() -> ProjectData {
                 termination_library_part_id: Some(32),
                 diagram_x: None,
                 diagram_y: None,
+                adhesive_heatshrink_length_mm: None,
             },
             Node {
                 id: 3,
@@ -77,6 +79,7 @@ pub fn sample_project() -> ProjectData {
                 termination_library_part_id: None,
                 diagram_x: None,
                 diagram_y: None,
+                adhesive_heatshrink_length_mm: None,
             },
             Node {
                 id: 4,
@@ -85,6 +88,7 @@ pub fn sample_project() -> ProjectData {
                 termination_library_part_id: None,
                 diagram_x: None,
                 diagram_y: None,
+                adhesive_heatshrink_length_mm: None,
             },
             Node {
                 id: 5,
@@ -93,6 +97,7 @@ pub fn sample_project() -> ProjectData {
                 termination_library_part_id: None,
                 diagram_x: None,
                 diagram_y: None,
+                adhesive_heatshrink_length_mm: None,
             },
         ],
         segments: vec![

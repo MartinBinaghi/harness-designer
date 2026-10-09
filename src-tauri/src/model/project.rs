@@ -39,6 +39,9 @@ pub struct Node {
     /// que se acomoda a mano o con el layout automático.
     pub diagram_x: Option<f64>,
     pub diagram_y: Option<f64>,
+    /// Largo de la pieza de termo con adhesivo sobre el breakout. Va encima de
+    /// los termos de los tramos que llegan: solo cuenta para el BOM y el costo.
+    pub adhesive_heatshrink_length_mm: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -238,7 +241,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
     )?;
 
     let mut nodes_stmt =
-        conn.prepare("SELECT id, kind, termination, termination_library_part_id, diagram_x, diagram_y FROM nodes")?;
+        conn.prepare("SELECT id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm FROM nodes")?;
     let nodes = nodes_stmt
         .query_map([], |row| {
             Ok(Node {
@@ -248,6 +251,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 termination_library_part_id: row.get(3)?,
                 diagram_x: row.get(4)?,
                 diagram_y: row.get(5)?,
+                adhesive_heatshrink_length_mm: row.get(6)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -469,8 +473,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for n in &data.nodes {
         tx.execute(
-            "INSERT INTO nodes (id, kind, termination, termination_library_part_id, diagram_x, diagram_y) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![n.id, n.kind, n.termination, n.termination_library_part_id, n.diagram_x, n.diagram_y],
+            "INSERT INTO nodes (id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![n.id, n.kind, n.termination, n.termination_library_part_id, n.diagram_x, n.diagram_y, n.adhesive_heatshrink_length_mm],
         )?;
     }
 
@@ -626,6 +630,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
                 Node {
                     id: 2,
@@ -634,6 +639,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: Some(120.5),
                     diagram_y: Some(-40.0),
+                    adhesive_heatshrink_length_mm: None,
                 },
                 Node {
                     id: 3,
@@ -642,6 +648,7 @@ mod tests {
                     termination_library_part_id: None,
                     diagram_x: None,
                     diagram_y: None,
+                    adhesive_heatshrink_length_mm: None,
                 },
             ],
             segments: vec![Segment {

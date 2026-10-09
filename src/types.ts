@@ -28,6 +28,8 @@ export interface Node {
   /** Posición en el diagrama de armado; null hasta acomodarlo (a mano o con el layout automático). */
   diagram_x: number | null;
   diagram_y: number | null;
+  /** Largo de la pieza de termo con adhesivo sobre el breakout (mm): solo para BOM y costo. */
+  adhesive_heatshrink_length_mm: number | null;
 }
 
 export interface Segment {
