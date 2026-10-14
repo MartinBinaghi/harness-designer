@@ -157,7 +157,7 @@ export default function Impresion({ project, library }: Props) {
       </section>
     );
   } else if (doc === "pinout") {
-    // Formato de las hojas del taller (ej. "Instalación chasis Chevrolet Tracker"):
+    // Formato de las planillas de pinout del taller:
     // una tabla apaisada, un bloque por conector, encabezados en castellano.
     sheets = (
       <section className="sheet" style={{ width: sheetWidth }}>

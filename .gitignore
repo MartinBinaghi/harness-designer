@@ -28,3 +28,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generados por `tsc` al compilar (tsconfig.node.json es composite): no son fuente.
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
