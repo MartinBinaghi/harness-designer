@@ -15,8 +15,8 @@ const base = {
   connector_instances: [],
   ground_points: [],
   splice_instances: [
-    { id: 1, short_id: "SP1", library_part_id: 1, node_id: null, segment_id: 1, offset_from_end_mm: 250, offset_from_node_id: 1 },
-    { id: 2, short_id: "SP2", library_part_id: 1, node_id: null, segment_id: 1, offset_from_end_mm: 30, offset_from_node_id: 2 },
+    { id: 1, short_id: "SP1", name: "", library_part_id: 1, node_id: null, segment_id: 1, offset_from_end_mm: 250, offset_from_node_id: 1 },
+    { id: 2, short_id: "SP2", name: "", library_part_id: 1, node_id: null, segment_id: 1, offset_from_end_mm: 30, offset_from_node_id: 2 },
   ],
   component_instances: [],
   wire_instances: [],

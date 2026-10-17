@@ -1,6 +1,6 @@
 // Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: node tools/check_sheets.ts
 import assert from "node:assert/strict";
-import { colorWord, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
+import { colorWord, connectorHeatShrink, coveringRows, wireNets, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
 import type { Library } from "../src/libraryTypes.ts";
 import type { ProjectData } from "../src/types.ts";
 
@@ -130,6 +130,14 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual(cov.map((r) => [r.between, r.size, r.part, r.cutMm]), [["Breakout 9 – X2", '1/4"', "DR-25-1/4", 385]]);
   // La pieza con adhesivo lleva el largo de su ConnectorDef (varía según el conector).
   assert.deepEqual(terminationRows(p, lib), [["X2 · MAP", "90° boot", "not chosen"], ["X3 · TPS", "Adhesive heat-shrink", '1/4" · DR-25-1/4 · cut 40 mm'], ["Breakout 9", "T-mold", "T-202"]]);
+}
+
+// Nets armadas en el frontend: igual que el backend (X1:1 → SP1 → X2:1 y X3:1 es una net; X1:2 → G1, otra).
+{
+  const nets = wireNets(project);
+  assert.deepEqual([...nets.get(1)!].sort(), [1, 2, 3]);
+  assert.deepEqual(nets.get(4), [4]);
+  assert.equal(terminatesAt(project, library, 11, (id) => nets.get(id)!), "X2:1 · MAP, X3:1 · TPS (via SP1)");
 }
 
 console.log("sheets: ok");

@@ -27,7 +27,7 @@ export function infoFor(project: ProjectData, nodeId: number): EntryInfo {
   }
   const splice = project.splice_instances.find((s) => s.node_id === nodeId);
   if (splice) {
-    return { label: splice.short_id, select: { kind: "splice", id: splice.id }, dotClass: "tree-dot-splice" };
+    return { label: splice.name ? `${splice.short_id} · ${splice.name}` : splice.short_id, select: { kind: "splice", id: splice.id }, dotClass: "tree-dot-splice" };
   }
   if (node?.kind === "breakout") {
     const label = node.termination && node.termination !== "none" ? `Breakout (${node.termination.replace("_", " ")})` : "Breakout";

@@ -9,6 +9,9 @@
  *   de los planos de TE (DT04-12PA, DTM04-4P, DTM04-6P) y del catálogo de
  *   bussing de Deutsch (DT 4/6/8/12). El resto se deduce del mismo patrón.
  * - MIL-DTL-38999: coordenadas de cada contacto de MIL-STD-1560.
+ * - MIL-DTL-26482 Serie 2: el mismo arreglo de MIL-STD-1560 con esas vías
+ *   (el 24-61 del MS3476L24-61P coincide con el 25-61: comparado letra por
+ *   letra con fotos de la pieza que pasó Martin).
  * - AMP Superseal 1.0 (26 y 34 vías, los del MoTeC PDM30/M1): vista trasera de
  *   la hembra publicada por Corsa Technic (SS10-26S-X, SS10-34S-X); paso 3 mm,
  *   filas a 3,5 / 4 / 3,5 mm (TE 4-1437290-0).
@@ -29,13 +32,14 @@ export interface ConnectorFace {
   /**
    * "rect": rectángulo de esquinas poco redondeadas alrededor de las vías
    * (Deutsch); "hull": contorno redondeado que sigue a las vías (Superseal,
-   * ovalado; DT de 3 vías, triangular); "circle": circular militar.
+   * ovalado; DT de 3 vías, triangular); "circle": circular militar; "d": recto
+   * del lado del pin 1 y redondeado del otro (VAG).
    */
-  shape: "rect" | "hull" | "circle";
+  shape: "rect" | "hull" | "circle" | "d";
   /** Margen del contorno alrededor de los centros de las vías (rect, hull) o radio (circle), mm. */
   outline: number;
-  /** Traba (Deutsch/Superseal) o chavetero principal (circular): marca la orientación. */
-  latch: "top" | "sides";
+  /** Traba (Deutsch/Superseal/VAG) o chavetero principal (circular): marca la orientación. "none": sin traba (termocupla). */
+  latch: "top" | "sides" | "none";
   cavities: FaceCavity[];
   /** Origen de la numeración, para avisar cuando no se pudo confirmar. */
   numbering: "datasheet" | "inferred" | "standard";
@@ -85,8 +89,12 @@ function family(series: string | null): string | null {
   const s = (series ?? "").trim().toUpperCase();
   if (s === "DT" || s === "DTM" || s === "DTP") return s;
   if (/^SUPERSEAL\s*1\.0/.test(s)) return "SUPERSEAL10";
+  if (/^VAG\b/.test(s)) return "VAG";
+  if (/^MINI\s*TIMER/.test(s)) return "MINITIMER";
+  if (s.includes("THERMOCOUPLE")) return "TC";
   if (s.startsWith("SUPERSEAL")) return "SUPERSEAL";
   if (/38999|27599|29600/.test(s)) return "MIL";
+  if (/26482/.test(s)) return "MIL26482";
   return null;
 }
 
@@ -97,7 +105,14 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
   const fam = family(def.series);
   if (!fam || def.cavities.length === 0) return null;
   if (fam === "MIL") return milFace(def, mil);
+  if (fam === "MIL26482") {
+    const face = milFace(def, mil);
+    return face && { ...face, numbering: "datasheet" };
+  }
   if (fam === "SUPERSEAL10") return superseal10Face(def);
+  if (fam === "VAG") return vagFace(def);
+  if (fam === "MINITIMER") return miniTimerFace(def);
+  if (fam === "TC") return thermocoupleFace(def);
 
   const ways = def.cavities.length;
   // La grilla se indexa por número de vía: 1..n, o A.. (el DT de 3 vías va A, B, C).
@@ -158,6 +173,60 @@ function superseal10Face(def: ConnectorDef): ConnectorFace | null {
   });
   // La cara de la hembra es su vista trasera espejada; la del macho, la trasera de la hembra.
   return { shape: "rect", outline: pitch * 0.8, latch: "top", cavities: def.gender === "female" ? mirror(femaleRear) : femaleRear, numbering: "datasheet" };
+}
+
+/**
+ * Conectores VAG (Audi/VW) de bobina y de sonda lambda (datos de Martin):
+ * carcasa recta del lado del pin 1 y redondeada del otro, traba arriba.
+ * Cara de acople de la hembra, pin 1 a la izquierda:
+ * - 2–4 vías en una fila, de izquierda a derecha;
+ * - 6 vías por columnas: 1 abajo a la izquierda, 2 arriba de él, 3 abajo al
+ *   medio, 4 arriba, 5 abajo a la derecha, 6 arriba.
+ * El macho es su espejo (pin 1 a la derecha).
+ */
+function vagFace(def: ConnectorDef): ConnectorFace | null {
+  const ways = def.cavities.length;
+  const ids = new Set(def.cavities.map((c) => c.cavity_id));
+  if (![2, 3, 4, 6].includes(ways) || !Array.from({ length: ways }, (_, i) => String(i + 1)).every((id) => ids.has(id))) return null;
+  const pitch = 4.5;
+  const at = (n: number): [number, number] =>
+    ways === 6
+      ? [(Math.floor(n / 2) - 1) * pitch, n % 2 === 0 ? pitch / 2 : -pitch / 2] // y hacia abajo: par = fila de abajo
+      : [(n - (ways - 1) / 2) * pitch, 0];
+  const femaleFace: FaceCavity[] = Array.from({ length: ways }, (_, n) => {
+    const [x, y] = at(n);
+    return { id: String(n + 1), x, y, r: pitch * 0.32 };
+  });
+  return { shape: "d", outline: pitch * 0.8, latch: "top", cavities: def.gender === "male" ? mirror(femaleFace) : femaleFace, numbering: "datasheet" };
+}
+
+/**
+ * Fichas Mini Timer en línea (2–4 vías, ej. la ficha original de un sensor de
+ * 3 vías A-B-C): carcasa rectangular con la traba arriba. En la cara de acople
+ * de la hembra las vías van de izquierda a derecha en su orden (A a la
+ * izquierda, dato de Martin); el macho es su espejo.
+ */
+function miniTimerFace(def: ConnectorDef): ConnectorFace | null {
+  const ways = def.cavities.length;
+  if (ways < 2 || ways > 4) return null;
+  const pitch = 5;
+  const femaleFace = def.cavities.map((c, i) => ({ id: c.cavity_id, x: (i - (ways - 1) / 2) * pitch, y: 0, r: pitch * 0.32 }));
+  return { shape: "rect", outline: pitch * 0.75, latch: "top", cavities: def.gender === "male" ? mirror(femaleFace) : femaleFace, numbering: "inferred" };
+}
+
+/**
+ * Termocupla miniatura (enchufe plano tipo K, amarillo): dos vías "+" y "−"
+ * (la negativa es la de pata más ancha), sin traba.
+ */
+function thermocoupleFace(def: ConnectorDef): ConnectorFace | null {
+  const ids = def.cavities.map((c) => c.cavity_id);
+  if (ids.length !== 2 || !ids.includes("+") || !ids.includes("-")) return null;
+  const pitch = 7.9;
+  const cavities = [
+    { id: "+", x: -pitch / 2, y: 0, r: 1.6 },
+    { id: "-", x: pitch / 2, y: 0, r: 1.6 },
+  ];
+  return { shape: "rect", outline: 4.5, latch: "none", cavities: def.gender === "female" ? mirror(cavities) : cavities, numbering: "inferred" };
 }
 
 /**

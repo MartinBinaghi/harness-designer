@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSettled } from "./useBackedState";
 import type { CavityAssignment, ConnectorInstance, ProjectData, Selection, WireInstance } from "./types";
 import type { CostReport } from "./costTypes";
 import { devicePinName, partLabel, type Library } from "./libraryTypes";
@@ -21,6 +22,7 @@ import {
   wiresAtCavity,
 } from "./projectEdit";
 import { ConnectorPartSelect } from "./Inspector";
+import { terminatesAt, wireNets } from "./sheets";
 
 /**
  * Conectores con su pinout: la lista a la izquierda y, del elegido, sus datos y
@@ -50,16 +52,17 @@ export default function Conectores({ project, setProject, library, selection, on
   }, [selection]);
 
   // Largos de corte: los calcula el backend, como en Costs y Print.
+  const calc = useSettled(project);
   useEffect(() => {
-    if (!project) return;
+    if (!calc) return;
     let cancelled = false;
-    void invoke<CostReport>("compute_costs", { project, library }).then((r) => {
+    void invoke<CostReport>("compute_costs", { project: calc, library }).then((r) => {
       if (!cancelled) setReport(r);
     });
     return () => {
       cancelled = true;
     };
-  }, [project, library]);
+  }, [calc, library]);
 
   if (!project) return <p>Open or load a project first (Topology tab).</p>;
 
@@ -194,6 +197,9 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
   notice: string | null;
 }) {
   const set = (patch: Partial<ConnectorInstance>) => setProject(patchItem(project, "connector_instances", c.id, patch));
+  // A dónde termina cada pin cuando pasa por un splice ("→ X1:NN, X1:PP (via SP1)").
+  const nets = wireNets(project);
+  const netOf = (id: number) => nets.get(id) ?? [id];
   const setCavity = (cavityId: number, patch: Partial<CavityAssignment>) =>
     set({ cavities: c.cavities.map((cav) => (cav.id === cavityId ? { ...cav, ...patch } : cav)) });
   const setWire = (w: WireInstance, patch: Partial<WireInstance>) => setProject(patchItem(project, "wire_instances", w.id, patch));
@@ -354,6 +360,9 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
                           onSelect({ kind: "wire", id: created.wireId });
                         }}
                       />
+                      {i === 0 && wires.some((x) => otherEnd(x, cav.id).kind === "splice") && (
+                        <span className="cn-final" title="Where this pin ends, through the splice">→ {terminatesAt(project, library, cav.id, netOf)}</span>
+                      )}
                     </td>
                     <td className="cn-col-wire">
                       {w && (

@@ -117,7 +117,7 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
         y: 0,
       };
     }),
-    ...project.splice_instances.map((s): SchematicBlock => ({ key: `s${s.id}`, kind: "splice", refId: s.id, title: s.short_id, subtitle: "", column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
+    ...project.splice_instances.map((s): SchematicBlock => ({ key: `s${s.id}`, kind: "splice", refId: s.id, title: s.short_id, subtitle: s.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
     ...project.ground_points.map((g): SchematicBlock => ({ key: `g${g.id}`, kind: "ground", refId: g.id, title: g.short_id, subtitle: g.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
     ...project.component_instances.map((r): SchematicBlock => ({ key: `r${r.id}`, kind: "component", refId: r.id, title: r.short_id, subtitle: r.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
   ];

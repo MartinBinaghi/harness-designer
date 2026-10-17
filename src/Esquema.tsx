@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSettled } from "./useBackedState";
 import {
   ReactFlow,
   Background,
@@ -146,19 +147,20 @@ export default function Esquema({ project, setProject, library, selection, onSel
   }, [notice]);
 
   // Cable seleccionado: se resalta él y el resto de su net.
+  const calc = useSettled(project);
   useEffect(() => {
-    if (!project || selection?.kind !== "wire") {
+    if (!calc || selection?.kind !== "wire") {
       setNetWires(new Set());
       return;
     }
     let cancelled = false;
-    void invoke<number[]>("wire_net", { project, wireId: selection.id }).then((ids) => {
+    void invoke<number[]>("wire_net", { project: calc, wireId: selection.id }).then((ids) => {
       if (!cancelled) setNetWires(new Set(ids));
     });
     return () => {
       cancelled = true;
     };
-  }, [project, selection]);
+  }, [calc, selection]);
 
   const isSelected = (b: SchematicBlock) =>
     !!selection &&

@@ -18,7 +18,16 @@ pub fn create_or_open_project(path: &str) -> rusqlite::Result<Connection> {
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.execute_batch(PROJECT_SCHEMA)?;
+    // Columnas sumadas cuando ya había un arnés real cargado: se agregan al
+    // guardar (al abrir, `load` las toma como vacías).
+    if !has_column(&conn, "splice_instances", "name") {
+        conn.execute_batch("ALTER TABLE splice_instances ADD COLUMN name TEXT NOT NULL DEFAULT ''")?;
+    }
     Ok(conn)
+}
+
+pub(crate) fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    conn.prepare(&format!("SELECT {column} FROM {table} LIMIT 0")).is_ok()
 }
 
 /// Para abrir: el archivo tiene que existir y no se modifica (ni se le crean
@@ -203,5 +212,20 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.to_string().contains("FOREIGN KEY"));
+    }
+
+    #[test]
+    fn a_file_from_before_splice_names_opens_and_saves() {
+        // Un arnés guardado antes de que los splices tuvieran nombre.
+        let path = temp_path("old-splices.db");
+        let data = crate::model::project::ProjectData::empty();
+        let mut conn = create_or_open_project(&path).unwrap();
+        crate::model::project::save(&mut conn, &data).unwrap();
+        conn.execute_batch("ALTER TABLE splice_instances DROP COLUMN name").unwrap();
+        drop(conn);
+        assert!(crate::model::project::load(&open_existing_project(&path).unwrap()).is_ok());
+        let mut conn = create_or_open_project(&path).unwrap();
+        assert!(has_column(&conn, "splice_instances", "name"));
+        crate::model::project::save(&mut conn, &data).unwrap();
     }
 }

@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS splice_instances (
     segment_id              INTEGER REFERENCES segments(id),
     offset_from_end_mm      REAL,
     offset_from_node_id     INTEGER REFERENCES nodes(id),
+    name                    TEXT NOT NULL DEFAULT '',
     CHECK (
         (node_id IS NOT NULL AND segment_id IS NULL)
         OR (node_id IS NULL AND segment_id IS NOT NULL)

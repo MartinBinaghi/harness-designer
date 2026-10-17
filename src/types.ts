@@ -81,6 +81,7 @@ export interface GroundPoint {
 export interface SpliceInstance {
   id: number;
   short_id: string;
+  name: string;
   library_part_id: number;
   node_id: number | null;
   segment_id: number | null;

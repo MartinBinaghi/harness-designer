@@ -761,6 +761,7 @@ mod tests {
         data.splice_instances = vec![SpliceInstance {
             id: 1,
             short_id: "SP1".into(),
+            name: String::new(),
             library_part_id: 1,
             node_id: Some(1),
             segment_id: None,
@@ -814,6 +815,7 @@ mod tests {
         data.splice_instances = vec![SpliceInstance {
             id: 1,
             short_id: "SP1".into(),
+            name: String::new(),
             library_part_id: 1,
             node_id: Some(1),
             segment_id: None,
@@ -924,6 +926,7 @@ mod tests {
         data.splice_instances = vec![SpliceInstance {
             id: 1,
             short_id: "SP1".into(),
+            name: String::new(),
             library_part_id: 1,
             node_id: Some(1),
             segment_id: None,

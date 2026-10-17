@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSettled } from "./useBackedState";
 import {
   ReactFlow,
   Background,
@@ -397,44 +398,45 @@ export default function Diagrama({ project, setProject, library, findings, selec
   );
 
   // Diámetro por segmento (etapa 4): mismo cálculo que la pantalla de Costs.
+  const calc = useSettled(project);
   useEffect(() => {
-    if (!project) return;
+    if (!calc) return;
     let cancelled = false;
-    void invoke<CostReport>("compute_costs", { project, library }).then((r) => {
+    void invoke<CostReport>("compute_costs", { project: calc, library }).then((r) => {
       if (!cancelled) setReport(r);
     });
     return () => {
       cancelled = true;
     };
-  }, [project, library]);
+  }, [calc, library]);
 
   const mainConnector = project?.connector_instances.find((c) => c.id === project.project.main_connector_instance_id);
   useEffect(() => {
-    if (!project || !mainConnector || !showDistances) {
+    if (!calc || !mainConnector || !showDistances) {
       setDistances(null);
       return;
     }
     let cancelled = false;
-    void invoke<Record<string, number>>("node_distances", { project, fromNodeId: mainConnector.node_id }).then((d) => {
+    void invoke<Record<string, number>>("node_distances", { project: calc, fromNodeId: mainConnector.node_id }).then((d) => {
       if (!cancelled) setDistances(d);
     });
     return () => {
       cancelled = true;
     };
-  }, [project, mainConnector, showDistances]);
+  }, [calc, mainConnector?.node_id, showDistances]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cable seleccionado (desde Wires o el Inspector): se resalta su recorrido y el de toda su net.
   useEffect(() => {
-    if (!project || selection?.kind !== "wire") {
+    if (!calc || selection?.kind !== "wire") {
       setHighlight({ wire: new Set(), net: new Set() });
       return;
     }
     const wireId = selection.id;
     let cancelled = false;
     void (async () => {
-      const netIds = await invoke<number[]>("wire_net", { project, wireId });
+      const netIds = await invoke<number[]>("wire_net", { project: calc, wireId });
       const ids = netIds.includes(wireId) ? netIds : [wireId, ...netIds];
-      const routes = await Promise.all(ids.map((id) => invoke<number[] | null>("wire_route", { project, wireId: id })));
+      const routes = await Promise.all(ids.map((id) => invoke<number[] | null>("wire_route", { project: calc, wireId: id })));
       if (cancelled) return;
       const net = new Set(routes.flatMap((r) => r ?? []));
       const wire = new Set(routes[ids.indexOf(wireId)] ?? []);
@@ -443,7 +445,7 @@ export default function Diagrama({ project, setProject, library, findings, selec
     return () => {
       cancelled = true;
     };
-  }, [project, selection]);
+  }, [calc, selection]);
 
   const issues = useMemo(() => (project ? issuesByElement(project, findings) : null), [project, findings]);
   const tree = useMemo(
@@ -659,6 +661,21 @@ export default function Diagrama({ project, setProject, library, findings, selec
     if (sizeChanged && toScale) setSizeTick((t) => t + 1);
   }
 
+  // Un extremo suelto nuevo, debajo de lo que ya hay (o el primero del arnés):
+  // de ahí se arrastra su "+" para dibujar las ramas.
+  function addLooseNode() {
+    const placed = flowNodesRef.current.map((n) => n.position);
+    const x = placed.length > 0 ? Math.min(...placed.map((p) => p.x)) : 0;
+    const y = placed.length > 0 ? Math.max(...placed.map((p) => p.y)) + 120 : 0;
+    const id = project!.nodes.reduce((m, n) => Math.max(m, n.id), 0) + 1;
+    setProject({
+      ...project!,
+      nodes: [...project!.nodes, { id, kind: "connector_end", termination: null, termination_library_part_id: null, diagram_x: x, diagram_y: y, adhesive_heatshrink_length_mm: null }],
+    });
+    onSelect({ kind: "node", id });
+    window.setTimeout(() => void flow?.fitView({ duration: 200, maxZoom: 1 }), 80);
+  }
+
   function runAutoLayout() {
     const positions = autoLayout(project!);
     window.setTimeout(() => void flow?.fitView({ duration: 200 }), 50);
@@ -711,6 +728,7 @@ export default function Diagrama({ project, setProject, library, findings, selec
   return (
     <div className="diagram-screen">
       <div className="toolbar diagram-toolbar">
+        <button onClick={addLooseNode} title="Add a loose connector end; then drag its '+' to draw a branch">+ Node</button>
         <button onClick={runAutoLayout} title="Rearrange the whole diagram automatically (can be undone)">
           Auto layout
         </button>
@@ -743,7 +761,15 @@ export default function Diagrama({ project, setProject, library, findings, selec
       </div>
       <div className="diagram-canvas">
         {project.nodes.length === 0 ? (
-          <p className="hint" style={{ padding: "1rem" }}>No nodes yet — add them in the Topology tab.</p>
+          <div className="diagram-empty">
+            <p>The harness has no topology yet.</p>
+            <ol className="hint">
+              <li>Add the first end (usually the main connector).</li>
+              <li>Hover it and drag the <strong>+</strong> that appears to draw each branch; drop on an empty spot for a new end.</li>
+              <li>Double-click an end to give it a connector; double-click a length to edit it.</li>
+            </ol>
+            <button className="button-primary" onClick={addLooseNode}>+ Add the first node</button>
+          </div>
         ) : (
           <ReactFlow
             nodes={flowNodes}
@@ -875,7 +901,12 @@ function NodePanel({ project, library, report, nodeId, onClose, onAssign }: {
       </div>
     );
   } else {
-    body = <p className="hint">Nothing to show for a {node.kind.replace("_", " ")} here — use the Inspector.</p>;
+    body =
+      node.kind === "ground_point" ? (
+        <p className="hint">Ground point: click the node once and, in the Inspector, “+ Create the ground point here”; there you pick its ring lug and name.</p>
+      ) : (
+        <p className="hint">Nothing to show for a {node.kind.replace("_", " ")} here — use the Inspector.</p>
+      );
   }
 
   return (

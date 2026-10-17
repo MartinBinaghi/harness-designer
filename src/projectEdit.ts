@@ -443,7 +443,7 @@ export function addJunction(project: ProjectData, library: Library, kind: Juncti
   if (kind === "splice") {
     const part = library.splice_defs[0]?.part_id;
     if (part === undefined) return "Add a splice type in Library → Splices first.";
-    const splice = { id, short_id: `SP${id}`, library_part_id: part, ...place };
+    const splice = { id, short_id: `SP${id}`, name: "", library_part_id: part, ...place };
     return { project: { ...project, splice_instances: [...project.splice_instances, splice] }, id };
   }
   const def = library.component_defs[0];

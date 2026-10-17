@@ -210,6 +210,7 @@ pub fn sample_project() -> ProjectData {
         splice_instances: vec![SpliceInstance {
             id: 1,
             short_id: "SP1".into(),
+            name: String::new(),
             library_part_id: 10,
             node_id: Some(2),
             segment_id: None,

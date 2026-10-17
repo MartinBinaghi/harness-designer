@@ -111,6 +111,11 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
       if (!path) return;
     }
     try {
+      // Un arnés nuevo que todavía se llama "New harness" toma el nombre del archivo.
+      if (project.project.name === "New harness") {
+        const stem = fileName(path).replace(/(\.harness)?\.db$/i, "");
+        setProject({ ...project, project: { ...project.project, name: stem } });
+      }
       await flushProjectEdits();
       await invoke("save_project", { path });
       await afterSave();

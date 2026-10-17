@@ -65,4 +65,45 @@ assert.equal(connectorFace(def("DTM", "male", [["1", "20"], ["X", "20"]]), mil),
   assert.equal(connectorFace(def("Superseal 1.0", "female", ways(20, "1.0")), mil), null);
 }
 
+// VAG: bobina de 4 vías en una fila; lambda de 6 en dos filas de 3; ovalados con traba arriba.
+{
+  const coil = connectorFace(def("VAG", "female", ways(4, "Mini Timer")), mil)!;
+  assert.equal(new Set(coil.cavities.map((c) => c.y)).size, 1);
+  assert.deepEqual([coil.shape, coil.latch, coil.numbering], ["d", "top", "datasheet"]);
+  const lambda = connectorFace(def("VAG", "female", ways(6, "Mini Timer")), mil)!;
+  assert.deepEqual([...new Set(lambda.cavities.map((c) => c.y))].map((y) => lambda.cavities.filter((c) => c.y === y).length), [3, 3]);
+  assert.equal(connectorFace(def("VAG", "female", ways(5, "Mini Timer")), mil), null);
+  // Cara de acople: el macho con el pin 1 a la derecha, la hembra a la izquierda (Martin).
+  const pin1 = (gender: "male" | "female") => connectorFace(def("VAG", gender, ways(4, "Mini Timer")), mil)!.cavities.find((c) => c.id === "1")!.x;
+  assert.ok(pin1("male") > 0 && pin1("female") < 0);
+  // Lambda (6 vías), cara de acople de la hembra: por columnas, 1 abajo a la izquierda y 2 arriba; 3 abajo al medio, 4 arriba… (Martin).
+  const l6 = connectorFace(def("VAG", "female", ways(6, "Micro Timer")), mil)!;
+  const p = (id: string) => at(l6, id);
+  assert.ok(p("1").x < 0 && p("1").y > 0 && p("2").x === p("1").x && p("2").y < 0);
+  assert.ok(p("3").x === 0 && p("3").y > 0 && p("4").x === 0 && p("4").y < 0 && p("5").x > 0 && p("6").y < 0);
+}
+// Termocupla miniatura: "+" y "-", sin traba.
+{
+  const tc = connectorFace(def("Mini thermocouple K", "female", [["+", "K"], ["-", "K"]]), mil)!;
+  assert.deepEqual([tc.latch, tc.cavities.map((c) => c.id).sort().join("")], ["none", "+-"]);
+}
+
+// MIL-DTL-26482 Serie 2 (MS3476L24-61P): arreglo de MIL-STD-1560 con esas vías. Mirando
+// desde atrás con la traba arriba, la fila de arriba va B · A · b · a · Z · Y (foto de la pieza).
+{
+  const ids61 = (mil["25-61"] as (string | number)[][]).map(([id]) => [String(id), "20"] as [string, string]);
+  const face = connectorFace(def("MIL-DTL-26482 II", "male", ids61, "24"), mil)!;
+  assert.equal(face.numbering, "datasheet");
+  const rear = wireSide(face);
+  const x = (id: string) => at(rear, id).x;
+  assert.ok(x("B") < x("A") && x("A") < x("b") && x("b") < x("a") && x("a") < x("Z") && x("Z") < x("Y"));
+}
+
+// Mini Timer en línea: la ficha original de 3 vías A-B-C, con la A a la izquierda en la cara de la hembra (Martin).
+{
+  const mt = connectorFace(def("Mini Timer", "female", [["A", "Mini Timer"], ["B", "Mini Timer"], ["C", "Mini Timer"]]), mil)!;
+  assert.ok(at(mt, "A").x < at(mt, "B").x && at(mt, "B").x < at(mt, "C").x);
+  assert.deepEqual([mt.shape, mt.latch], ["rect", "top"]);
+}
+
 console.log("connector face: ok");

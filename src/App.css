@@ -2577,3 +2577,52 @@ table.dev-pin-table {
   font: inherit;
   cursor: pointer;
 }
+
+/* Barra de estado: el nombre del arnés abre sus datos en el Inspector. */
+.status-project {
+  padding: 0 0.4rem;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.status-project:hover {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.inspector-harness-button {
+  margin: 0 0.9rem;
+}
+
+/* Diagrama vacío: cómo empezar. */
+.diagram-empty {
+  max-width: 460px;
+  margin: 3rem auto;
+  padding: 1.2rem 1.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.diagram-empty p {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.diagram-empty ol {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+  max-width: none;
+}
+
+/* Pinout: destino final de un pin que pasa por un splice. */
+.cn-final {
+  display: block;
+  padding: 0 0.4rem 0.15rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}

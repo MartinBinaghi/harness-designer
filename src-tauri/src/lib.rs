@@ -62,6 +62,16 @@ fn remember_library(app: &AppHandle, path: &str) {
 /// no está), se abre la de fábrica sin olvidar la recordada.
 #[tauri::command]
 fn startup_library(app: AppHandle, state: State<AppState>) -> Result<OpenedLibrary, String> {
+    // Ya hay una abierta (la ventana se recargó, o el arranque se pidió dos
+    // veces): se devuelve esa, que es la de verdad, sin volver a abrir nada.
+    if let Some(path) = state.library_path.lock().unwrap().clone() {
+        let library = state.library.lock().unwrap().get().clone();
+        return Ok(OpenedLibrary {
+            library,
+            path,
+            notice: None,
+        });
+    }
     let mut notice = None;
     if let Some(path) = settings::load(&app).library_path {
         match use_library_file(&app, &state, &path, true) {
@@ -135,7 +145,26 @@ fn open_project(path: String, state: State<AppState>) -> Result<ProjectData, Str
     let conn = db::open_existing_project(&path)?;
     let project = model::project::load(&conn).map_err(|e| e.to_string())?;
     *state.project.lock().unwrap() = Some(History::new(project.clone()));
+    *state.project_path.lock().unwrap() = Some(path);
     Ok(project)
+}
+
+/// El proyecto que tiene el núcleo y su archivo: si la ventana se recarga, la
+/// pantalla lo recupera de acá (no se pierde lo que no se guardó).
+#[derive(Serialize)]
+struct CurrentProject {
+    project: ProjectData,
+    path: Option<String>,
+}
+
+#[tauri::command]
+fn current_project(state: State<AppState>) -> Option<CurrentProject> {
+    let guard = state.project.lock().unwrap();
+    let project = guard.as_ref()?.get().clone();
+    Some(CurrentProject {
+        project,
+        path: state.project_path.lock().unwrap().clone(),
+    })
 }
 
 #[tauri::command]
@@ -153,6 +182,7 @@ fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
     let mut conn = db::create_or_open_project(&path).map_err(|e| e.to_string())?;
     model::project::save(&mut conn, history.get()).map_err(|e| e.to_string())?;
     history.mark_saved();
+    *state.project_path.lock().unwrap() = Some(path);
     Ok(())
 }
 
@@ -160,6 +190,7 @@ fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
 fn new_project(state: State<AppState>) -> ProjectData {
     let project = ProjectData::empty();
     *state.project.lock().unwrap() = Some(History::new(project.clone()));
+    *state.project_path.lock().unwrap() = None;
     project
 }
 
@@ -178,6 +209,7 @@ fn sample_project(app: AppHandle, state: State<AppState>) -> Result<SampleProjec
     let conn = db::open_existing_project(&path.to_string_lossy())?;
     let project = model::project::load(&conn).map_err(|e| e.to_string())?;
     *state.project.lock().unwrap() = Some(History::new(project.clone()));
+    *state.project_path.lock().unwrap() = None;
     let default = settings::default_library_path(&app).ok();
     let notice = (state.library_path.lock().unwrap().as_deref() != default.as_deref())
         .then(|| "The sample was made with the default library: with another library its parts may not match.".to_string());
@@ -288,12 +320,12 @@ fn merge_base_library(library: Library) -> Library {
 
 #[tauri::command]
 fn run_checks(project: ProjectData, library: Library) -> Vec<checks::Finding> {
-    checks::run_checks(&project, &library)
+    calc::with_cache(|| checks::run_checks(&project, &library))
 }
 
 #[tauri::command]
 fn compute_costs(project: ProjectData, library: Library) -> calc::CostReport {
-    calc::compute_cost_report(&project, &library)
+    calc::with_cache(|| calc::compute_cost_report(&project, &library))
 }
 
 /// Guarda un texto exportado (ej. la lista de etiquetas en CSV) en la ruta
@@ -311,6 +343,7 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             startup_library,
+            current_project,
             open_library,
             save_library,
             open_project,

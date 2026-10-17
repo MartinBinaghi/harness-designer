@@ -325,13 +325,55 @@ export function terminatesAt(project: ProjectData, library: Library, cavityId: n
           ? cavityLabel(project, library, end.cavity_assignment_id)
           : end.kind === "ground"
             ? groundLabel(project, end.ground_point_id)
-            : endLabel(project, end);
+            : end.kind === "splice"
+              ? spliceLabel(project, end.splice_id)
+              : endLabel(project, end);
       const list = end.kind === "splice" ? via : dests;
       if (label !== "—" && !list.includes(label)) list.push(label);
     }
   }
   if (dests.length === 0 && via.length === 0) return "—";
   return `${dests.join(", ") || "—"}${via.length ? ` (via ${via.join(", ")})` : ""}`;
+}
+
+/**
+ * Net de cada cable: los cables unidos por compartir vía, splice, masa o
+ * componente (cable → splice → cable…). Mismo criterio que
+ * topology::net_of_wire, sin ir al backend (para mostrarlo mientras se tipea).
+ */
+export function wireNets(project: ProjectData): Map<number, number[]> {
+  const parent = new Map(project.wire_instances.map((w) => [w.id, w.id]));
+  const find = (id: number): number => {
+    const p = parent.get(id)!;
+    if (p === id) return id;
+    const root = find(p);
+    parent.set(id, root);
+    return root;
+  };
+  const byPoint = new Map<string, number>();
+  for (const w of project.wire_instances) {
+    for (const e of [w.end_a, w.end_b]) {
+      const ref = e.kind === "cavity" ? e.cavity_assignment_id : e.kind === "splice" ? e.splice_id : e.kind === "ground" ? e.ground_point_id : e.component_instance_id;
+      if (ref == null) continue;
+      const key = `${e.kind}:${ref}`;
+      const other = byPoint.get(key);
+      if (other === undefined) byPoint.set(key, w.id);
+      else parent.set(find(w.id), find(other));
+    }
+  }
+  const nets = new Map<number, number[]>();
+  for (const w of project.wire_instances) {
+    const root = find(w.id);
+    nets.set(root, [...(nets.get(root) ?? []), w.id]);
+  }
+  return new Map(project.wire_instances.map((w) => [w.id, nets.get(find(w.id))!]));
+}
+
+/** "SP1 · Coils pin 2": el splice con su nombre. */
+function spliceLabel(project: ProjectData, spliceId: number | null): string {
+  const s = project.splice_instances.find((x) => x.id === spliceId);
+  if (!s) return "—";
+  return s.name ? `${s.short_id} · ${s.name}` : s.short_id;
 }
 
 /** "G1 · Chassis": la masa con su nombre. */

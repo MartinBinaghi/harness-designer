@@ -6,7 +6,7 @@ import milStd1560 from "./data/mil-std-1560.json";
 const MIL = milStd1560.arrangements as MilArrangements;
 
 const NUMBERING_NOTE = {
-  datasheet: "numbering checked against a drawing of the part",
+  datasheet: "numbering checked against a drawing or photo of the part",
   inferred: "numbering inferred from the family — confirm it on the part",
   standard: "contact positions from MIL-STD-1560",
 };
@@ -63,6 +63,27 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
             <rect x={box[0] - o * 0.06} y={box[1] - o * 0.06} width={box[2] - box[0] + o * 0.12} height={box[3] - box[1] + o * 0.12} rx={o * 0.46} className="cf-body-edge" />
             <rect x={box[0]} y={box[1]} width={box[2] - box[0]} height={box[3] - box[1]} rx={o * 0.4} className="cf-body-fill" />
           </>
+        ) : face.shape === "d" ? (
+          // Redondeado de un lado y recto del lado del pin 1 (VAG): el contorno
+          // redondeado más un rectángulo que cuadra la mitad del pin 1.
+          (() => {
+            const flatLeft = (face.cavities.find((c) => c.id === "1")?.x ?? 0) < 0;
+            const midX = (box[0] + box[2]) / 2;
+            const half = (grow: number) => ({
+              x: flatLeft ? box[0] - grow : midX,
+              y: box[1] - grow,
+              width: (box[2] - box[0]) / 2 + grow,
+              height: box[3] - box[1] + 2 * grow,
+            });
+            return (
+              <>
+                <RoundedHull pts={pts} r={o * 1.06} className="cf-body-edge" />
+                <rect {...half(o * 0.06)} rx={o * 0.3} className="cf-body-edge" />
+                <RoundedHull pts={pts} r={o} className="cf-body-fill" />
+                <rect {...half(0)} rx={o * 0.25} className="cf-body-fill" />
+              </>
+            );
+          })()
         ) : (
           <>
             <RoundedHull pts={pts} r={o * 1.06} className="cf-body-edge" />
@@ -71,7 +92,7 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
         )}
         {face.latch === "top" ? (
           <rect x={-o * 0.7} y={box[1] - latchH} width={o * 1.4} height={latchH + o * 0.1} rx={latchH * 0.3} className="cf-latch" />
-        ) : (
+        ) : face.latch === "sides" && (
           <>
             <rect x={box[0] - latchH} y={midY - o * 0.7} width={latchH + o * 0.1} height={o * 1.4} rx={latchH * 0.3} className="cf-latch" />
             <rect x={box[2] - o * 0.1} y={midY - o * 0.7} width={latchH + o * 0.1} height={o * 1.4} rx={latchH * 0.3} className="cf-latch" />
@@ -79,7 +100,8 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
         )}
       </>
     );
-    box = face.latch === "top" ? [box[0], box[1] - latchH, box[2], box[3]] : [box[0] - latchH, box[1], box[2] + latchH, box[3]];
+    if (face.latch === "top") box = [box[0], box[1] - latchH, box[2], box[3]];
+    else if (face.latch === "sides") box = [box[0] - latchH, box[1], box[2] + latchH, box[3]];
   }
   const pad = o * 0.1;
   const viewBox = `${box[0] - pad} ${box[1] - pad} ${box[2] - box[0] + 2 * pad} ${box[3] - box[1] + 2 * pad}`;

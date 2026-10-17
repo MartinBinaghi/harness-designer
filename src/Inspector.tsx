@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSettled } from "./useBackedState";
 import type { CostReport, WireCutLength } from "./costTypes";
-import { changeConnectorPart, patchItem, wireCategoryPatch } from "./projectEdit";
+import { changeConnectorPart, nextId, patchItem, wireCategoryPatch } from "./projectEdit";
 import type { ComponentInstance, ConnectorInstance, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
 
 type Placed = Pick<SpliceInstance, "node_id" | "segment_id" | "offset_from_end_mm" | "offset_from_node_id">;
@@ -171,18 +172,19 @@ export function usedCavities(project: ProjectData, connector: ConnectorInstance)
  */
 function WireLength({ project, library, wire }: { project: ProjectData; library: Library; wire: WireInstance }) {
   const [info, setInfo] = useState<{ route: number[] | null; cut: WireCutLength | undefined } | null>(null);
+  const calc = useSettled(project);
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      invoke<number[] | null>("wire_route", { project, wireId: wire.id }),
-      invoke<CostReport>("compute_costs", { project, library }),
+      invoke<number[] | null>("wire_route", { project: calc, wireId: wire.id }),
+      invoke<CostReport>("compute_costs", { project: calc, library }),
     ]).then(([route, report]) => {
       if (!cancelled) setInfo({ route, cut: report.cut_list.find((c) => c.wire_id === wire.id) });
     });
     return () => {
       cancelled = true;
     };
-  }, [project, library, wire.id]);
+  }, [calc, library, wire.id]);
   if (!info) return <span className="hint">…</span>;
   const segments = (info.route ?? []).map((id) => project.segments.find((s) => s.id === id)).filter((s) => s !== undefined);
   return (
@@ -265,14 +267,20 @@ interface Props {
   setProject: (p: ProjectData) => void;
   library: Library;
   selection: Selection;
+  onSelect: (s: Selection) => void;
 }
 
-export default function Inspector({ project, setProject, library, selection }: Props) {
+export default function Inspector({ project, setProject, library, selection, onSelect }: Props) {
   if (!project || !selection) {
     return (
       <div className="inspector-panel">
         <div className="tree-panel-title">Inspector</div>
         <p className="hint">Select a row in a table, or an item in the tree or a diagram, to see and edit it here.</p>
+        {project && (
+          <button className="inspector-harness-button" onClick={() => onSelect({ kind: "project", id: 0 })}>
+            Harness data: name, code, margins…
+          </button>
+        )}
       </div>
     );
   }
@@ -341,6 +349,29 @@ export default function Inspector({ project, setProject, library, selection }: P
           <Field label="Kind">
             <Select value={node.kind} options={NODE_KINDS.map((k) => ({ value: k, label: NODE_KIND_LABELS[k] }))} onChange={(v) => v && set({ kind: v })} />
           </Field>
+          {node.kind === "ground_point" && (() => {
+            // La masa (G1, con su ojal) vive en el nodo: se crea o se abre desde acá.
+            const ground = project.ground_points.find((g) => g.node_id === node.id);
+            return (
+              <Field label="Ground point">
+                {ground ? (
+                  <button className="link-button" onClick={() => onSelect({ kind: "ground", id: ground.id })}>
+                    Edit {ground.short_id}{ground.name ? ` · ${ground.name}` : ""} (ring lug, name)
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const id = nextId(project.ground_points.map((g) => g.id));
+                      setProject({ ...project, ground_points: [...project.ground_points, { id, short_id: `G${id}`, name: "", terminal_library_part_id: null, node_id: node.id }] });
+                      onSelect({ kind: "ground", id });
+                    }}
+                  >
+                    + Create the ground point here
+                  </button>
+                )}
+              </Field>
+            );
+          })()}
           <Field label="Termination">
             <Select
               value={node.termination}
@@ -459,8 +490,11 @@ export default function Inspector({ project, setProject, library, selection }: P
           <Field label="ID"><TextInput value={g.short_id} onChange={(v) => set({ short_id: v })} placeholder="G1" /></Field>
           <Field label="Name"><TextInput value={g.name} onChange={(v) => set({ name: v })} placeholder="e.g. Chassis ground" /></Field>
           <Field label="Node"><Select value={g.node_id} options={nodeOptions} onChange={(v) => v !== null && set({ node_id: v })} /></Field>
-          <Field label="Terminal">
+          <Field label="Terminal (ring lug)">
             <Select value={g.terminal_library_part_id} empty="—" options={parts(terminals)} onChange={(v) => set({ terminal_library_part_id: v })} />
+            {terminals.length === 0 && (
+              <span className="hint">No ring lugs in the library yet: add one in Library → Connectors with a single cavity.</span>
+            )}
           </Field>
         </>
       );
@@ -473,6 +507,7 @@ export default function Inspector({ project, setProject, library, selection }: P
       fields = (
         <>
           <Field label="ID"><TextInput value={s.short_id} onChange={(v) => set({ short_id: v })} placeholder="SP1" /></Field>
+          <Field label="Name"><TextInput value={s.name} onChange={(v) => set({ name: v })} placeholder="e.g. Coils pin 2" /></Field>
           <Field label="Part"><Select value={s.library_part_id} options={parts(library.splice_defs)} onChange={(v) => v !== null && set({ library_part_id: v })} /></Field>
           <LocationFields project={project} item={s} nodeOptions={nodeOptions} set={set} />
         </>

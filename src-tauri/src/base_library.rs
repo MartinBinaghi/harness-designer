@@ -116,6 +116,40 @@ const SUPERSEAL_10_SOCKETS: &[(&str, &str, &str)] = &[
 ];
 const SUPERSEAL_10_CAVITY_PLUG: &str = "4-1437284-3";
 
+/// Otras carcasas sueltas del lado del arnés (pedido de Martin, 2026-10-15),
+/// sin contacto ni tapón cargados todavía: (número de parte, fabricante,
+/// serie, género, tamaño de contacto, vías, descripción). Las VAG del arnés
+/// son macho (Martin).
+const OTHER_HOUSINGS: &[(&str, &str, &str, &str, &str, &[&str], &str)] = &[
+    (
+        "1J0 973 724",
+        "VAG",
+        "VAG",
+        "male",
+        "Mini Timer",
+        &["1", "2", "3", "4"],
+        "VAG 4-way ignition coil connector (Audi/VW coils)",
+    ),
+    (
+        "1J0 973 733",
+        "VAG",
+        "VAG",
+        "male",
+        "Micro Timer",
+        &["1", "2", "3", "4", "5", "6"],
+        "VAG 6-way connector, mates Bosch LSU 4.9 lambda sensor",
+    ),
+    (
+        "SMPW-K-F",
+        "Omega",
+        "Mini thermocouple K",
+        "female",
+        "K",
+        &["+", "-"],
+        "Miniature type K thermocouple socket (yellow); the wider blade is negative",
+    ),
+];
+
 /// M22759/32 (Raychem Spec 55, ETFE liviano, 150 °C, 600 V): calibre AWG y
 /// diámetro exterior nominal en pulgadas, de la hoja de la norma.
 const M22759_32: &[(u32, f64)] = &[
@@ -350,6 +384,43 @@ pub fn base_library() -> Library {
                 .collect(),
         });
     }
+    for &(part_number, manufacturer, series, gender, contact_size, cavities, description) in
+        OTHER_HOUSINGS
+    {
+        let id = push_part(
+            &mut library,
+            part_number.into(),
+            manufacturer,
+            format!("{description} — {unverified}"),
+            "connector",
+            "unit",
+        );
+        library.connector_defs.push(ConnectorDef {
+            part_id: id,
+            gender: gender.into(),
+            series: Some(series.into()),
+            shell_size: None,
+            counterpart_id: None,
+            back_shape: None,
+            back_diameter_mm: None,
+            back_width_mm: None,
+            back_height_mm: None,
+            suggested_termination: None,
+            contact_part_id: None,
+            seal_plug_part_id: None,
+            adhesive_heatshrink_length_mm: None,
+            image_side: None,
+            image_front: None,
+            image_back: None,
+            cavities: cavities
+                .iter()
+                .map(|&cavity_id| ConnectorDefCavity {
+                    cavity_id: cavity_id.into(),
+                    contact_size: contact_size.into(),
+                })
+                .collect(),
+        });
+    }
     for &(awg, od_in) in M22759_32 {
         let id = library.parts.len() as i64 + 1;
         library.parts.push(Part {
@@ -554,6 +625,7 @@ mod tests {
             2 * (6 + 6 + 2 + 5)
                 + 3 * 3
                 + SUPERSEAL_10.len()
+                + OTHER_HOUSINGS.len()
                 + SUPERSEAL_10_SOCKETS.len()
                 + 1
                 + M22759_32.len()
@@ -596,6 +668,15 @@ mod tests {
             .map(|c| c.cavity_id.as_str())
             .collect();
         assert_eq!(dt3, ["A", "B", "C"]);
+        let tc: Vec<&str> = def_by_pn(&base, "SMPW-K-F")
+            .cavities
+            .iter()
+            .map(|c| c.cavity_id.as_str())
+            .collect();
+        assert_eq!(tc, ["+", "-"]);
+        assert_eq!(def_by_pn(&base, "1J0 973 733").cavities.len(), 6);
+        assert_eq!(def_by_pn(&base, "1J0 973 724").gender, "male");
+        assert_eq!(def_by_pn(&base, "SMPW-K-F").gender, "female");
     }
 
     #[test]
@@ -726,5 +807,22 @@ mod tests {
             .id;
         assert_eq!(def_by_pn(&merged, "DT06-2S").contact_part_id, Some(socket));
         assert!(def_by_pn(&merged, "DT06-2S").seal_plug_part_id.is_some());
+    }
+
+    /// Mantenimiento, no un test: suma a la biblioteca que trae el instalador
+    /// (`resources/default-library.db`) lo que se agregó a la base. Correr con
+    /// `cargo test update_bundled_library -- --ignored` y copiar el resultado a
+    /// `examples/engine-demo-library.db` si se usa para pruebas.
+    #[test]
+    #[ignore]
+    fn update_bundled_library() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/default-library.db");
+        let conn = crate::db::open_existing_library(path).unwrap();
+        let before = crate::model::library::load(&conn).unwrap();
+        drop(conn);
+        let merged = merge_base_library(&before);
+        let mut conn = crate::db::create_or_open_library(path).unwrap();
+        crate::model::library::save(&mut conn, &merged).unwrap();
+        println!("{} -> {} parts", before.parts.len(), merged.parts.len());
     }
 }

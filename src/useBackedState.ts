@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const DEBOUNCE_MS = 500;
 
@@ -60,4 +60,17 @@ export function useBackedState<T>(initial: T, commit: (value: T) => Promise<void
   }, []);
 
   return { value, edit, cancel, reset, flush };
+}
+
+/**
+ * El valor, pero recién cuando deja de cambiar durante `ms`: para cálculos del
+ * backend (chequeos, largos, costos) que no hace falta rehacer en cada tecla.
+ */
+export function useSettled<T>(value: T, ms = 400): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setSettled(value), ms);
+    return () => window.clearTimeout(t);
+  }, [value, ms]);
+  return settled;
 }

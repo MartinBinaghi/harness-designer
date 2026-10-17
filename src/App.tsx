@@ -15,7 +15,7 @@ import Impresion from "./Impresion";
 import Tree from "./TreePanel";
 import Inspector from "./Inspector";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./icons";
-import { useBackedState } from "./useBackedState";
+import { useBackedState, useSettled } from "./useBackedState";
 import type { Finding, HistoryStatus, ProjectData, ProjectStatus, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 
@@ -136,6 +136,16 @@ export default function App() {
     await refreshLibraryStatus();
   }, [libraryHistory, refreshLibraryStatus, noteLibrarySave]);
 
+  // Si la ventana se recargó, el proyecto sigue en el núcleo: se recupera,
+  // con su archivo, sin perder lo que no se había guardado.
+  useEffect(() => {
+    void invoke<{ project: ProjectData; path: string | null } | null>("current_project").then((current) => {
+      if (!current) return;
+      loadProject(current.project);
+      setProjectPath(current.path ?? "");
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Al abrir el programa: la última biblioteca usada (la primera vez, la que
   // trae el instalador). No hace falta cargarla a mano.
   useEffect(() => {
@@ -180,19 +190,20 @@ export default function App() {
   // Chequeos en vivo: se recalculan solos cada vez que cambia el proyecto o
   // la biblioteca, para que la barra de estado siempre refleje el dato real
   // (no depende de que alguien entre a la pantalla de Checks y la corra a mano).
+  const calc = useSettled(project);
   useEffect(() => {
-    if (!project) {
+    if (!calc) {
       setFindings([]);
       return;
     }
     let cancelled = false;
-    invoke<Finding[]>("run_checks", { project, library }).then((result) => {
+    invoke<Finding[]>("run_checks", { project: calc, library }).then((result) => {
       if (!cancelled) setFindings(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [project, library]);
+  }, [calc, library]);
 
   // Undo/Redo por teclado, apuntando al documento de la pantalla activa (el
   // proyecto en Topology/Connectors/Wires/Costs, la biblioteca en Library).
@@ -342,7 +353,7 @@ export default function App() {
           {section === "Print" && <Impresion project={project} library={library} />}
         </div>
 
-        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} />}
+        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />}
       </div>
 
       <div className="status-bar">
@@ -352,10 +363,23 @@ export default function App() {
         {appNotice && (
           <button className="status-notice" onClick={() => setAppNotice("")} title="Click to dismiss">{appNotice}</button>
         )}
-        <span title={projectStatus.unsaved ? "Unsaved changes (Topology → Save)" : undefined}>
-          {project ? [project.project.name, project.project.harness_code].filter(Boolean).join(" · ") : "No project loaded"}
-          {projectStatus.unsaved && " •"}
-        </span>
+        {project ? (
+          // Clic: los datos del arnés (nombre, código, márgenes) en el Inspector.
+          <button
+            className="status-project"
+            onClick={() => {
+              setSelection({ kind: "project", id: 0 });
+              setInspectorOpen(true);
+              if (section === "Library" || section === "Print") setSection("Topology");
+            }}
+            title={projectStatus.unsaved ? "Unsaved changes (Topology → Save) · click to edit the harness data" : "Click to edit the harness data"}
+          >
+            {[project.project.name, project.project.harness_code].filter(Boolean).join(" · ")}
+            {projectStatus.unsaved && " •"}
+          </button>
+        ) : (
+          <span>No project loaded</span>
+        )}
       </div>
     </main>
   );

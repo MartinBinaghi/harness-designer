@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSettled } from "./useBackedState";
 import type { ProjectData } from "./types";
 import { partLabel, type Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
@@ -48,21 +49,22 @@ export default function Impresion({ project, library }: Props) {
   const [data, setData] = useState<{ report: CostReport; nets: Map<number, number[]> } | null>(null);
 
   // Largos de corte y nets: los calcula el backend, igual que en Costs y el diagrama.
+  const calc = useSettled(project);
   useEffect(() => {
-    if (!project) return;
+    if (!calc) return;
     let cancelled = false;
     void (async () => {
-      const report = await invoke<CostReport>("compute_costs", { project, library });
+      const report = await invoke<CostReport>("compute_costs", { project: calc, library });
       // ponytail: un wire_net por cable (cada uno manda el proyecto entero); si con arneses grandes tarda, un comando que devuelva todas las nets juntas.
       const nets = await Promise.all(
-        project.wire_instances.map(async (w) => [w.id, await invoke<number[]>("wire_net", { project, wireId: w.id })] as const),
+        calc.wire_instances.map(async (w) => [w.id, await invoke<number[]>("wire_net", { project: calc, wireId: w.id })] as const),
       );
       if (!cancelled) setData({ report, nets: new Map(nets) });
     })();
     return () => {
       cancelled = true;
     };
-  }, [project, library]);
+  }, [calc, library]);
 
   // Distancia acumulada desde el conector principal (hoja de armado, plan 10.2).
   const mainNode = project?.connector_instances.find((c) => c.id === project.project.main_connector_instance_id)?.node_id;

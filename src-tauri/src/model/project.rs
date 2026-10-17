@@ -98,6 +98,9 @@ pub struct GroundPoint {
 pub struct SpliceInstance {
     pub id: i64,
     pub short_id: String,
+    /// Nombre para reconocerlo (ej. "Bobinas pin 2"), como el de las masas.
+    #[serde(default)]
+    pub name: String,
     pub library_part_id: i64,
     pub node_id: Option<i64>,
     pub segment_id: Option<i64>,
@@ -449,9 +452,10 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         })?
         .collect::<Result<Vec<_>>>()?;
 
-    let mut splice_instances_stmt = conn.prepare(
-        "SELECT id, short_id, library_part_id, node_id, segment_id, offset_from_end_mm, offset_from_node_id FROM splice_instances",
-    )?;
+    let splice_name = if crate::db::has_column(conn, "splice_instances", "name") { "name" } else { "''" };
+    let mut splice_instances_stmt = conn.prepare(&format!(
+        "SELECT id, short_id, library_part_id, node_id, segment_id, offset_from_end_mm, offset_from_node_id, {splice_name} FROM splice_instances",
+    ))?;
     let splice_instances = splice_instances_stmt
         .query_map([], |row| {
             Ok(SpliceInstance {
@@ -462,6 +466,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 segment_id: row.get(4)?,
                 offset_from_end_mm: row.get(5)?,
                 offset_from_node_id: row.get(6)?,
+                name: row.get(7)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -647,8 +652,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for s in &data.splice_instances {
         tx.execute(
-            "INSERT INTO splice_instances (id, short_id, library_part_id, node_id, segment_id, offset_from_end_mm, offset_from_node_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO splice_instances (id, short_id, library_part_id, node_id, segment_id, offset_from_end_mm, offset_from_node_id, name)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 s.id,
                 s.short_id,
@@ -657,6 +662,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
                 s.segment_id,
                 s.offset_from_end_mm,
                 s.offset_from_node_id,
+                s.name,
             ],
         )?;
     }
@@ -813,6 +819,7 @@ mod tests {
             splice_instances: vec![SpliceInstance {
                 id: 1,
                 short_id: "SP1".into(),
+                name: "Bobinas".into(),
                 library_part_id: 20,
                 node_id: None,
                 segment_id: Some(1),

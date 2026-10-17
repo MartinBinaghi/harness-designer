@@ -31,9 +31,14 @@ pub fn load(app: &AppHandle) -> Settings {
         .unwrap_or_default()
 }
 
+/// Se escribe a un temporal y se renombra: quien lo lea nunca ve un archivo a
+/// medio escribir (pasó: una lectura en paralelo lo tomó por vacío).
 pub fn save(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let text = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    std::fs::write(settings_file(app)?, text).map_err(|e| e.to_string())
+    let file = settings_file(app)?;
+    let tmp = file.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &file).map_err(|e| e.to_string())
 }
 
 /// La biblioteca por defecto en la carpeta de datos; la primera vez se copia

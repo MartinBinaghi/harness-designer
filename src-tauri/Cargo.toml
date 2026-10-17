@@ -1,6 +1,6 @@
 [package]
 name = "arneses"
-version = "0.1.0"
+version = "0.1.1"
 description = "Harness Designer: motorsport wiring harness design"
 authors = ["Martin Binaghi"]
 edition = "2021"

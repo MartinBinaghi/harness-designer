@@ -52,7 +52,7 @@ export default function Splices({ project, setProject, library, selection, onSel
   }
 
   const rows = {
-    splice: project.splice_instances.map((s) => ({ id: s.id, shortId: s.short_id, name: "", part: partLabel(library, s.library_part_id), where: where(project, s) })),
+    splice: project.splice_instances.map((s) => ({ id: s.id, shortId: s.short_id, name: s.name, part: partLabel(library, s.library_part_id), where: where(project, s) })),
     ground: project.ground_points.map((g) => ({ id: g.id, shortId: g.short_id, name: g.name, part: partLabel(library, g.terminal_library_part_id), where: where(project, g) })),
     component: project.component_instances.map((c) => ({ id: c.id, shortId: c.short_id, name: c.name, part: partLabel(library, c.library_part_id), where: where(project, c) })),
   };
@@ -67,7 +67,7 @@ export default function Splices({ project, setProject, library, selection, onSel
           {rows[kind].length > 0 && (
             <table>
               <thead>
-                <tr><th>ID</th>{kind !== "splice" && <th>Name</th>}<th>{kind === "ground" ? "Terminal" : "Part"}</th><th>Location</th><th>Wires</th><th /></tr>
+                <tr><th>ID</th><th>Name</th><th>{kind === "ground" ? "Terminal" : "Part"}</th><th>Location</th><th>Wires</th><th /></tr>
               </thead>
               <tbody>
                 {rows[kind].map((r) => {
@@ -79,7 +79,7 @@ export default function Splices({ project, setProject, library, selection, onSel
                       onClick={() => onSelect({ kind, id: r.id })}
                     >
                       <td><strong>{r.shortId}</strong></td>
-                      {kind !== "splice" && <td>{r.name}</td>}
+                      <td>{r.name}</td>
                       <td>{r.part}</td>
                       <td>{r.where}</td>
                       <td>{wires.map((w) => w.short_id).join(", ") || <span className="hint">none</span>}</td>

@@ -3,7 +3,24 @@
 //! camino, se calcula recorriendo el árbol (sin loops posibles por diseño).
 
 use crate::model::project::{ProjectData, Segment, WireEnd};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
+
+thread_local! {
+    /// Recorridos ya calculados mientras dura una pasada de cálculo (ver
+    /// `with_route_cache`): el proyecto no cambia en el medio, y sin esto cada
+    /// largo y cada diámetro rehace el recorrido de todos los cables.
+    static ROUTES: RefCell<Option<HashMap<i64, Option<Vec<i64>>>>> = const { RefCell::new(None) };
+}
+
+/// Corre `f` recordando los recorridos de cables que calcule. Solo para
+/// cálculos sobre un mismo proyecto que no cambia mientras corren.
+pub fn with_route_cache<T>(f: impl FnOnce() -> T) -> T {
+    ROUTES.with(|c| *c.borrow_mut() = Some(HashMap::new()));
+    let out = f();
+    ROUTES.with(|c| *c.borrow_mut() = None);
+    out
+}
 
 /// Punto donde dos o más cables pueden estar unidos: misma cavidad (varios
 /// cables en un contacto), mismo splice, misma masa o mismo componente.
@@ -139,6 +156,19 @@ fn wire_end_node(data: &ProjectData, end: &WireEnd) -> Option<i64> {
 /// splice o componente sin ubicación cargada) o si sus dos extremos no están
 /// en el mismo árbol.
 pub fn wire_route(data: &ProjectData, wire_id: i64) -> Option<Vec<i64>> {
+    if let Some(hit) = ROUTES.with(|c| c.borrow().as_ref().and_then(|m| m.get(&wire_id).cloned())) {
+        return hit;
+    }
+    let route = compute_wire_route(data, wire_id);
+    ROUTES.with(|c| {
+        if let Some(m) = c.borrow_mut().as_mut() {
+            m.insert(wire_id, route.clone());
+        }
+    });
+    route
+}
+
+fn compute_wire_route(data: &ProjectData, wire_id: i64) -> Option<Vec<i64>> {
     let wire = data.wire_instances.iter().find(|w| w.id == wire_id)?;
     let node_a = wire_end_node(data, &wire.end_a)?;
     let node_b = wire_end_node(data, &wire.end_b)?;
@@ -402,6 +432,7 @@ mod tests {
         data.splice_instances = vec![SpliceInstance {
             id: 1,
             short_id: "SP1".into(),
+            name: String::new(),
             library_part_id: 1,
             node_id: Some(2),
             segment_id: None,
