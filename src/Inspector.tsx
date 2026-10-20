@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useSettled } from "./useBackedState";
 import type { CostReport, WireCutLength } from "./costTypes";
 import { changeConnectorPart, nextId, patchItem, wireCategoryPatch } from "./projectEdit";
-import type { ComponentInstance, ConnectorInstance, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
+import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
 
 type Placed = Pick<SpliceInstance, "node_id" | "segment_id" | "offset_from_end_mm" | "offset_from_node_id">;
 import { choiceKey, CONNECTOR_VIEWS, connectorChoices, partLabel, type ConnectorChoice, type Library } from "./libraryTypes";
@@ -205,6 +205,30 @@ function WireLength({ project, library, wire }: { project: ProjectData; library:
   );
 }
 
+/** Diámetro del segmento (bundle y con coberturas) y el termo que sugiere el cálculo. */
+function SegmentDiameter({ project, library, segmentId }: { project: ProjectData; library: Library; segmentId: number }) {
+  const [info, setInfo] = useState<CostReport["segment_diameters"][number] | null | undefined>(undefined);
+  const calc = useSettled(project);
+  useEffect(() => {
+    let cancelled = false;
+    void invoke<CostReport>("compute_costs", { project: calc, library }).then((report) => {
+      if (!cancelled) setInfo(report.segment_diameters.find((d) => d.segment_id === segmentId) ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [calc, library, segmentId]);
+  if (info === undefined) return <span className="hint">…</span>;
+  if (info === null) return <span className="hint">No wires in this segment.</span>;
+  const suggested = info.covering_options.find((c) => c.fits);
+  return (
+    <div className="inspector-length">
+      <span>Bundle Ø {info.bundle_diameter_mm.toFixed(1)} mm · final Ø {info.final_diameter_mm.toFixed(1)} mm</span>
+      <span>Suggested heat-shrink: {suggested ? library.parts.find((p) => p.id === suggested.library_part_id)?.part_number ?? "—" : "none in library fits"}</span>
+    </div>
+  );
+}
+
 /** Dónde está un splice o componente: en un nodo, o sobre un segmento a X mm de uno de sus extremos (plan 4.2). */
 function LocationFields({ project, item, nodeOptions, set }: {
   project: ProjectData;
@@ -268,9 +292,11 @@ interface Props {
   library: Library;
   selection: Selection;
   onSelect: (s: Selection) => void;
+  /** Los problemas de Checks: se muestran los de lo seleccionado. */
+  findings: Finding[];
 }
 
-export default function Inspector({ project, setProject, library, selection, onSelect }: Props) {
+export default function Inspector({ project, setProject, library, selection, onSelect, findings }: Props) {
   if (!project || !selection) {
     return (
       <div className="inspector-panel">
@@ -415,6 +441,7 @@ export default function Inspector({ project, setProject, library, selection, onS
           <Field label="Length">
             <NumberInput value={seg.length_mm} min={1} unit="mm" onCommit={(v) => v !== null && set({ length_mm: v })} />
           </Field>
+          <Field label="Diameter"><SegmentDiameter project={project} library={library} segmentId={seg.id} /></Field>
           <Field label="Twist pitch">
             <NumberInput value={seg.twist_pitch_mm} nullable min={1} unit="mm" placeholder="project default" onCommit={(v) => set({ twist_pitch_mm: v })} />
           </Field>
@@ -603,10 +630,20 @@ export default function Inspector({ project, setProject, library, selection, onS
     );
   }
 
+  const issues = findings.filter((f) => f.target?.kind === selection.kind && f.target.id === selection.id);
   return (
     <div className="inspector-panel">
       <div className="inspector-header">{title}</div>
-      <div className="inspector-body">{fields}</div>
+      <div className="inspector-body">
+        {fields}
+        {issues.length > 0 && (
+          <ul className="findings inspector-findings">
+            {issues.map((f, i) => (
+              <li key={i} className={`finding finding-${f.severity}`}>{f.message}</li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

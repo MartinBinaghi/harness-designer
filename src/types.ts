@@ -17,6 +17,8 @@ export interface Project {
   cost_on_purchased: boolean;
   /** Repuesto por categoría de parte, en %; sin entrada = 0. */
   spare_pcts: Record<string, number>;
+  /** Largos de corte redondeados hacia arriba a este múltiplo (mm); null = sin redondeo. */
+  cut_round_mm: number | null;
 }
 
 export interface Node {

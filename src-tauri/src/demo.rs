@@ -52,6 +52,7 @@ pub fn sample_project() -> ProjectData {
             labor_rate_usd: 0.0,
             cost_on_purchased: false,
             spare_pcts: Default::default(),
+            cut_round_mm: None,
         },
         nodes: vec![
             Node {

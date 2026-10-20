@@ -135,8 +135,8 @@ export function AssemblySheet({ project, library, report, distances, toScale, ma
         return (
           <g key={n.id}>
             <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={4} fill="#fff" stroke="#000" strokeWidth={connectors.some((x) => x.id === main?.id) ? 3 : 1.5} strokeDasharray={connectors.some((x) => x.status === "pending") ? "6 4" : undefined} />
-            <text x={c.x - w / 2 + 8} y={c.y - h / 2 + 18} fontSize={14} fontWeight={700}>{title}</text>
-            {name && <text x={c.x - w / 2 + 8} y={c.y - h / 2 + 34} fontSize={11}>{clip(name, 26)}</text>}
+            <text x={c.x - w / 2 + 8} y={c.y - h / 2 + 18} fontSize={14} fontWeight={700}>{clip(name || title, 20)}</text>
+            {name && <text x={c.x - w / 2 + 8} y={c.y - h / 2 + 34} fontSize={11}>{clip(title, 26)}</text>}
             {tags.length > 0 && <text x={c.x - w / 2 + 8} y={c.y - h / 2 + 50} fontSize={10}>{clip(tags.join(" · "), 30)}</text>}
             {distance && <text x={c.x} y={c.y + h / 2 + 14} fontSize={11} textAnchor="middle" style={halo}>{distance}</text>}
           </g>

@@ -707,6 +707,20 @@ table select:focus {
   font-size: 0.85rem;
 }
 
+/* Nombre del conector o masa: lo principal del bloque. */
+.dg-title {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dg-name-id {
+  font-family: var(--font-mono);
+}
+
 .dg-name {
   font-size: 0.78rem;
   color: var(--text-muted);
@@ -866,7 +880,8 @@ table select:focus {
   border-color: var(--text-muted);
 }
 
-.dg-missing .dg-id {
+.dg-missing .dg-id,
+.dg-missing .dg-title {
   color: var(--text-muted);
 }
 
@@ -2009,12 +2024,6 @@ table.dg-pinout {
   margin: 0.5mm auto;
 }
 
-/* Más largo que una hoja: se corta donde caiga (si no, deja la hoja anterior vacía). */
-.pinout-block.pinout-long,
-.pinout-long tr {
-  break-inside: auto;
-}
-
 .pinout-view .connector-face figcaption {
   display: none;
 }
@@ -2625,4 +2634,66 @@ table.dev-pin-table {
   padding: 0 0.4rem 0.15rem;
   font-size: 0.72rem;
   color: var(--text-muted);
+}
+
+/* Inspector: problemas de lo seleccionado (los mismos de Checks). */
+.inspector-findings {
+  margin: 0.6rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.inspector-findings .finding {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.55rem;
+}
+
+/* Pestañas abiertas antes: montadas pero ocultas (también al imprimir). */
+.screen[hidden] {
+  display: none !important;
+}
+
+/* Hoja de pinout: conector pendiente, nota debajo del dibujo. */
+.pinout-pending-note {
+  margin-top: 1mm;
+  font-weight: 700;
+  font-size: 7pt;
+  text-transform: uppercase;
+}
+
+/* Hoja de armado por breakouts: listas de salidas de cada breakout (como la hoja a mano). */
+.assembly-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62mm, 1fr));
+  gap: 3mm 5mm;
+  margin-top: 4mm;
+  align-items: start;
+}
+
+.assembly-list {
+  break-inside: avoid;
+}
+
+.assembly-list h4 {
+  margin: 0 0 1mm;
+  font-size: 11pt;
+}
+
+.assembly-list h4 .assembly-muted {
+  font-size: 8pt;
+  font-weight: 400;
+}
+
+.sheet .assembly-list table {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 7.5pt;
+}
+
+.sheet .assembly-list td {
+  padding: 0.3mm 1mm;
+}
+
+.assembly-muted {
+  color: #555;
 }

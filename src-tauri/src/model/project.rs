@@ -26,6 +26,9 @@ pub struct Project {
     pub cost_on_purchased: bool,
     /// Repuesto por categoría de parte (`Part::category`), en %; sin entrada = 0 (plan 5.4).
     pub spare_pcts: BTreeMap<String, f64>,
+    /// Largos de corte redondeados hacia arriba a este múltiplo (mm); `None` = sin redondeo.
+    #[serde(default)]
+    pub cut_round_mm: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -189,6 +192,7 @@ impl ProjectData {
                 labor_rate_usd: 0.0,
                 cost_on_purchased: false,
                 spare_pcts: BTreeMap::new(),
+                cut_round_mm: None,
             },
             nodes: vec![],
             segments: vec![],
@@ -344,9 +348,10 @@ fn wire_end(
 }
 
 pub fn load(conn: &Connection) -> Result<ProjectData> {
+    let cut_round = if crate::db::has_column(conn, "project", "cut_round_mm") { "cut_round_mm" } else { "NULL" };
     let project = conn.query_row(
-        "SELECT name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts
-         FROM project WHERE id = 1",
+        &format!("SELECT name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, {cut_round}
+         FROM project WHERE id = 1"),
         [],
         |row| {
             Ok(Project {
@@ -364,6 +369,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 labor_rate_usd: row.get(11)?,
                 cost_on_purchased: row.get(12)?,
                 spare_pcts: serde_json::from_str(&row.get::<_, String>(13)?).unwrap_or_default(),
+                cut_round_mm: row.get(14)?,
             })
         },
     )?;
@@ -581,8 +587,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     let p = &data.project;
     tx.execute(
-        "INSERT INTO project (id, name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        "INSERT INTO project (id, name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             p.name,
             p.harness_code,
@@ -598,6 +604,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
             p.labor_rate_usd,
             p.cost_on_purchased,
             serde_json::to_string(&p.spare_pcts).expect("un mapa de números siempre se serializa"),
+            p.cut_round_mm,
         ],
     )?;
 
@@ -752,6 +759,7 @@ mod tests {
                 labor_rate_usd: 25.0,
                 cost_on_purchased: true,
                 spare_pcts: [("contact".to_string(), 10.0)].into(),
+                cut_round_mm: Some(5.0),
             },
             nodes: vec![
                 Node {

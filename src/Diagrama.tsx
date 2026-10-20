@@ -216,7 +216,8 @@ function HarnessNode({ data }: NodeProps<FlowNode<HarnessNodeData>>) {
       <CenterHandles />
       <div className="dg-block-head">
         {d.variant === "ground" && <GroundSymbol />}
-        <span className="dg-id">{d.title}</span>
+        {/* El nombre es lo que se lee en la mesa; el ID va debajo (Martin). */}
+        <span className={d.subtitle ? "dg-title" : "dg-id"}>{d.subtitle || d.title}</span>
         {d.gender && (
           <span className={`dg-gender dg-gender-${d.gender}`} title={d.gender === "M" ? "Male" : d.gender === "F" ? "Female" : "Gender unknown (no ConnectorDef in library)"}>
             {d.gender}
@@ -225,7 +226,7 @@ function HarnessNode({ data }: NodeProps<FlowNode<HarnessNodeData>>) {
         <span style={{ flex: 1 }} />
         <IssueDot issue={d.issue} />
       </div>
-      {d.subtitle && <div className="dg-name">{d.subtitle}</div>}
+      {d.subtitle && <div className="dg-name dg-name-id">{d.title}</div>}
       {d.distanceLabel && <div className="dg-distance">{d.distanceLabel}</div>}
       {(d.pending || d.missing || d.isMain || d.notes.length > 0) && (
         <div className="dg-tags">
@@ -373,6 +374,7 @@ export default function Diagrama({ project, setProject, library, findings, selec
   const [toScale, setToScale] = useState(false);
   // Tamaño real de cada nodo (lo mide React Flow), para trabajar sobre su centro.
   const sizes = useRef(new Map<string, { w: number; h: number }>());
+  const rootRef = useRef<HTMLDivElement>(null);
   const [sizeTick, setSizeTick] = useState(0);
   const flowNodesRef = useRef(flowNodes);
   flowNodesRef.current = flowNodes;
@@ -464,6 +466,7 @@ export default function Diagrama({ project, setProject, library, findings, selec
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (!project || !selection || (e.key !== "Delete" && e.key !== "Backspace")) return;
+      if (rootRef.current?.closest("[hidden]")) return; // pestaña oculta (otra a la vista)
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       let result: ProjectData | string | null = null;
@@ -726,7 +729,7 @@ export default function Diagrama({ project, setProject, library, findings, selec
   }
 
   return (
-    <div className="diagram-screen">
+    <div className="diagram-screen" ref={rootRef}>
       <div className="toolbar diagram-toolbar">
         <button onClick={addLooseNode} title="Add a loose connector end; then drag its '+' to draw a branch">+ Node</button>
         <button onClick={runAutoLayout} title="Rearrange the whole diagram automatically (can be undone)">

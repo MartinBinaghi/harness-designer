@@ -106,4 +106,13 @@ assert.equal(connectorFace(def("DTM", "male", [["1", "20"], ["X", "20"]]), mil),
   assert.deepEqual([mt.shape, mt.latch], ["rect", "top"]);
 }
 
+// DTM 3 vías (Martin): en la cara de la hembra la 3 va a la izquierda; el macho, al revés.
+{
+  const s3 = connectorFace(def("DTM", "female", ways(3)), mil)!;
+  const p3 = connectorFace(def("DTM", "male", ways(3)), mil)!;
+  assert.ok(at(s3, "3").x < at(s3, "2").x && at(s3, "2").x < at(s3, "1").x);
+  assert.ok(at(p3, "1").x < at(p3, "3").x);
+  assert.equal(s3.numbering, "datasheet");
+}
+
 console.log("connector face: ok");

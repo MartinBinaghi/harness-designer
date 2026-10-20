@@ -5,7 +5,7 @@
  * sin React, para chequearlas con `node tools/check_sheets.ts`.
  */
 import type { CoveringCut, SegmentDiameterInfo, WireCutLength } from "./costTypes";
-import { devicePinName, type Library } from "./libraryTypes.ts";
+import { devicePinName, partLabel, type Library } from "./libraryTypes.ts";
 import { endLabel } from "./projectEdit.ts";
 import type { ProjectData, WireEnd, WireInstance } from "./types";
 
@@ -281,16 +281,98 @@ export function connectorHeatShrink(project: ProjectData, library: Library, conn
   if (!connector) return [];
   const notes = project.segments
     .filter((seg) => seg.node_a_id === connector.node_id || seg.node_b_id === connector.node_id)
-    .map((seg) => {
-      const supplied = (partId: number | null) => library.covering_defs.find((c) => c.part_id === partId)?.supplied_diameter_mm;
-      const info = diameters.find((d) => d.segment_id === seg.id);
-      const assigned = supplied(seg.covering_library_part_id);
-      if (assigned !== undefined) return heatShrinkSize(assigned);
-      const suggested = info?.covering_options.find((o) => o.fits);
-      if (suggested) return `${heatShrinkSize(suggested.supplied_diameter_mm)} (suggested)`;
-      return info ? `none in library fits · bundle Ø ${info.final_diameter_mm.toFixed(1)} mm` : null;
-    });
+    .map((seg) => segmentHeatShrink(project, library, seg.id, diameters));
   return [...new Set(notes.filter((n): n is string => n !== null))];
+}
+
+/** Termo de un tramo: el asignado, o el sugerido por el cálculo; sin ninguno que sirva, el diámetro del mazo. */
+export function segmentHeatShrink(project: ProjectData, library: Library, segmentId: number, diameters: SegmentDiameterInfo[]): string | null {
+  const seg = project.segments.find((s) => s.id === segmentId);
+  const assigned = library.covering_defs.find((c) => c.part_id === seg?.covering_library_part_id)?.supplied_diameter_mm;
+  if (assigned !== undefined) return heatShrinkSize(assigned);
+  const info = diameters.find((d) => d.segment_id === segmentId);
+  const suggested = info?.covering_options.find((o) => o.fits);
+  if (suggested) return `${heatShrinkSize(suggested.supplied_diameter_mm)} (suggested)`;
+  return info ? `none in library fits · bundle Ø ${info.final_diameter_mm.toFixed(1)} mm` : null;
+}
+
+/** Una salida de un breakout en la hoja de armado: un conector (o masa) o el tramo a otro breakout. */
+export interface AssemblyOutlet {
+  nodeId: number;
+  /** "X2", "G1"; vacío si es otro breakout. */
+  id: string;
+  name: string;
+  /** Número de parte del conector o terminal. */
+  part: string;
+  lengthMm: number;
+  hs: string | null;
+  /** Número del breakout al que lleva, si no termina en un conector. */
+  branch: number | null;
+}
+
+export interface AssemblyBranch {
+  /** 0 = el conector principal; 1, 2… los breakouts. */
+  num: number;
+  nodeId: number;
+  parentNum: number | null;
+  inLengthMm: number;
+  inHs: string | null;
+  outlets: AssemblyOutlet[];
+}
+
+/**
+ * Esqueleto del arnés para la hoja de armado, como la hoja a mano del taller:
+ * el conector principal (0) y los breakouts numerados, cada uno con sus salidas
+ * (largo, conector y termo de cada tramo). Se numera recorriendo desde el
+ * principal; en cada breakout, la rama más grande se numera última, así el
+ * tronco queda 1, 2, 3… y las ramas laterales después. Las salidas van en el
+ * orden del diagrama (de arriba abajo).
+ */
+export function assemblyBranches(project: ProjectData, library: Library, diameters: SegmentDiameterInfo[]): AssemblyBranch[] {
+  const main = project.connector_instances.find((c) => c.id === project.project.main_connector_instance_id);
+  const root = main?.node_id ?? project.connector_instances[0]?.node_id ?? project.nodes[0]?.id;
+  if (root === undefined) return [];
+  const links = (n: number) => project.segments.filter((s) => s.node_a_id === n || s.node_b_id === n).map((s) => ({ seg: s, to: s.node_a_id === n ? s.node_b_id : s.node_a_id }));
+  const size = (n: number, from: number): number => 1 + links(n).filter((l) => l.to !== from).reduce((t, l) => t + size(l.to, n), 0);
+  const y = (n: number) => project.nodes.find((x) => x.id === n)?.diagram_y ?? 0;
+  const branches: AssemblyBranch[] = [];
+  const visit = (node: number, from: number | null, parentNum: number | null, inSeg: { length_mm: number; id: number } | null) => {
+    const branch: AssemblyBranch = {
+      num: branches.length,
+      nodeId: node,
+      parentNum,
+      inLengthMm: inSeg?.length_mm ?? 0,
+      inHs: inSeg ? segmentHeatShrink(project, library, inSeg.id, diameters) : null,
+      outlets: [],
+    };
+    branches.push(branch);
+    const out = links(node).filter((l) => l.to !== from);
+    const isLeaf = (l: { to: number }) => links(l.to).length <= 1;
+    // Primero se numeran las ramas chicas; la más grande (el tronco) al final.
+    const sub = out.filter((l) => !isLeaf(l)).sort((a, b) => size(a.to, node) - size(b.to, node));
+    const nums = new Map<number, number>();
+    for (const l of sub) {
+      nums.set(l.to, branches.length);
+      visit(l.to, node, branch.num, l.seg);
+    }
+    branch.outlets = out
+      .sort((a, b) => y(a.to) - y(b.to))
+      .map((l) => {
+        const connectors = project.connector_instances.filter((c) => c.node_id === l.to);
+        const ground = project.ground_points.find((g) => g.node_id === l.to);
+        return {
+          nodeId: l.to,
+          id: connectors.map((c) => c.short_id).join(" / ") || ground?.short_id || "",
+          name: connectors.map((c) => c.name).filter(Boolean).join(" / ") || ground?.name || (isLeaf(l) ? nodeName(project, l.to) : ""),
+          part: connectors.map((c) => partLabel(library, c.library_part_id)).join(" / ") || (ground ? partLabel(library, ground.terminal_library_part_id) : ""),
+          lengthMm: l.seg.length_mm,
+          hs: segmentHeatShrink(project, library, l.seg.id, diameters),
+          branch: nums.get(l.to) ?? null,
+        };
+      });
+  };
+  visit(root, null, null, null);
+  return branches;
 }
 
 /** Metros a cortar de cada tipo de cable (plan 8.1, totales por WireDef). */
@@ -307,15 +389,85 @@ export function wireTotals(rows: CutRow[]): WireTotal[] {
 
 const isCavity = (end: WireEnd, cavityId: number) => end.kind === "cavity" && end.cavity_assignment_id === cavityId;
 
+/** Nodo donde está un extremo de cable (null: sin lugar en la topología, o un componente sobre un segmento). */
+function endNode(project: ProjectData, end: WireEnd): number | null {
+  if (end.kind === "cavity") {
+    const c = project.connector_instances.find((x) => x.cavities.some((cav) => cav.id === end.cavity_assignment_id));
+    return c?.node_id ?? null;
+  }
+  if (end.kind === "ground") return project.ground_points.find((g) => g.id === end.ground_point_id)?.node_id ?? null;
+  if (end.kind === "splice") return project.splice_instances.find((s) => s.id === end.splice_id)?.node_id ?? null;
+  return project.component_instances.find((k) => k.id === end.component_instance_id)?.node_id ?? null;
+}
+
+/**
+ * Por qué rama llega cada nodo a un splice: "here" en el nodo del splice, y si
+ * no, el tramo por el que sale del splice hacia ese nodo (en un splice sobre un
+ * segmento, la punta "a" o "b"). Es un árbol: cada nodo tiene una sola rama.
+ */
+function spliceSides(project: ProjectData, spliceId: number): Map<number, string> {
+  const sides = new Map<number, string>();
+  const s = project.splice_instances.find((x) => x.id === spliceId);
+  if (!s) return sides;
+  const spread = (start: number, skipSegment: number, label: string) => {
+    const queue = [start];
+    sides.set(start, label);
+    while (queue.length) {
+      const n = queue.shift()!;
+      for (const seg of project.segments) {
+        if (seg.id === skipSegment || (seg.node_a_id !== n && seg.node_b_id !== n)) continue;
+        const next = seg.node_a_id === n ? seg.node_b_id : seg.node_a_id;
+        if (sides.has(next)) continue;
+        sides.set(next, label);
+        queue.push(next);
+      }
+    }
+  };
+  if (s.node_id != null) {
+    sides.set(s.node_id, "here");
+    for (const seg of project.segments) {
+      if (seg.node_a_id === s.node_id) spread(seg.node_b_id, seg.id, `s${seg.id}`);
+      else if (seg.node_b_id === s.node_id) spread(seg.node_a_id, seg.id, `s${seg.id}`);
+    }
+  } else {
+    const seg = project.segments.find((x) => x.id === s.segment_id);
+    if (seg) {
+      spread(seg.node_a_id, seg.id, "a");
+      spread(seg.node_b_id, seg.id, "b");
+    }
+  }
+  return sides;
+}
+
 /**
  * "Termina en" de un pin (plan 4.3): los otros extremos de su net que no son
  * uniones — pines de conector, masas, componentes —, y por qué splices pasa.
  * `netOf` devuelve los cables de la net de un cable (comando `wire_net`).
+ *
+ * Del otro lado de un splice solo cuenta lo que está del otro lado (Martin): no
+ * se muestran los pines que llegan al splice por la misma rama que este (desde
+ * una bobina no se ven las otras bobinas, sí los pines del conector de motor;
+ * desde el motor, todas las bobinas). Lo que está en el nodo del splice no
+ * comparte rama con nada. Si así no quedara ningún destino, se muestran todos.
  */
 export function terminatesAt(project: ProjectData, library: Library, cavityId: number, netOf: (wireId: number) => number[]): string {
   const here = project.wire_instances.filter((w) => isCavity(w.end_a, cavityId) || isCavity(w.end_b, cavityId));
   const netIds = new Set(here.flatMap((w) => [w.id, ...netOf(w.id)]));
+  const myNode = project.connector_instances.find((c) => c.cavities.some((cav) => cav.id === cavityId))?.node_id ?? null;
+  const mySplices = here
+    .flatMap((w) => [w.end_a, w.end_b])
+    .filter((e) => e.kind === "splice" && e.splice_id != null)
+    .map((e) => spliceSides(project, e.splice_id!));
+  const sameSide = (end: WireEnd) => {
+    const node = endNode(project, end);
+    if (myNode == null || node == null || mySplices.length === 0) return false;
+    return mySplices.every((sides) => {
+      const mine = sides.get(myNode);
+      return mine !== undefined && mine !== "here" && sides.get(node) === mine;
+    });
+  };
   const dests: string[] = [];
+  const hidden: string[] = [];
   const via: string[] = [];
   for (const wire of project.wire_instances.filter((w) => netIds.has(w.id))) {
     for (const end of [wire.end_a, wire.end_b]) {
@@ -328,10 +480,11 @@ export function terminatesAt(project: ProjectData, library: Library, cavityId: n
             : end.kind === "splice"
               ? spliceLabel(project, end.splice_id)
               : endLabel(project, end);
-      const list = end.kind === "splice" ? via : dests;
+      const list = end.kind === "splice" ? via : sameSide(end) ? hidden : dests;
       if (label !== "—" && !list.includes(label)) list.push(label);
     }
   }
+  if (dests.length === 0) dests.push(...hidden);
   if (dests.length === 0 && via.length === 0) return "—";
   return `${dests.join(", ") || "—"}${via.length ? ` (via ${via.join(", ")})` : ""}`;
 }
@@ -404,6 +557,32 @@ function cavityLabel(project: ProjectData, library: Library, cavityId: number | 
  * cables, sus funciones van juntas; sin cable, "n/c" y su referencia externa
  * (qué hay del otro lado) si la tiene.
  */
+/**
+ * Parte los renglones de un conector en tramos que entren en una hoja, para que
+ * un bloque largo (el de motor, 61 vías) repita nombre, conector y vista en cada
+ * hoja en vez de dejarlos solo en la primera. El alto es una estimación (un
+ * renglón por línea de "Termina en"): si se pasa, el tramo baja entero a la
+ * hoja siguiente.
+ */
+export function pageChunks<T extends { goesTo: string }>(rows: T[], pageMm: number, charsPerLine: number, firstPageMm = pageMm): T[][] {
+  // Medido en un PDF impreso: renglón de 4,9 mm, y 3,7 mm más por cada línea extra.
+  const rowMm = (r: T) => 4.9 + (Math.max(1, Math.ceil(r.goesTo.length / charsPerLine)) - 1) * 3.7;
+  const chunks: T[][] = [];
+  let current: T[] = [];
+  let used = 0;
+  for (const r of rows) {
+    if (current.length > 0 && used + rowMm(r) > (chunks.length === 0 ? firstPageMm : pageMm)) {
+      chunks.push(current);
+      current = [];
+      used = 0;
+    }
+    current.push(r);
+    used += rowMm(r);
+  }
+  if (current.length > 0 || chunks.length === 0) chunks.push(current);
+  return chunks;
+}
+
 export function pinoutRows(project: ProjectData, library: Library, connectorId: number, netOf: (wireId: number) => number[]): PinRow[] {
   const connector = project.connector_instances.find((c) => c.id === connectorId);
   if (!connector) return [];

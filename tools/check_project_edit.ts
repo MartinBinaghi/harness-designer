@@ -122,6 +122,7 @@ console.log("project edit: ok");
       { id: 2, short_id: "X9", name: "PDM30", device_connector_id: 3, cavities: [{ id: 91, cavity_id: "A6" }, { id: 92, cavity_id: "a6" }] },
     ],
     ground_points: [{ id: 1, short_id: "G1" }],
+    splice_instances: [{ id: 7, short_id: "SP7", name: "Coils pin 2" }],
     wire_instances: [],
     twist_groups: [],
   } as unknown as ProjectData;
@@ -131,6 +132,8 @@ console.log("project edit: ok");
   assert.equal(parseEnd(proj, lib, "x9:a6")?.cavity_assignment_id, 92); // la vía distingue mayúsculas
   assert.equal(parseEnd(proj, lib, "pdm30 out11")?.cavity_assignment_id, 91); // por nombre de pin del dispositivo
   assert.equal(parseEnd(proj, lib, "g1")?.ground_point_id, 1);
+  assert.equal(parseEnd(proj, lib, "SP7 · Coils pin 2")?.splice_id, 7); // splice elegido por su nombre
+  assert.equal(parseEnd(proj, lib, "sp7")?.splice_id, 7);
   assert.equal(parseEnd(proj, lib, "X9:B1"), null);
   // Pines en paralelo (mismo nombre en dos vías): "Goes to" lleva la vía para saber a cuál va.
   const par = { ...lib, device_defs: [{ part_id: 9, connectors: [{ id: 3, pins: [{ id: 1, cavity_id: "A6", name: "OUT1" }, { id: 2, cavity_id: "a6", name: "OUT1" }] }] }] } as unknown as Library;

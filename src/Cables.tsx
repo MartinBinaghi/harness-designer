@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { ProjectData, Selection, WireEnd, WireInstance } from "./types";
 import { partLabel, type Library } from "./libraryTypes";
 import { TrashIcon } from "./icons";
-import { cavityOptions, componentOptions, deleteWire, endLabel, groundOptions, nextId, spliceOptions, wireCategoryPatch } from "./projectEdit";
+import { cavityOptions, componentOptions, deleteWire, endChoices, endLabel, groundOptions, nextId, parseEnd, spliceOptions, wireCategoryPatch } from "./projectEdit";
+import { GoesToInput } from "./Conectores";
 
 /** A cavity end's parent connector, if any — used by the connector filter. */
 function cavityConnectorShortId(project: ProjectData, cavityAssignmentId: number | null): string | null {
@@ -72,6 +73,7 @@ export default function Cables({ project, setProject, library, selection, onSele
   const [search, setSearch] = useState("");
   const [connectorFilter, setConnectorFilter] = useState("");
   const [gaugeFilter, setGaugeFilter] = useState("");
+  const [notice, setNotice] = useState("");
 
   if (!project) {
     return <p>Open or load a project first (Topology tab).</p>;
@@ -141,8 +143,32 @@ export default function Cables({ project, setProject, library, selection, onSele
     return true;
   });
 
+  // Extremos por texto con autocompletado (X1:12, SP3, G1, PDM OUT11), una sola
+  // lista para toda la tabla: un desplegable con todas las vías en cada fila
+  // hacía lenta la pestaña (miles de opciones con un conector de 61 vías).
+  const listId = "wire-ends";
+  function endInput(wire: WireInstance, side: "end_a" | "end_b") {
+    const label = endLabel(project!, wire[side]).replace(/^—$/, "");
+    return (
+      <GoesToInput
+        key={`${wire.id}-${side}-${label}`}
+        list={listId}
+        initial={label}
+        onCommit={(text) => {
+          const end = text ? parseEnd(project!, library, text) : blankEnd();
+          if (!end) return setNotice(`"${text}" isn't a pin, splice, ground or component of this project.`);
+          setNotice("");
+          update(wire.id, { [side]: end });
+        }}
+      />
+    );
+  }
+
   return (
     <>
+      <datalist id={listId}>
+        {endChoices(project, library).map((ch) => <option key={ch.label} value={ch.label} />)}
+      </datalist>
       <div className="toolbar">
         <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search id, name, color, endpoint…" style={{ width: "16em" }} />
         <select value={connectorFilter} onChange={(e) => setConnectorFilter(e.currentTarget.value)}>
@@ -155,6 +181,7 @@ export default function Cables({ project, setProject, library, selection, onSele
         </select>
         <span className="status">{visibleWires.length} of {project.wire_instances.length} wires</span>
       </div>
+      {notice && <p className="diagram-notice">{notice}</p>}
 
       <table>
         <thead>
@@ -186,8 +213,8 @@ export default function Cables({ project, setProject, library, selection, onSele
                 </select>
               </td>
               <td><input value={wire.specific_name ?? ""} onChange={(e) => update(wire.id, { specific_name: e.currentTarget.value || null })} /></td>
-              <td><EndEditor end={wire.end_a} project={project} onChange={(end_a) => update(wire.id, { end_a })} /></td>
-              <td><EndEditor end={wire.end_b} project={project} onChange={(end_b) => update(wire.id, { end_b })} /></td>
+              <td>{endInput(wire, "end_a")}</td>
+              <td>{endInput(wire, "end_b")}</td>
               <td>
                 <button className="icon-button" onClick={() => remove(wire.id)} title="Delete wire" aria-label="Delete wire">
                   <TrashIcon />

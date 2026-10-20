@@ -440,9 +440,18 @@ pub fn wire_cut_length(
         length_with_twist_mm,
         margin_pct,
         twist_min_margin_pct: (worst_factor - 1.0) * 100.0,
-        cut_length_mm: length_with_twist_mm * (1.0 + margin_pct / 100.0),
+        cut_length_mm: round_up(length_with_twist_mm * (1.0 + margin_pct / 100.0), data.project.cut_round_mm),
         manual: false,
     })
+}
+
+/// Redondeo del largo de corte (opción del proyecto): siempre hacia arriba, para
+/// que ningún cable salga más corto. El largo puesto a mano no se redondea.
+fn round_up(mm: f64, step: Option<f64>) -> f64 {
+    match step {
+        Some(s) if s > 0.0 => (mm / s - 1e-9).ceil() * s,
+        _ => mm,
+    }
 }
 
 /// Lista de corte completa: un renglón por cable con recorrido resoluble.
@@ -970,6 +979,7 @@ mod tests {
                 labor_rate_usd: 0.0,
                 cost_on_purchased: false,
                 spare_pcts: Default::default(),
+                cut_round_mm: None,
             },
             nodes: vec![
                 Node {
@@ -1334,6 +1344,7 @@ mod tests {
             labor_rate_usd: 25.0,
             cost_on_purchased: false,
             spare_pcts: Default::default(),
+            cut_round_mm: None,
         };
         let bom = vec![BomRow {
             library_part_id: 1,
@@ -1670,5 +1681,13 @@ mod tests {
             compute_cost_report(&project, &library),
             with_cache(|| compute_cost_report(&project, &library))
         );
+    }
+
+    #[test]
+    fn cut_length_rounds_up_to_the_project_step() {
+        assert_eq!(round_up(1234.5, Some(10.0)), 1240.0);
+        assert_eq!(round_up(1240.0, Some(10.0)), 1240.0);
+        assert_eq!(round_up(1201.0, Some(50.0)), 1250.0);
+        assert_eq!(round_up(1234.5, None), 1234.5);
     }
 }

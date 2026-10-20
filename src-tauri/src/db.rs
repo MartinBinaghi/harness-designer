@@ -23,6 +23,9 @@ pub fn create_or_open_project(path: &str) -> rusqlite::Result<Connection> {
     if !has_column(&conn, "splice_instances", "name") {
         conn.execute_batch("ALTER TABLE splice_instances ADD COLUMN name TEXT NOT NULL DEFAULT ''")?;
     }
+    if !has_column(&conn, "project", "cut_round_mm") {
+        conn.execute_batch("ALTER TABLE project ADD COLUMN cut_round_mm REAL")?;
+    }
     Ok(conn)
 }
 

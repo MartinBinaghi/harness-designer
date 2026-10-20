@@ -423,7 +423,7 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
 }
 
 /** "Goes to": texto libre con autocompletado; se confirma con Enter o al salir. */
-function GoesToInput({ initial, list, onCommit }: { initial: string; list: string; onCommit: (text: string) => void }) {
+export function GoesToInput({ initial, list, onCommit }: { initial: string; list: string; onCommit: (text: string) => void }) {
   const [text, setText] = useState(initial);
   const commit = () => {
     if (text.trim() !== initial) onCommit(text.trim());

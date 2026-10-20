@@ -60,7 +60,7 @@ function deutschRearGrid(ways: number, triangle: boolean): { grid: Grid; checked
   if (ways === 3)
     return triangle
       ? { grid: [[0, 0], [0.5, 0.87], [1, 0]], checked: false }
-      : { grid: [[0, 0], [1, 0], [2, 0]], checked: false };
+      : { grid: [[2, 0], [1, 0], [0, 0]], checked: true }; // confirmado por Martin: hembra con la 3 a la izquierda
   if (ways === 4 || ways === 6) {
     // Dos columnas: baja por la izquierda, sube por la derecha.
     const left = Array.from({ length: half }, (_, i): [number, number] => [0, i]);
@@ -127,8 +127,8 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
     layout = { grid: Array.from({ length: ways }, (_, i): [number, number] => [i, 0]), checked: false };
   } else {
     layout = deutschRearGrid(ways, fam === "DT");
-    // Confirmados en planos/catálogo: DT 4/6/8/12 y DTM 4/6; el resto sigue el patrón.
-    if (layout && fam !== "DT" && !(fam === "DTM" && (ways === 4 || ways === 6))) layout.checked = false;
+    // Confirmados en planos/catálogo: DT 4/6/8/12 y DTM 4/6; DTM 3, por Martin; el resto sigue el patrón.
+    if (layout && fam !== "DT" && !(fam === "DTM" && (ways === 3 || ways === 4 || ways === 6))) layout.checked = false;
   }
   if (!layout) return null;
 

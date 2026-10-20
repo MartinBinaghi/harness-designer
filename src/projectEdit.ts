@@ -359,8 +359,17 @@ export function endChoices(project: ProjectData, library: Library): { label: str
       if (pin) out.push({ label: `${c.name || c.short_id} ${pin}${repeated ? ` (${cav.cavity_id})` : ""}`, end: cavityEnd(cav.id) });
     });
   }
-  for (const s of project.splice_instances) out.push({ label: s.short_id, end: { ...BLANK_END, kind: "splice", cavity_assignment_id: null, splice_id: s.id } });
-  for (const g of project.ground_points) out.push({ label: g.short_id, end: { ...BLANK_END, kind: "ground", cavity_assignment_id: null, ground_point_id: g.id } });
+  // Splices y masas también con su nombre: con muchos, nadie se acuerda cuál es SP7.
+  for (const s of project.splice_instances) {
+    const end: WireEnd = { ...BLANK_END, kind: "splice", cavity_assignment_id: null, splice_id: s.id };
+    out.push({ label: s.short_id, end });
+    if (s.name) out.push({ label: `${s.short_id} · ${s.name}`, end });
+  }
+  for (const g of project.ground_points) {
+    const end: WireEnd = { ...BLANK_END, kind: "ground", cavity_assignment_id: null, ground_point_id: g.id };
+    out.push({ label: g.short_id, end });
+    if (g.name) out.push({ label: `${g.short_id} · ${g.name}`, end });
+  }
   for (const k of project.component_instances) out.push({ label: k.short_id, end: { ...BLANK_END, kind: "component", cavity_assignment_id: null, component_instance_id: k.id } });
   return out;
 }

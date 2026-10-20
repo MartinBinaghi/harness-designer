@@ -1,6 +1,6 @@
 // Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: node tools/check_sheets.ts
 import assert from "node:assert/strict";
-import { colorWord, connectorHeatShrink, coveringRows, wireNets, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
+import { assemblyBranches, colorWord, connectorHeatShrink, coveringRows, pageChunks, wireNets, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
 import type { Library } from "../src/libraryTypes.ts";
 import type { ProjectData } from "../src/types.ts";
 
@@ -18,6 +18,7 @@ const project = {
     conn(3, "X3", "TPS", [cav(31, "1")]),
   ],
   splice_instances: [{ id: 1, short_id: "SP1" }],
+  segments: [],
   ground_points: [{ id: 1, short_id: "G1", name: "Chassis" }],
   component_instances: [],
   twist_groups: [{ id: 1, name: "twist I", wire_instance_ids: [2, 4] }],
@@ -138,6 +139,56 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual([...nets.get(1)!].sort(), [1, 2, 3]);
   assert.deepEqual(nets.get(4), [4]);
   assert.equal(terminatesAt(project, library, 11, (id) => nets.get(id)!), "X2:1 · MAP, X3:1 · TPS (via SP1)");
+}
+
+// Del otro lado del splice (Martin): SP1 en el nodo de X1; X2 y X3 llegan por la misma rama (S1).
+// Desde X2 solo se ve X1; desde X1, los dos.
+{
+  const tree = {
+    ...project,
+    connector_instances: project.connector_instances.map((c) => ({ ...c, node_id: c.id })),
+    splice_instances: [{ id: 1, short_id: "SP1", name: "", node_id: 1, segment_id: null }],
+    segments: [{ id: 1, node_a_id: 1, node_b_id: 4 }, { id: 2, node_a_id: 4, node_b_id: 2 }, { id: 3, node_a_id: 4, node_b_id: 3 }],
+  } as unknown as ProjectData;
+  const nets = wireNets(tree);
+  const netOf = (id: number) => nets.get(id)!;
+  assert.equal(terminatesAt(tree, library, 21, netOf), "X1:1 · ECU (via SP1)");
+  assert.equal(terminatesAt(tree, library, 11, netOf), "X2:1 · MAP, X3:1 · TPS (via SP1)");
+  // Si X3 llega por otra rama (directo al nodo del splice), desde X2 sí se ve.
+  const branched = { ...tree, segments: [{ id: 1, node_a_id: 1, node_b_id: 2 }, { id: 2, node_a_id: 1, node_b_id: 3 }] } as unknown as ProjectData;
+  assert.equal(terminatesAt(branched, library, 21, netOf), "X1:1 · ECU, X3:1 · TPS (via SP1)");
+}
+
+// Bloques largos de pinout: tramos que entran en una hoja; un renglón de varias líneas cuenta más.
+{
+  const rows = Array.from({ length: 61 }, (_, i) => ({ goesTo: i === 0 ? "x".repeat(110) : "X2:1" }));
+  const chunks = pageChunks(rows, 182, 52, 168);
+  assert.equal(chunks.flat().length, 61);
+  // 1.ª hoja (168 mm, con el título): el renglón de 3 líneas (12,3 mm) + 31 de 4,9 mm; el resto en la 2.ª.
+  assert.deepEqual(chunks.map((c) => c.length), [32, 29]);
+  assert.deepEqual(pageChunks([], 172, 55), [[]]);
+}
+
+// Hoja de armado por breakouts: X1 (nodo 1) → 1000 → B (5) → X2 y otro B (6) → X3, G1.
+// La rama más grande se numera última; las salidas, de arriba abajo en el diagrama.
+{
+  const tree = {
+    ...project,
+    nodes: [1, 2, 3, 5, 6, 7].map((id) => ({ id, kind: "breakout", diagram_y: id === 3 ? 10 : id })),
+    segments: [
+      { id: 1, node_a_id: 1, node_b_id: 5, length_mm: 1000 },
+      { id: 2, node_a_id: 5, node_b_id: 2, length_mm: 400 },
+      { id: 3, node_a_id: 5, node_b_id: 6, length_mm: 290 },
+      { id: 4, node_a_id: 6, node_b_id: 3, length_mm: 200 },
+      { id: 5, node_a_id: 6, node_b_id: 7, length_mm: 150 },
+    ],
+    ground_points: [{ id: 1, short_id: "G1", name: "Chassis", terminal_library_part_id: null, node_id: 7 }],
+  } as unknown as ProjectData;
+  const b = assemblyBranches(tree, { ...library, covering_defs: [] } as Library, []);
+  assert.deepEqual(b.map((x) => [x.num, x.nodeId, x.parentNum, x.inLengthMm]), [[0, 1, null, 0], [1, 5, 0, 1000], [2, 6, 1, 290]]);
+  assert.deepEqual(b[0].outlets.map((o) => [o.branch, o.lengthMm]), [[1, 1000]]);
+  assert.deepEqual(b[1].outlets.map((o) => [o.id, o.name, o.branch]), [["X2", "MAP", null], ["", "", 2]]);
+  assert.deepEqual(b[2].outlets.map((o) => o.id), ["G1", "X3"]); // G1 (y 7) arriba de X3 (y 10)
 }
 
 console.log("sheets: ok");

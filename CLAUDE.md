@@ -190,7 +190,7 @@ Cada tipo de parte extiende `Part`:
 
 - **Recorrido de cada cable**: como la topología es un árbol, entre dos nodos hay un único camino; se calcula automáticamente.
 - **Nets**: se arman recorriendo la conectividad (cable → splice → cable…, cables que comparten cavidad, componentes). Se detienen en conectores de interconexión y referencias externas.
-- **"Termina en"** de cada pin: destino final, aunque haya splices en el medio (ej. "X9 C185 · 5V · pin 28 (vía SP2)").
+- **"Termina en"** de cada pin: destino final, aunque haya splices en el medio (ej. "X9 C185 · 5V · pin 28 (vía SP2)"). Del otro lado de un splice solo se muestra lo que está **del otro lado**: se ocultan los pines que llegan al splice por la misma rama de la topología que el pin consultado (desde una bobina no se ven las otras bobinas, solo los pines del conector de motor; desde el motor se ven todas). Lo que está en el nodo del splice se ve siempre; si no quedara ningún destino, se muestran todos.
 - **Cables por segmento**: base para diámetro, trenzado, concéntrico y consulta inversa.
 - **Largo de corte** de cada cable (ver 5.1).
 - **Diámetro estimado del bundle** por segmento.
@@ -208,6 +208,8 @@ largo_de_corte     = largo_con_trenzado × (1 + margen_de_seguridad)
 ```
 
 Si el cable tiene **largo de corte a mano**, ese es el largo de corte (no se aplica margen).
+
+**Redondeo** (opcional, por proyecto; se elige en Print → Cut list): el largo de corte se redondea **hacia arriba** al múltiplo elegido (5, 10, 50 o 100 mm), para que ningún cable salga corto. El largo a mano no se redondea.
 
 **Margen de seguridad** — tres niveles, gana el más específico:
 1. Margen manual del cable
@@ -305,17 +307,19 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 - **Área central**: tabla de la sección elegida
 - **Panel derecho (inspector)**: detalle de lo seleccionado en cualquier pantalla (acá vive la consulta de pin)
 - **Barra inferior**: contador de errores/advertencias siempre visible
+- Cada pestaña **recuerda dónde estaba** (scroll, conector elegido, zoom del diagrama…): al salir queda abierta pero oculta y congelada, y al volver se pone al día con el proyecto.
 
 ### 7.3 Pantallas
 - **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Dispositivos: lista + ficha; cada conector del dispositivo (A, B…) con su carcasa del arnés y **todas sus vías listadas** para escribir nombre y función, la cara dibujada con el nombre de cada pin (clic en una vía va a su fila) y **pegado de la tabla del cliente** con elección de columnas y aviso de las filas que no corresponden a ninguna vía.
 - **Topología**: tabla de segmentos (segmento, nodo desde, nodo hasta, largo, paso de trenzado, coberturas) + vista de árbol en texto (ramas indentadas). Rechaza lazos.
-- **Conectores** (carga principal del arnés, conector por conector): lista de conectores a la izquierda (pines usados, pendientes) y, del elegido, sus datos (ID, nombre, pieza o conector de dispositivo, nodo, estado, terminación, interconexión) y su **pinout editable**: una fila por vía — Función · Categoría (color sugerido) · Goes to · Tipo de cable · Color · Largo. Escribir en un pin vacío crea el cable; "Goes to" acepta `X4:2`, `SP1`, `G1` o el nombre de pin de un dispositivo (`PDM30 OUT11`), con autocompletado. **Un pin puede tener varios cables** (sub-filas). Un cable es uno solo: aparece en el pinout de sus dos puntas. El largo sale del recorrido ("auto") o se pone a mano desde el Inspector ("manual"). Por vía también se carga la referencia externa (en conectores de interconexión) y se ve el nombre de pin si es el conector de un dispositivo. **Hoja de pinout con el mismo formato que las hojas actuales del taller** (pestaña Print): hoja apaisada, una tabla con un bloque por conector — Nombre · Pin · Función · Termina en (calculado) · Conector · Vista delantera (la vista lateral queda para más adelante) —, "n/c" en las vías sin cable, y "falta pinout y conector" en los pendientes. Calibre, color y largo van en la lista de corte.
+- **Conectores** (carga principal del arnés, conector por conector): lista de conectores a la izquierda (pines usados, pendientes) y, del elegido, sus datos (ID, nombre, pieza o conector de dispositivo, nodo, estado, terminación, interconexión) y su **pinout editable**: una fila por vía — Función · Categoría (color sugerido) · Goes to · Tipo de cable · Color · Largo. Escribir en un pin vacío crea el cable; "Goes to" acepta `X4:2`, `SP1`, `G1` o el nombre de pin de un dispositivo (`PDM30 OUT11`), con autocompletado; los splices y masas también por su nombre (`SP1 · Bobinas pin 2`: se busca escribiendo parte del nombre). **Un pin puede tener varios cables** (sub-filas). Un cable es uno solo: aparece en el pinout de sus dos puntas. El largo sale del recorrido ("auto") o se pone a mano desde el Inspector ("manual"). Por vía también se carga la referencia externa (en conectores de interconexión) y se ve el nombre de pin si es el conector de un dispositivo. **Hoja de pinout con el mismo formato que las hojas actuales del taller** (pestaña Print): hoja apaisada, una tabla con un bloque por conector — Nombre · Pin · Función · Termina en (calculado) · Conector · Vista delantera (la vista lateral queda para más adelante) —, "n/c" en las vías sin cable, y "falta pinout y conector" en los pendientes (debajo del dibujo, si la pieza ya está elegida). Un conector que no entra en una hoja (el de motor, 61 vías) se parte en tramos de una hoja cada uno, y cada tramo repite nombre ("X1 (cont.)"), conector y vista, centrados. Calibre, color y largo van en la lista de corte.
 - **Cables (wire list / TO-FROM)**: lista global (la carga principal es por conector, ver Conectores); tabla editable estilo planilla (ID, desde, hasta, tipo de señal, nombre, WireDef, color, recorrido calculado, largo con trenzado, margen, largo de corte). Extremos por texto con autocompletado: `X1:12`, `SP3`, `G1`, o por nombre de pin de dispositivo (`PDM OUT11`).
 - **Splices**: lista con tipo, ubicación y cables que une. Incluye masas y componentes. Acá se crean (con el próximo ID y la primera parte de la biblioteca de su tipo) y se borran (sus cables quedan con ese extremo vacío); el resto se edita en el Inspector.
 - **Inspector**: muestra **y edita** lo seleccionado (el arnés, nodo, segmento, conector, masa, splice, componente, cable) con los mismos campos que las tablas; como edita el mismo proyecto, el resto de las vistas se actualiza solo. Las referencias externas de las vías se editan en la pantalla de Conectores.
   - cable seleccionado → recorrido por segmentos con sus largos, largo con trenzado + margen = largo de corte, **largo a mano**, grupo de trenzado.
   - pin seleccionado → función, cable(s), extremo opuesto, recorrido por segmentos, **net completa**, referencia externa si sale del arnés. Todo clickeable para navegar.
-  - segmento seleccionado → cables que pasan, largo, diámetro estimado (etapa 4).
+  - segmento seleccionado → cables que pasan, largo, diámetro estimado (bundle y final con coberturas) y termo sugerido.
+  - al final, **los errores y advertencias de Checks de lo seleccionado** (conector, segmento, splice, masa, cable, nodo).
 - **Chequeos**: lista de errores/advertencias; click lleva al elemento. Las filas con problemas se marcan en su tabla.
 
 ### 7.4 Etiquetas
@@ -394,13 +398,16 @@ El gráfico es **otra vista de los mismos datos**. Editar en el gráfico actuali
 El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho a mano). Este diagrama lo reemplaza.
 - **No escalado por defecto**: esquema libre, acomodado a gusto (estilo el croquis de la hoja WRC).
 - **Opción "a escala"**: cada segmento se dibuja proporcional a su largo real; al mover un nodo gira alrededor del nodo del que cuelga sin cambiar la distancia, y su rama lo acompaña.
-- Conectores como bloques con ID, nombre y **símbolo según género**.
+- Conectores como bloques con **nombre** (lo principal: es lo que se lee en la mesa), debajo el ID, y **símbolo según género**. Sin nombre, el ID arriba. Igual en la hoja de armado impresa.
 - Breakouts como nodos chicos, con indicador de molde en T / termo con adhesivo.
 - Segmentos como líneas con **largo** y diámetro estimado.
 - Splices (en su posición sobre el segmento), masas y componentes con símbolo propio.
 - **Distancia acumulada opcional** desde el conector principal hasta cada breakout, conector y masa (ej. "a 450 mm de X1"), para marcar en la mesa desde un único punto de referencia.
 - Conectores pendientes y elementos con errores, resaltados.
-- Imprimible en A4/A3 ajustado a la hoja (hoja de armado, etapa 6).
+- Imprimible (hoja de armado, etapa 6). En una sola A4 el dibujo entero no se lee, así que por defecto se imprime **como la hoja a mano del taller**:
+  - **Vista general**: el esqueleto del arnés — conector principal y breakouts numerados (1, 2, 3…; en cada breakout la rama más grande se numera última, así el tronco queda en línea y las laterales bajan), con el largo y el termo de cada tramo y la distancia desde el principal — y, debajo, **una lista por breakout** con cada salida: nombre, ID, largo, número de parte del conector y termo.
+  - **Una hoja por breakout**: el tramo que llega ("from 1 · 290 mm") y sus salidas en abanico, con letra de mesa: largo y termo de cada tramo, y en cada conector nombre, ID, pieza, terminación y distancia desde el principal. Las salidas a otro breakout remiten a su hoja.
+  - Opción "Whole harness on one sheet": el dibujo entero en una hoja (A3 o más grande), con la opción a escala.
 
 ### 10.3 Vista esquemática pin a pin
 - **Generada automáticamente** desde los datos (no se dibuja a mano): conectores como bloques con su lista de pines, líneas pin a pin, splices como puntos de unión.

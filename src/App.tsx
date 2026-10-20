@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -32,6 +32,9 @@ type Section = (typeof SECTIONS)[number];
 
 export default function App() {
   const [section, setSection] = useState<Section>("Topology");
+  // Pestañas ya abiertas: quedan montadas (ocultas) para volver a donde estaban.
+  const [visited, setVisited] = useState<Set<Section>>(() => new Set([section]));
+  useEffect(() => setVisited((v) => (v.has(section) ? v : new Set(v).add(section))), [section]);
 
   const [selection, setSelection] = useState<Selection>(null);
   const [projectPath, setProjectPath] = useState("");
@@ -295,8 +298,7 @@ export default function App() {
       <div className="shell">
         {showPanels && treeOpen && <Tree project={project} selection={selection} onSelect={setSelection} />}
 
-        <div className={`screen${section === "Diagram" || section === "Schematic" ? " screen-canvas" : ""}`}>
-          {section === "Library" && (
+          <Pane name="Library" active={section === "Library"} visited={visited}>
             <LibraryScreen
               library={library}
               setLibrary={setLibrary}
@@ -307,8 +309,8 @@ export default function App() {
               setFilePath={setLibraryPath}
               project={project}
             />
-          )}
-          {section === "Topology" && (
+          </Pane>
+          <Pane name="Topology" active={section === "Topology"} visited={visited}>
             <Topologia
               project={project}
               setProject={setProject}
@@ -323,8 +325,8 @@ export default function App() {
               selection={selection}
               onSelect={setSelection}
             />
-          )}
-          {section === "Diagram" && (
+          </Pane>
+          <Pane name="Diagram" active={section === "Diagram"} visited={visited} canvas>
             <Diagrama
               project={project}
               setProject={setProject}
@@ -333,27 +335,29 @@ export default function App() {
               selection={selection}
               onSelect={setSelection}
             />
-          )}
-          {section === "Schematic" && (
+          </Pane>
+          <Pane name="Schematic" active={section === "Schematic"} visited={visited} canvas>
             <Esquema project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
-          )}
-          {section === "Connectors" && (
+          </Pane>
+          <Pane name="Connectors" active={section === "Connectors"} visited={visited}>
             <Conectores project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
-          )}
-          {section === "Wires" && (
+          </Pane>
+          <Pane name="Wires" active={section === "Wires"} visited={visited}>
             <Cables project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
-          )}
-          {section === "Splices" && (
+          </Pane>
+          <Pane name="Splices" active={section === "Splices"} visited={visited}>
             <Splices project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
-          )}
-          {section === "Checks" && <Checks project={project} findings={findings} selection={selection} onSelect={setSelection} />}
-          {section === "Costs" && (
+          </Pane>
+          <Pane name="Checks" active={section === "Checks"} visited={visited}>
+            <Checks project={project} findings={findings} selection={selection} onSelect={setSelection} />
+          </Pane>
+          <Pane name="Costs" active={section === "Costs"} visited={visited}>
             <Costs project={project} library={library} selection={selection} onSelect={setSelection} />
-          )}
-          {section === "Print" && <Impresion project={project} library={library} />}
-        </div>
-
-        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />}
+          </Pane>
+          <Pane name="Print" active={section === "Print"} visited={visited}>
+            <Impresion project={project} setProject={setProject} library={library} />
+          </Pane>
+        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} />}
       </div>
 
       <div className="status-bar">
@@ -384,3 +388,20 @@ export default function App() {
     </main>
   );
 }
+
+/**
+ * Una pestaña. Al salir queda montada pero oculta, y sin re-renderizar mientras
+ * no se ve (el memo la congela): al volver sigue donde estaba (scroll, conector
+ * elegido, zoom del diagrama…) y se pone al día con el proyecto.
+ */
+const Pane = memo(
+  function Pane({ name, active, visited, canvas, children }: { name: Section; active: boolean; visited: Set<Section>; canvas?: boolean; children: ReactNode }) {
+    if (!active && !visited.has(name)) return null;
+    return (
+      <div className={`screen${canvas ? " screen-canvas" : ""}`} hidden={!active}>
+        {children}
+      </div>
+    );
+  },
+  (prev, next) => !prev.active && !next.active && prev.visited.has(prev.name) === next.visited.has(next.name),
+);

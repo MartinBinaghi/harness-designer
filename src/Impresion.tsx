@@ -4,9 +4,10 @@ import { useSettled } from "./useBackedState";
 import type { ProjectData } from "./types";
 import { partLabel, type Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
-import { connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
+import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
 import { ConnectorFaceView } from "./ConnectorFaceView";
 import { AssemblySheet } from "./AssemblySheet";
+import { AssemblyOverview, BranchFan, branchesWithSheet } from "./AssemblyBranches";
 import { usedCavities } from "./Inspector";
 import { fileName, pickFileToSave } from "./fileDialogs";
 
@@ -33,10 +34,20 @@ type Paper = keyof typeof PAPER_MM;
 
 interface Props {
   project: ProjectData | null;
+  setProject: (p: ProjectData) => void;
   library: Library;
 }
 
-export default function Impresion({ project, library }: Props) {
+/** Redondeo del largo de corte, siempre hacia arriba (se guarda en el proyecto). */
+const CUT_ROUNDING: [number | null, string][] = [
+  [null, "No rounding"],
+  [5, "Up to 5 mm"],
+  [10, "Up to 10 mm"],
+  [50, "Up to 50 mm"],
+  [100, "Up to 100 mm"],
+];
+
+export default function Impresion({ project, setProject, library }: Props) {
   const [doc, setDoc] = useState<Doc>("cut");
   const [sort, setSort] = useState<CutSort>("pin");
   const [paper, setPaper] = useState<Paper>("A4");
@@ -44,6 +55,8 @@ export default function Impresion({ project, library }: Props) {
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState("");
   const [toScale, setToScale] = useState(false);
+  // Por breakouts (vista general + una hoja por breakout, como la hoja a mano del taller) o todo el dibujo en una hoja.
+  const [assemblyLayout, setAssemblyLayout] = useState<"branches" | "whole">("branches");
   const [showDistances, setShowDistances] = useState(true);
   const [distances, setDistances] = useState<Record<string, number> | null>(null);
   const [data, setData] = useState<{ report: CostReport; nets: Map<number, number[]> } | null>(null);
@@ -175,10 +188,28 @@ export default function Impresion({ project, library }: Props) {
           {project.connector_instances
             .filter((c) => !skipped.has(c.id))
             .map((c, i) => (
-              <PinoutBlock key={c.id} first={i === 0} project={project} library={library} connectorId={c.id} netOf={netOf} />
+              <PinoutBlock key={c.id} first={i === 0} project={project} library={library} connectorId={c.id} netOf={netOf} pageMm={(landscape ? w : h) - 28} charsPerLine={landscape ? 60 : 42} />
             ))}
         </table>
       </section>
+    );
+  } else if (doc === "assembly" && assemblyLayout === "branches") {
+    const branches = assemblyBranches(project, library, data.report.segment_diameters);
+    // Alto de la hoja menos márgenes (10 mm × 2) y encabezado.
+    const pageMm = (landscape ? w : h) - 38;
+    sheets = (
+      <>
+        <section className="sheet" style={{ width: sheetWidth }}>
+          <SheetHeader project={project} title="Assembly · overview" />
+          <AssemblyOverview project={project} branches={branches} distances={distances} maxHeightMm={pageMm} />
+        </section>
+        {branchesWithSheet(branches).map((b) => (
+          <section key={b.num} className="sheet" style={{ width: sheetWidth }}>
+            <SheetHeader project={project} title={b.num === 0 ? "Assembly · main connector" : `Assembly · breakout ${b.num}`} />
+            <BranchFan project={project} branch={b} distances={distances} maxHeightMm={pageMm} />
+          </section>
+        ))}
+      </>
     );
   } else if (doc === "assembly") {
     sheets = (
@@ -243,13 +274,33 @@ export default function Impresion({ project, library }: Props) {
             </select>
           </label>
         )}
+        {doc === "cut" && project && (
+          <label className="print-field">
+            <span className="field-label">Round cut lengths</span>
+            <select
+              value={project.project.cut_round_mm ?? ""}
+              onChange={(e) => setProject({ ...project, project: { ...project.project, cut_round_mm: e.currentTarget.value ? Number(e.currentTarget.value) : null } })}
+              title="Always rounded up, so no wire comes out short. Lengths set by hand aren't rounded."
+            >
+              {CUT_ROUNDING.map(([mm, label]) => <option key={label} value={mm ?? ""}>{label}</option>)}
+            </select>
+          </label>
+        )}
 
         {doc === "assembly" && (
           <fieldset>
             <legend className="field-label">Drawing</legend>
-            <label className="print-check">
-              <input type="checkbox" checked={toScale} onChange={(e) => setToScale(e.currentTarget.checked)} /> To scale
+            <label className="print-field">
+              <select value={assemblyLayout} onChange={(e) => setAssemblyLayout(e.currentTarget.value as "branches" | "whole")}>
+                <option value="branches">Overview + one sheet per breakout</option>
+                <option value="whole">Whole harness on one sheet</option>
+              </select>
             </label>
+            {assemblyLayout === "whole" && (
+              <label className="print-check">
+                <input type="checkbox" checked={toScale} onChange={(e) => setToScale(e.currentTarget.checked)} /> To scale
+              </label>
+            )}
             <label className="print-check">
               <input type="checkbox" checked={showDistances} onChange={(e) => setShowDistances(e.currentTarget.checked)} disabled={mainNode === undefined} />
               Distance from the main connector
@@ -313,36 +364,59 @@ export default function Impresion({ project, library }: Props) {
 const GENDER_ES = { male: "macho", female: "hembra" } as const;
 
 /** Un conector en la hoja de pinout: nombre, conector y vista ocupan todo el alto del bloque. */
-function PinoutBlock({ first, project, library, connectorId, netOf }: {
+function PinoutBlock({ first, project, library, connectorId, netOf, pageMm, charsPerLine }: {
   first: boolean;
   project: ProjectData;
   library: Library;
   connectorId: number;
   netOf: (wireId: number) => number[];
+  /** Alto útil de una hoja y caracteres por línea de "Termina en", para partir bloques largos. */
+  pageMm: number;
+  charsPerLine: number;
+}) {
+  const c = project.connector_instances.find((x) => x.id === connectorId);
+  if (!c) return null;
+  // Un bloque que no entra en una hoja se parte en tramos, y cada uno repite
+  // nombre, conector y vista (Martin: en el PDF quedaban solo arriba de la primera).
+  return (
+    <>
+      {/* El primero de la hoja comparte la primera página con el título (~14 mm). */}
+      {pageChunks(pinoutRows(project, library, c.id, netOf), pageMm, charsPerLine, first ? pageMm - 14 : pageMm).map((rows, i) => (
+        <PinoutChunk key={i} first={first && i === 0} cont={i > 0} project={project} library={library} connectorId={connectorId} rows={rows} />
+      ))}
+    </>
+  );
+}
+
+function PinoutChunk({ first, cont, project, library, connectorId, rows }: {
+  first: boolean;
+  cont: boolean;
+  project: ProjectData;
+  library: Library;
+  connectorId: number;
+  rows: ReturnType<typeof pinoutRows>;
 }) {
   const c = project.connector_instances.find((x) => x.id === connectorId)!;
   const def = library.connector_defs.find((d) => d.part_id === c.library_part_id);
-  const rows = pinoutRows(project, library, c.id, netOf);
   const span = Math.max(rows.length, 1);
   // La vista ocupa el alto del bloque (~4,2 mm por renglón), sin estirar los renglones.
   const viewHeight = { "--view-h": `${Math.min(40, Math.max(12, span * 4.2))}mm` } as CSSProperties;
   // Sin vista lateral por ahora (decisión de Martin): solo la delantera.
-  const views =
-    c.status === "pending" ? (
-      <td rowSpan={span} className="pinout-view pinout-pending">Falta pinout y conector — se envía después</td>
-    ) : (
-      <td rowSpan={span} className="pinout-view" style={viewHeight}>
-        {def?.image_front ? (
-          <img src={def.image_front} alt={`${c.short_id} front view`} />
-        ) : (
-          def && <ConnectorFaceView def={def} used={usedCavities(project, c)} fixedSide="front" />
-        )}
-      </td>
-    );
+  // Un conector pendiente igual lleva su dibujo si se sabe la pieza; la nota va debajo.
+  const views = (
+    <td rowSpan={span} className={`pinout-view${c.status === "pending" ? " pinout-pending" : ""}`} style={viewHeight}>
+      {def?.image_front ? (
+        <img src={def.image_front} alt={`${c.short_id} front view`} />
+      ) : (
+        def && <ConnectorFaceView def={def} used={usedCavities(project, c)} fixedSide="front" />
+      )}
+      {c.status === "pending" && <div className="pinout-pending-note">Falta pinout y conector — se envía después</div>}
+    </td>
+  );
   const head = (
     <td rowSpan={span} className="pinout-name">
       {c.name || c.short_id}
-      <span className="pinout-id">{c.short_id}</span>
+      <span className="pinout-id">{c.short_id}{cont ? " (cont.)" : ""}</span>
     </td>
   );
   const connectorCell = (
@@ -356,8 +430,7 @@ function PinoutBlock({ first, project, library, connectorId, netOf }: {
       {!first && (
         <tbody aria-hidden="true" className="pinout-gap"><tr><td colSpan={6} /></tr></tbody>
       )}
-      {/* Un bloque que no entra en una hoja se corta entre hojas (App.css, .pinout-long). */}
-      <tbody className={span > 35 ? "pinout-block pinout-long" : "pinout-block"}>
+      <tbody className="pinout-block">
         {rows.length === 0 ? (
           <tr>{head}<td /><td /><td />{connectorCell}{views}</tr>
         ) : (

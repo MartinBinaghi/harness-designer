@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS project (
     -- materiales sobre lo comprado (packs completos) en vez de lo usado
     cost_on_purchased           INTEGER NOT NULL DEFAULT 0,
     -- repuesto por categoría de parte, JSON {"contact": 10, ...} (%)
-    spare_pcts                  TEXT NOT NULL DEFAULT '{}'
+    spare_pcts                  TEXT NOT NULL DEFAULT '{}',
+    -- largos de corte redondeados hacia arriba a este múltiplo (mm); NULL = sin redondeo
+    cut_round_mm                REAL
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
