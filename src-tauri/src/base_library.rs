@@ -116,38 +116,126 @@ const SUPERSEAL_10_SOCKETS: &[(&str, &str, &str)] = &[
 ];
 const SUPERSEAL_10_CAVITY_PLUG: &str = "4-1437284-3";
 
-/// Otras carcasas sueltas del lado del arnés (pedido de Martin, 2026-10-15),
-/// sin contacto ni tapón cargados todavía: (número de parte, fabricante,
-/// serie, género, tamaño de contacto, vías, descripción). Las VAG del arnés
-/// son macho (Martin).
-const OTHER_HOUSINGS: &[(&str, &str, &str, &str, &str, &[&str], &str)] = &[
-    (
-        "1J0 973 724",
-        "VAG",
-        "VAG",
-        "male",
-        "Mini Timer",
-        &["1", "2", "3", "4"],
-        "VAG 4-way ignition coil connector (Audi/VW coils)",
-    ),
-    (
-        "1J0 973 733",
-        "VAG",
-        "VAG",
-        "male",
-        "Micro Timer",
-        &["1", "2", "3", "4", "5", "6"],
-        "VAG 6-way connector, mates Bosch LSU 4.9 lambda sensor",
-    ),
-    (
-        "SMPW-K-F",
-        "Omega",
-        "Mini thermocouple K",
-        "female",
-        "K",
-        &["+", "-"],
-        "Miniature type K thermocouple socket (yellow); the wider blade is negative",
-    ),
+/// Otras carcasas sueltas del lado del arnés (pedidos de Martin, 2026-10-15
+/// y 2026-10-21), sin contraparte en la base. Las VAG del arnés son macho
+/// (Martin). Las que el taller nombra por su planilla (Mini Timer, "ORIGINAL")
+/// van con ese nombre hasta tener el número de parte real.
+struct Housing {
+    part_number: &'static str,
+    manufacturer: &'static str,
+    series: &'static str,
+    gender: &'static str,
+    contact_size: &'static str,
+    shell_size: Option<&'static str>,
+    suggested_termination: Option<&'static str>,
+    cavities: &'static [&'static str],
+    description: &'static str,
+    /// Contacto (número de parte, calibre mín., calibre máx.) y tapón, si se conocen.
+    contact: Option<(&'static str, &'static str, &'static str)>,
+    seal_plug: Option<&'static str>,
+}
+
+/// Vías del inserto 24-61 de MIL-DTL-26482 Serie 2 (mismas letras que el 25-61
+/// de MIL-STD-1560, confirmado con fotos del MS3476L24-61P).
+const MIL_61: &[&str] = &[
+    "A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "P", "R", "S", "T", "U", "V",
+    "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "m", "n", "p", "q",
+    "r", "s", "t", "u", "v", "w", "x", "y", "z", "AA", "BB", "CC", "DD", "EE", "FF", "GG", "HH",
+    "JJ", "KK", "LL", "MM", "NN", "PP",
+];
+
+const OTHER_HOUSINGS: &[Housing] = &[
+    Housing {
+        part_number: "1J0 973 724",
+        manufacturer: "VAG",
+        series: "VAG",
+        gender: "male",
+        contact_size: "Mini Timer",
+        shell_size: None,
+        suggested_termination: None,
+        cavities: &["1", "2", "3", "4"],
+        description: "VAG 4-way ignition coil connector (Audi/VW coils)",
+        contact: None,
+        seal_plug: None,
+    },
+    Housing {
+        part_number: "1J0 973 733",
+        manufacturer: "VAG",
+        series: "VAG",
+        gender: "male",
+        contact_size: "Micro Timer",
+        shell_size: None,
+        suggested_termination: None,
+        cavities: &["1", "2", "3", "4", "5", "6"],
+        description: "VAG 6-way connector, mates Bosch LSU 4.9 lambda sensor",
+        contact: None,
+        seal_plug: None,
+    },
+    Housing {
+        part_number: "SMPW-K-F",
+        manufacturer: "Omega",
+        series: "Mini thermocouple K",
+        gender: "female",
+        contact_size: "K",
+        shell_size: None,
+        suggested_termination: None,
+        cavities: &["+", "-"],
+        description: "Miniature type K thermocouple socket (yellow); the wider blade is negative",
+        contact: None,
+        seal_plug: None,
+    },
+    Housing {
+        part_number: "MS3476L24-61P",
+        manufacturer: "MIL-DTL-26482",
+        series: "MIL-DTL-26482 II",
+        gender: "male",
+        contact_size: "20",
+        shell_size: Some("24"),
+        suggested_termination: Some("boot"),
+        cavities: MIL_61,
+        description: "MIL-DTL-26482 Series 2 bayonet plug, shell 24, 61 × size 20 pin contacts",
+        contact: Some(("M39029/58-360", "24 AWG", "20 AWG")),
+        seal_plug: Some("MS27488-20"),
+    },
+    Housing {
+        part_number: "MINI TYMER 02W-F",
+        manufacturer: "—",
+        series: "Mini Timer",
+        gender: "female",
+        contact_size: "Mini Timer",
+        shell_size: None,
+        suggested_termination: None,
+        cavities: &["1", "2"],
+        description: "Mini Timer 2-way female (name as in the workshop sheet; real part number to confirm)",
+        contact: None,
+        seal_plug: None,
+    },
+    Housing {
+        part_number: "ORIGINAL 03W_F",
+        manufacturer: "—",
+        series: "Mini Timer",
+        gender: "female",
+        contact_size: "Mini Timer",
+        shell_size: None,
+        suggested_termination: None,
+        cavities: &["A", "B", "C"],
+        description: "3-way female, the sensor's original connector with Mini Timer terminals, A on the left (name as in the workshop sheet; part to confirm)",
+        contact: None,
+        seal_plug: None,
+    },
+    Housing {
+        part_number: "OJAL 16mm2 M6",
+        manufacturer: "—",
+        series: "Ring terminal",
+        gender: "male",
+        contact_size: "16 mm²",
+        shell_size: Some("M6"),
+        suggested_termination: Some("none"),
+        cavities: &["1"],
+        description: "Ring terminal (ojal) for 16 mm² wire, 6 mm hole (M6)",
+        contact: None,
+        seal_plug: None,
+    },
 ];
 
 /// M22759/32 (Raychem Spec 55, ETFE liviano, 150 °C, 600 V): calibre AWG y
@@ -384,39 +472,79 @@ pub fn base_library() -> Library {
                 .collect(),
         });
     }
-    for &(part_number, manufacturer, series, gender, contact_size, cavities, description) in
-        OTHER_HOUSINGS
-    {
+    for h in OTHER_HOUSINGS {
+        let contact_part_id = h.contact.map(|(pn, gauge_min, gauge_max)| {
+            let id = push_part(
+                &mut library,
+                pn.into(),
+                h.manufacturer,
+                format!(
+                    "{} size {} {} contact, {gauge_min}–{gauge_max} — {unverified}",
+                    h.series,
+                    h.contact_size,
+                    if h.gender == "male" { "pin" } else { "socket" }
+                ),
+                "contact",
+                "unit",
+            );
+            library.contact_defs.push(ContactDef {
+                part_id: id,
+                gender: h.gender.into(),
+                contact_size: h.contact_size.into(),
+                gauge_min: Some(gauge_min.into()),
+                gauge_max: Some(gauge_max.into()),
+            });
+            id
+        });
+        let seal_plug_part_id = h.seal_plug.map(|pn| {
+            let id = push_part(
+                &mut library,
+                pn.into(),
+                h.manufacturer,
+                format!(
+                    "{} size {} sealing plug — {unverified}",
+                    h.series, h.contact_size
+                ),
+                "seal_plug",
+                "unit",
+            );
+            library.seal_plug_defs.push(SealPlugDef {
+                part_id: id,
+                contact_size: h.contact_size.into(),
+            });
+            id
+        });
         let id = push_part(
             &mut library,
-            part_number.into(),
-            manufacturer,
-            format!("{description} — {unverified}"),
+            h.part_number.into(),
+            h.manufacturer,
+            format!("{} — {unverified}", h.description),
             "connector",
             "unit",
         );
         library.connector_defs.push(ConnectorDef {
             part_id: id,
-            gender: gender.into(),
-            series: Some(series.into()),
-            shell_size: None,
+            gender: h.gender.into(),
+            series: Some(h.series.into()),
+            shell_size: h.shell_size.map(Into::into),
             counterpart_id: None,
             back_shape: None,
             back_diameter_mm: None,
             back_width_mm: None,
             back_height_mm: None,
-            suggested_termination: None,
-            contact_part_id: None,
-            seal_plug_part_id: None,
+            suggested_termination: h.suggested_termination.map(Into::into),
+            contact_part_id,
+            seal_plug_part_id,
             adhesive_heatshrink_length_mm: None,
             image_side: None,
             image_front: None,
             image_back: None,
-            cavities: cavities
+            cavities: h
+                .cavities
                 .iter()
                 .map(|&cavity_id| ConnectorDefCavity {
                     cavity_id: cavity_id.into(),
-                    contact_size: contact_size.into(),
+                    contact_size: h.contact_size.into(),
                 })
                 .collect(),
         });
@@ -626,6 +754,14 @@ mod tests {
                 + 3 * 3
                 + SUPERSEAL_10.len()
                 + OTHER_HOUSINGS.len()
+                + OTHER_HOUSINGS
+                    .iter()
+                    .filter(|h| h.contact.is_some())
+                    .count()
+                + OTHER_HOUSINGS
+                    .iter()
+                    .filter(|h| h.seal_plug.is_some())
+                    .count()
                 + SUPERSEAL_10_SOCKETS.len()
                 + 1
                 + M22759_32.len()
@@ -766,7 +902,14 @@ mod tests {
             .unwrap()
             .id;
         assert_eq!(def_by_pn(&once, "DTM04-6P").contact_part_id, Some(pin));
-        assert_eq!(once.contact_defs.len(), 6 + SUPERSEAL_10_SOCKETS.len());
+        assert_eq!(
+            once.contact_defs.len(),
+            6 + SUPERSEAL_10_SOCKETS.len()
+                + OTHER_HOUSINGS
+                    .iter()
+                    .filter(|h| h.contact.is_some())
+                    .count()
+        );
         // Ids únicos.
         let mut ids: Vec<i64> = once.parts.iter().map(|p| p.id).collect();
         ids.sort();
@@ -775,6 +918,38 @@ mod tests {
 
         let twice = merge_base_library(&once);
         assert_eq!(twice, once);
+    }
+
+    #[test]
+    fn engine_connector_comes_with_its_contact_and_seal_plug() {
+        let base = base_library();
+        let ms = def_by_pn(&base, "MS3476L24-61P");
+        assert_eq!(ms.cavities.len(), 61);
+        assert_eq!(
+            ms.cavities
+                .iter()
+                .filter(|c| c.cavity_id == "N" || c.cavity_id == "n")
+                .count(),
+            2
+        ); // distingue mayúsculas
+        let pn = |id: Option<i64>| {
+            base.parts
+                .iter()
+                .find(|p| Some(p.id) == id)
+                .map(|p| p.part_number.as_str())
+        };
+        assert_eq!(
+            (pn(ms.contact_part_id), pn(ms.seal_plug_part_id)),
+            (Some("M39029/58-360"), Some("MS27488-20"))
+        );
+        assert_eq!(
+            def_by_pn(&base, "ORIGINAL 03W_F")
+                .cavities
+                .iter()
+                .map(|c| c.cavity_id.as_str())
+                .collect::<Vec<_>>(),
+            ["A", "B", "C"]
+        );
     }
 
     #[test]

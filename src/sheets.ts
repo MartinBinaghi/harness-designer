@@ -490,9 +490,12 @@ export function terminatesAt(project: ProjectData, library: Library, cavityId: n
 }
 
 /**
- * Net de cada cable: los cables unidos por compartir vía, splice, masa o
- * componente (cable → splice → cable…). Mismo criterio que
- * topology::net_of_wire, sin ir al backend (para mostrarlo mientras se tipea).
+ * Net de cada cable para "Termina en": los cables unidos por compartir vía,
+ * splice o componente (cable → splice → cable…), como topology::net_of_wire
+ * pero **sin seguir por las masas**: un pin que va a G1 termina en G1, no en
+ * todo lo que está atornillado al mismo ojal (Martin: desde una bobina se veían
+ * las otras bobinas). Se calcula acá, sin ir al backend, para mostrarlo
+ * mientras se tipea.
  */
 export function wireNets(project: ProjectData): Map<number, number[]> {
   const parent = new Map(project.wire_instances.map((w) => [w.id, w.id]));
@@ -506,7 +509,8 @@ export function wireNets(project: ProjectData): Map<number, number[]> {
   const byPoint = new Map<string, number>();
   for (const w of project.wire_instances) {
     for (const e of [w.end_a, w.end_b]) {
-      const ref = e.kind === "cavity" ? e.cavity_assignment_id : e.kind === "splice" ? e.splice_id : e.kind === "ground" ? e.ground_point_id : e.component_instance_id;
+      if (e.kind === "ground") continue;
+      const ref = e.kind === "cavity" ? e.cavity_assignment_id : e.kind === "splice" ? e.splice_id : e.component_instance_id;
       if (ref == null) continue;
       const key = `${e.kind}:${ref}`;
       const other = byPoint.get(key);

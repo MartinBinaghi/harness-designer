@@ -26,6 +26,10 @@ pub struct Finding {
     pub severity: String, // "error" | "warning"
     pub message: String,
     pub target: Option<FindingTarget>,
+    /// De qué verificación sale ("Pending connectors"…): la pestaña Checks los
+    /// agrupa, para que lo importante no se pierda entre 30 avisos iguales.
+    #[serde(default)]
+    pub group: String,
 }
 
 impl Finding {
@@ -41,6 +45,7 @@ fn error(message: impl Into<String>) -> Finding {
         severity: "error".into(),
         message: message.into(),
         target: None,
+        group: String::new(),
     }
 }
 fn warning(message: impl Into<String>) -> Finding {
@@ -48,6 +53,7 @@ fn warning(message: impl Into<String>) -> Finding {
         severity: "warning".into(),
         message: message.into(),
         target: None,
+        group: String::new(),
     }
 }
 
@@ -517,7 +523,7 @@ fn check_cut_margin_below_twist_minimum(data: &ProjectData, library: &Library) -
 pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
     use crate::model::project::DanglingItem;
     // Los extremos de cable rotos ya los informa check_wires_have_valid_endpoints.
-    let mut findings: Vec<Finding> = crate::model::project::dangling_references(data)
+    let broken: Vec<Finding> = crate::model::project::dangling_references(data)
         .into_iter()
         .filter(|d| !matches!(d.item, DanglingItem::Wire(_)))
         .map(|d| {
@@ -534,23 +540,59 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
             }
         })
         .collect();
-    findings.extend(check_topology_has_no_loops(data));
-    findings.extend(check_wires_have_valid_endpoints(data));
-    findings.extend(check_splices_within_capacity(data, library));
-    findings.extend(check_gauge_within_splice_range(data, library));
-    findings.extend(check_pending_connectors(data));
-    findings.extend(check_unused_cavities_without_seal_plug(data, library));
-    findings.extend(check_used_cavities_without_contact(data, library));
-    findings.extend(check_same_net_different_function(data));
-    findings.extend(check_cut_margin_below_twist_minimum(data, library));
-    findings.extend(check_covering_fit(data, library));
-    findings.extend(check_adhesive_heatshrink_connector_without_back_diameter(
-        data, library,
-    ));
-    findings.extend(check_boot_assigned_does_not_fit(data, library));
-    findings.extend(check_t_mold_assigned_does_not_fit(data, library));
-    findings.extend(check_gauge_within_contact_range(data, library));
-    findings
+    let groups: Vec<(&str, Vec<Finding>)> = vec![
+        ("Broken references", broken),
+        ("Topology loops", check_topology_has_no_loops(data)),
+        ("Wire ends", check_wires_have_valid_endpoints(data)),
+        (
+            "Splice capacity",
+            check_splices_within_capacity(data, library),
+        ),
+        (
+            "Splice gauge range",
+            check_gauge_within_splice_range(data, library),
+        ),
+        ("Pending connectors", check_pending_connectors(data)),
+        (
+            "Unused cavities without seal plug",
+            check_unused_cavities_without_seal_plug(data, library),
+        ),
+        (
+            "Wired cavities without contact",
+            check_used_cavities_without_contact(data, library),
+        ),
+        (
+            "Same net, different names",
+            check_same_net_different_function(data),
+        ),
+        (
+            "Cut margin below twist minimum",
+            check_cut_margin_below_twist_minimum(data, library),
+        ),
+        ("Heat-shrink fit", check_covering_fit(data, library)),
+        (
+            "Back diameter missing",
+            check_adhesive_heatshrink_connector_without_back_diameter(data, library),
+        ),
+        ("Boot fit", check_boot_assigned_does_not_fit(data, library)),
+        (
+            "T-mold fit",
+            check_t_mold_assigned_does_not_fit(data, library),
+        ),
+        (
+            "Wire gauge vs contact",
+            check_gauge_within_contact_range(data, library),
+        ),
+    ];
+    groups
+        .into_iter()
+        .flat_map(|(group, list)| {
+            list.into_iter().map(move |f| Finding {
+                group: group.to_string(),
+                ..f
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

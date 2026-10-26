@@ -481,3 +481,49 @@ export function deleteWire(project: ProjectData, wireId: number): ProjectData {
   };
 }
 
+/**
+ * Un extremo de conector libre de la topología o, si no hay, uno nuevo suelto
+ * (se conecta después en Topology o en el diagrama).
+ */
+export function freeConnectorNode(project: ProjectData): { nodes: Node[]; nodeId: number } {
+  const free = project.nodes.find((n) => n.kind === "connector_end" && !project.connector_instances.some((c) => c.node_id === n.id));
+  if (free) return { nodes: project.nodes, nodeId: free.id };
+  const nodeId = nextId(project.nodes.map((n) => n.id));
+  return { nodes: [...project.nodes, newNode(nodeId, "connector_end", null, null)], nodeId };
+}
+
+/**
+ * Copia de un conector con su pinout (Martin: 5 bobinas o 5 inyectores iguales
+ * se cargan una vez). Cada cable del original se copia con su función, tipo y
+ * color; los que van a un splice, masa o componente siguen yendo ahí (son los
+ * compartidos: alimentación, masa), y los que van a un pin de otro conector
+ * quedan sin destino, porque ese pin es de cada uno (la señal de cada bobina
+ * va a otro pin del motor). Va en un extremo de conector libre, como uno nuevo.
+ */
+export function duplicateConnector(project: ProjectData, connectorId: number): { project: ProjectData; id: number } | null {
+  const source = project.connector_instances.find((c) => c.id === connectorId);
+  if (!source) return null;
+  const id = nextId(project.connector_instances.map((c) => c.id));
+  let nextCavity = nextId(project.connector_instances.flatMap((c) => c.cavities.map((cav) => cav.id)));
+  const cavities = source.cavities.map((cav) => ({ ...cav, id: nextCavity++ }));
+  const newCavity = new Map(source.cavities.map((cav, i) => [cav.id, cavities[i].id]));
+  const { nodes, nodeId } = freeConnectorNode(project);
+  const copy: ConnectorInstance = { ...source, id, short_id: `X${id}`, name: source.name ? `${source.name} (copy)` : "", node_id: nodeId, cavities };
+
+  const remap = (end: WireEnd): WireEnd => {
+    if (end.kind !== "cavity" || end.cavity_assignment_id == null) return end;
+    const mine = newCavity.get(end.cavity_assignment_id);
+    return mine !== undefined ? { ...end, cavity_assignment_id: mine } : BLANK_END;
+  };
+  let wireId = nextId(project.wire_instances.map((w) => w.id));
+  const wires = project.wire_instances
+    .filter((w) => [w.end_a, w.end_b].some((e) => e.kind === "cavity" && e.cavity_assignment_id != null && newCavity.has(e.cavity_assignment_id)))
+    .map((w): WireInstance => {
+      const wid = wireId++;
+      return { ...w, id: wid, short_id: `W${String(wid).padStart(3, "0")}`, end_a: remap(w.end_a), end_b: remap(w.end_b), manual_length_mm: null, label: null };
+    });
+  return {
+    project: { ...project, nodes, connector_instances: [...project.connector_instances, copy], wire_instances: [...project.wire_instances, ...wires] },
+    id,
+  };
+}

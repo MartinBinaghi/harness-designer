@@ -348,7 +348,11 @@ fn wire_end(
 }
 
 pub fn load(conn: &Connection) -> Result<ProjectData> {
-    let cut_round = if crate::db::has_column(conn, "project", "cut_round_mm") { "cut_round_mm" } else { "NULL" };
+    let cut_round = if crate::db::has_column(conn, "project", "cut_round_mm") {
+        "cut_round_mm"
+    } else {
+        "NULL"
+    };
     let project = conn.query_row(
         &format!("SELECT name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, {cut_round}
          FROM project WHERE id = 1"),
@@ -458,7 +462,11 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         })?
         .collect::<Result<Vec<_>>>()?;
 
-    let splice_name = if crate::db::has_column(conn, "splice_instances", "name") { "name" } else { "''" };
+    let splice_name = if crate::db::has_column(conn, "splice_instances", "name") {
+        "name"
+    } else {
+        "''"
+    };
     let mut splice_instances_stmt = conn.prepare(&format!(
         "SELECT id, short_id, library_part_id, node_id, segment_id, offset_from_end_mm, offset_from_node_id, {splice_name} FROM splice_instances",
     ))?;

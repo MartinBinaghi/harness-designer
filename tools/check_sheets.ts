@@ -191,4 +191,18 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual(b[2].outlets.map((o) => o.id), ["G1", "X3"]); // G1 (y 7) arriba de X3 (y 10)
 }
 
+// "Termina en" no sigue por las masas: dos pines al mismo ojal terminan en el ojal, no uno en el otro.
+{
+  const grounded = {
+    ...project,
+    wire_instances: [
+      wire(1, 20, "GND", end("cavity", { cavity: 21 }), end("ground", { ground: 1 })),
+      wire(2, 20, "GND", end("cavity", { cavity: 31 }), end("ground", { ground: 1 })),
+    ],
+  } as unknown as ProjectData;
+  const nets = wireNets(grounded);
+  assert.deepEqual(nets.get(1), [1]);
+  assert.equal(terminatesAt(grounded, library, 21, (id) => nets.get(id)!), "G1 · Chassis");
+}
+
 console.log("sheets: ok");

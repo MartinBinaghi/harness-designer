@@ -166,6 +166,8 @@ export interface Finding {
   severity: "error" | "warning";
   message: string;
   target: NonNullable<Selection> | null;
+  /** De qué verificación sale ("Pending connectors"…), para agruparlos en Checks. */
+  group: string;
 }
 
 export interface ProjectData {

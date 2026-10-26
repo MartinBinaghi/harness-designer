@@ -179,6 +179,12 @@ fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
             list.join("; ")
         ));
     }
+    // Lo que había en el archivo queda como "<archivo>.bak" (una versión atrás),
+    // por si se guardó algo que no se quería.
+    if std::path::Path::new(&path).is_file() {
+        std::fs::copy(&path, format!("{path}.bak"))
+            .map_err(|e| format!("couldn't make the backup copy before saving: {e}"))?;
+    }
     let mut conn = db::create_or_open_project(&path).map_err(|e| e.to_string())?;
     model::project::save(&mut conn, history.get()).map_err(|e| e.to_string())?;
     history.mark_saved();

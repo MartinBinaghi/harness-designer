@@ -4,7 +4,7 @@ import { useSettled } from "./useBackedState";
 import type { ProjectData } from "./types";
 import { partLabel, type Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
-import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
+import { assemblyBranches, connectorHeatShrink, coveringRows, wireNets, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
 import { ConnectorFaceView } from "./ConnectorFaceView";
 import { AssemblySheet } from "./AssemblySheet";
 import { AssemblyOverview, BranchFan, branchesWithSheet } from "./AssemblyBranches";
@@ -61,18 +61,15 @@ export default function Impresion({ project, setProject, library }: Props) {
   const [distances, setDistances] = useState<Record<string, number> | null>(null);
   const [data, setData] = useState<{ report: CostReport; nets: Map<number, number[]> } | null>(null);
 
-  // Largos de corte y nets: los calcula el backend, igual que en Costs y el diagrama.
+  // Largos de corte: los calcula el backend, igual que en Costs y el diagrama. Las
+  // nets de "Termina en", las mismas que en la pestaña Connectors (`wireNets`).
   const calc = useSettled(project);
   useEffect(() => {
     if (!calc) return;
     let cancelled = false;
     void (async () => {
       const report = await invoke<CostReport>("compute_costs", { project: calc, library });
-      // ponytail: un wire_net por cable (cada uno manda el proyecto entero); si con arneses grandes tarda, un comando que devuelva todas las nets juntas.
-      const nets = await Promise.all(
-        calc.wire_instances.map(async (w) => [w.id, await invoke<number[]>("wire_net", { project: calc, wireId: w.id })] as const),
-      );
-      if (!cancelled) setData({ report, nets: new Map(nets) });
+      if (!cancelled) setData({ report, nets: wireNets(calc) });
     })();
     return () => {
       cancelled = true;

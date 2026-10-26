@@ -11,6 +11,8 @@ import {
   cavitiesFromDef,
   changeConnectorPart,
   deleteWire,
+  duplicateConnector,
+  freeConnectorNode,
   endChoices,
   endLabel,
   nextId,
@@ -92,13 +94,7 @@ export default function Conectores({ project, setProject, library, selection, on
       return;
     }
     const id = nextId(project.connector_instances.map((c) => c.id));
-    // Un extremo de conector libre de la topología o, si no hay, uno nuevo
-    // suelto (se conecta después en Topology o en el diagrama).
-    const free = project.nodes.find((n) => n.kind === "connector_end" && !project.connector_instances.some((c) => c.node_id === n.id));
-    const nodeId = free?.id ?? nextId(project.nodes.map((n) => n.id));
-    const nodes = free
-      ? project.nodes
-      : [...project.nodes, { id: nodeId, kind: "connector_end" as const, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null }];
+    const { nodes, nodeId } = freeConnectorNode(project);
     const created: ConnectorInstance = {
       id,
       short_id: `X${id}`,
@@ -116,6 +112,16 @@ export default function Conectores({ project, setProject, library, selection, on
     };
     setProject({ ...project, nodes, connector_instances: [...project.connector_instances, created] });
     setCurrentId(id);
+  }
+
+  function duplicate(c: ConnectorInstance) {
+    if (!project) return;
+    const result = duplicateConnector(project, c.id);
+    if (!result) return;
+    setProject(result.project);
+    setCurrentId(result.id);
+    const copy = result.project.connector_instances.find((x) => x.id === result.id)!;
+    setNotice(`${copy.short_id} is a copy of ${c.short_id}: wires to splices and grounds kept; wires to other connectors' pins left without a destination. Place it in the topology (Node).`);
   }
 
   // Borrar un conector deja sus cables con ese extremo sin destino (siguen en Wires, incompletos).
@@ -172,6 +178,7 @@ export default function Conectores({ project, setProject, library, selection, on
           setProject={setProject}
           apply={apply}
           onDelete={() => remove(connector)}
+          onDuplicate={() => duplicate(connector)}
           notice={notice}
         />
       ) : (
@@ -184,7 +191,7 @@ export default function Conectores({ project, setProject, library, selection, on
   );
 }
 
-function ConnectorEditor({ project, library, connector: c, report, selection, onSelect, setProject, apply, onDelete, notice }: {
+function ConnectorEditor({ project, library, connector: c, report, selection, onSelect, setProject, apply, onDelete, onDuplicate, notice }: {
   project: ProjectData;
   library: Library;
   connector: ConnectorInstance;
@@ -194,6 +201,7 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
   setProject: (p: ProjectData) => void;
   apply: (r: ProjectData | string) => void;
   onDelete: () => void;
+  onDuplicate: () => void;
   notice: string | null;
 }) {
   const set = (patch: Partial<ConnectorInstance>) => setProject(patchItem(project, "connector_instances", c.id, patch));
@@ -283,6 +291,7 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
             {c.is_interconnect && <input value={c.mates_with ?? ""} onChange={(e) => set({ mates_with: e.currentTarget.value || null })} placeholder="mates with…" />}
           </span>
         </div>
+        <button className="cn-duplicate" onClick={onDuplicate} title="New connector with the same part and pinout">Duplicate</button>
         <button className="icon-button cn-delete" onClick={onDelete} title="Delete connector" aria-label="Delete connector">
           <TrashIcon />
         </button>

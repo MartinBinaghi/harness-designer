@@ -108,6 +108,34 @@ console.log("project edit: ok");
   console.log("project edit (change connector part keeps cavities): ok");
 }
 
+// Duplicar un conector (Martin: bobinas iguales): mismas vías y cables; los que van a un
+// splice o masa siguen ahí, los que van a un pin de otro conector quedan sin destino.
+{
+  const { duplicateConnector } = await import("../src/projectEdit.ts");
+  const end = (kind: string, ids: { cavity?: number; splice?: number; ground?: number }) => ({ kind, cavity_assignment_id: ids.cavity ?? null, splice_id: ids.splice ?? null, ground_point_id: ids.ground ?? null, component_instance_id: null });
+  const proj = {
+    ...p,
+    nodes: [{ id: 1, kind: "connector_end" }, { id: 2, kind: "connector_end" }],
+    connector_instances: [
+      { id: 1, short_id: "X1", name: "Motor", node_id: 1, cavities: [{ id: 11, cavity_id: "F" }] },
+      { id: 14, short_id: "X14", name: "Coil 1", node_id: 2, cavities: [{ id: 141, cavity_id: "1" }, { id: 143, cavity_id: "3" }] },
+    ],
+    wire_instances: [
+      { id: 5, short_id: "W005", specific_name: "12V+", end_a: end("cavity", { cavity: 141 }), end_b: end("splice", { splice: 1 }), manual_length_mm: 900 },
+      { id: 6, short_id: "W006", specific_name: "SIGNAL", end_a: end("cavity", { cavity: 143 }), end_b: end("cavity", { cavity: 11 }) },
+    ],
+  } as unknown as ProjectData;
+  const r = duplicateConnector(proj, 14)!;
+  const copy = r.project.connector_instances.find((c) => c.id === r.id)!;
+  assert.deepEqual([copy.short_id, copy.name, copy.node_id, copy.cavities.map((c) => c.cavity_id)], ["X15", "Coil 1 (copy)", 3, ["1", "3"]]);
+  const added = r.project.wire_instances.slice(2);
+  assert.deepEqual(added.map((w) => [w.short_id, w.specific_name, w.end_a.cavity_assignment_id, w.end_b.kind, w.end_b.splice_id, w.end_b.cavity_assignment_id, w.manual_length_mm]), [
+    ["W007", "12V+", copy.cavities[0].id, "splice", 1, null, null],
+    ["W008", "SIGNAL", copy.cavities[1].id, "cavity", null, null, null],
+  ]);
+  console.log("project edit (duplicate connector): ok");
+}
+
 // Pinout por conector: destinos escritos a mano, cables que salen de una vía, varios cables por vía.
 {
   const { addWireAtCavity, deleteWire, endChoices, otherEnd, parseEnd, setOtherEnd, wiresAtCavity } = await import("../src/projectEdit.ts");

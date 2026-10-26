@@ -36,6 +36,21 @@ export default function Checks({ project, findings, selection, onSelect }: Props
     );
   }
 
+  // Un grupo por verificación ("Pending connectors (29)"), desplegable: los
+  // errores abiertos, las advertencias cerradas, para ver primero lo grave.
+  function renderGroups(list: Finding[], severityClass: string, open: boolean) {
+    const groups = new Map<string, Finding[]>();
+    for (const f of list) groups.set(f.group || f.message, [...(groups.get(f.group || f.message) ?? []), f]);
+    return [...groups].map(([title, items]) => (
+      <details key={title} className="findings-group" open={open || items.some((f) => isSelected(selection, f.target))}>
+        <summary>
+          {title} <span className="findings-count">{items.length}</span>
+        </summary>
+        <ul className="findings">{items.map((f, i) => renderFinding(f, i, severityClass))}</ul>
+      </details>
+    ));
+  }
+
   return (
     <>
       <p className="status" style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
@@ -63,18 +78,14 @@ export default function Checks({ project, findings, selection, onSelect }: Props
       {errors.length > 0 && (
         <section>
           <h3>Errors</h3>
-          <ul className="findings">
-            {errors.map((f, i) => renderFinding(f, i, "finding-error"))}
-          </ul>
+          {renderGroups(errors, "finding-error", true)}
         </section>
       )}
 
       {warnings.length > 0 && (
         <section>
           <h3>Warnings</h3>
-          <ul className="findings">
-            {warnings.map((f, i) => renderFinding(f, i, "finding-warning"))}
-          </ul>
+          {renderGroups(warnings, "finding-warning", false)}
         </section>
       )}
     </>

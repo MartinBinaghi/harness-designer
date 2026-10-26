@@ -440,7 +440,10 @@ pub fn wire_cut_length(
         length_with_twist_mm,
         margin_pct,
         twist_min_margin_pct: (worst_factor - 1.0) * 100.0,
-        cut_length_mm: round_up(length_with_twist_mm * (1.0 + margin_pct / 100.0), data.project.cut_round_mm),
+        cut_length_mm: round_up(
+            length_with_twist_mm * (1.0 + margin_pct / 100.0),
+            data.project.cut_round_mm,
+        ),
         manual: false,
     })
 }
