@@ -567,3 +567,6 @@ Registro del estado del proyecto y de las decisiones tomadas. El diseño vigente
 - **Biblioteca base**: se suman las piezas que Martin cargó a mano para su arnés, con los mismos datos: MS3476L24-61P (61 vías, boot, contacto M39029/58-360 de 24–20 AWG y tapón MS27488-20), MINI TYMER 02W-F, ORIGINAL 03W_F (A, B, C) y OJAL 16mm2 M6. Las carcasas sueltas pasan de una tupla de 7 campos a un `struct Housing` con nombres (cada una puede traer contacto, tapón, carcasa y terminación). `resources/default-library.db` actualizada (78 → 84 partes); en su biblioteca no cambia nada (ya las tiene, y la fusión no toca lo existente). Test nuevo del conector de motor; `cargo test` 75/75.
 - Aclarado con Martin: el rango de un SpliceDef se compara contra la **sección total** de los cables que entran (plan 12); "SPLICE SOLDADO" con 22 a 18 AWG da error en los 9 splices porque juntan 1–4 mm².
 
+
+### 2026-10-26
+- Release **0.1.2** preparado: versión subida en package.json, tauri.conf.json y Cargo.toml/Cargo.lock; notas en `docs/releases/v0.1.2.md` (cubren todo desde la 0.1.0, porque la 0.1.1 se armó pero nunca se publicó; quedó instalada solo en la máquina de Martin, por eso se salta ese número). El build, el commit, el tag y la publicación los corre Martin.
