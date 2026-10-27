@@ -35,11 +35,7 @@ CREATE TABLE IF NOT EXISTS connector_defs (
     contact_part_id         INTEGER,
     seal_plug_part_id       INTEGER,
     -- largo de la pieza de termo con adhesivo detrás del conector (mm)
-    adhesive_heatshrink_length_mm REAL,
-    -- vistas del conector como data URL (la imagen viaja dentro de la biblioteca)
-    image_side         TEXT,
-    image_front        TEXT,
-    image_back         TEXT
+    adhesive_heatshrink_length_mm REAL
 );
 
 -- Cavidades: identificador tal cual el fabricante (1, 2... / A, B... / a, b...),
@@ -170,4 +166,17 @@ CREATE TABLE IF NOT EXISTS signal_types (
     id              INTEGER PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,
     default_color   TEXT NOT NULL
+);
+
+-- Fotos de los conectores (vista frontal con la numeración, lateral, trasera)
+-- como data URL, achicadas a 800 px. Aparte de las fichas: no viajan con cada
+-- edición de la biblioteca ni se reescriben al guardarla (ver lib.rs). Sin FK
+-- a connector_defs a propósito: guardar una ficha la borra y la vuelve a
+-- insertar, y una cascada se llevaría sus fotos; las que quedan sin conector
+-- se limpian al abrir la biblioteca.
+CREATE TABLE IF NOT EXISTS connector_def_images (
+    part_id     INTEGER NOT NULL,
+    view        TEXT NOT NULL CHECK (view IN ('front', 'side', 'back')),
+    data        TEXT NOT NULL,
+    PRIMARY KEY (part_id, view)
 );

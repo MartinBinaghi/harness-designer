@@ -2,8 +2,10 @@
 //! La topología es un árbol (nodos + segmentos): entre dos nodos hay un único
 //! camino, se calcula recorriendo el árbol (sin loops posibles por diseño).
 
-use crate::model::project::{ProjectData, Segment, WireEnd};
+use crate::model::project::{ProjectData, Segment, WireEnd, WireInstance};
+use serde::Serialize;
 use std::cell::RefCell;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 thread_local! {
@@ -175,42 +177,244 @@ fn compute_wire_route(data: &ProjectData, wire_id: i64) -> Option<Vec<i64>> {
     path_between_nodes(data, node_a, node_b)
 }
 
-/// Net completa de un cable: todos los cables unidos transitivamente por
-/// compartir cavidad, splice, masa o componente (cable → splice → cable…).
-/// Se corta sola en intercos y referencias externas porque de ese lado no
-/// hay más cables modelados en este archivo. Incluye al propio `wire_id`.
-/// Devuelve los ids ordenados.
-pub fn net_of_wire(data: &ProjectData, wire_id: i64) -> Vec<i64> {
-    let mut points_by_wire: HashMap<i64, Vec<ConnectionPoint>> = HashMap::new();
+/// Un punto por el que la net sigue: vía, splice o componente. Una masa no: es
+/// donde termina el cable (un pin que va a G1 termina en G1, no en todo lo
+/// atornillado al mismo ojal — decisión de Martin, plan 4.3).
+fn joining_point(end: &WireEnd) -> Option<ConnectionPoint> {
+    connection_point(end).filter(|p| !matches!(p, ConnectionPoint::Ground(_)))
+}
+
+/// Todas las nets del proyecto en una pasada: para cada cable, los ids
+/// (ordenados) de los cables unidos a él transitivamente por compartir vía,
+/// splice o componente (cable → splice → cable…). No siguen por las masas (ver
+/// `joining_point`) y se cortan solas en conectores de interconexión y
+/// referencias externas, porque de ese lado no hay más cables en este archivo.
+pub fn all_nets(data: &ProjectData) -> HashMap<i64, std::rc::Rc<Vec<i64>>> {
     let mut wires_by_point: HashMap<ConnectionPoint, Vec<i64>> = HashMap::new();
+    let mut points_by_wire: HashMap<i64, Vec<ConnectionPoint>> = HashMap::new();
     for wire in &data.wire_instances {
-        let points: Vec<ConnectionPoint> =
-            [connection_point(&wire.end_a), connection_point(&wire.end_b)]
-                .into_iter()
-                .flatten()
-                .collect();
+        let points: Vec<ConnectionPoint> = [joining_point(&wire.end_a), joining_point(&wire.end_b)]
+            .into_iter()
+            .flatten()
+            .collect();
         for &point in &points {
             wires_by_point.entry(point).or_default().push(wire.id);
         }
         points_by_wire.insert(wire.id, points);
     }
+    let mut nets: HashMap<i64, std::rc::Rc<Vec<i64>>> = HashMap::new();
+    for wire in &data.wire_instances {
+        if nets.contains_key(&wire.id) {
+            continue;
+        }
+        let mut members: HashSet<i64> = HashSet::from([wire.id]);
+        let mut queue = VecDeque::from([wire.id]);
+        while let Some(current) = queue.pop_front() {
+            for point in &points_by_wire[&current] {
+                for &neighbor in &wires_by_point[point] {
+                    if members.insert(neighbor) {
+                        queue.push_back(neighbor);
+                    }
+                }
+            }
+        }
+        let mut sorted: Vec<i64> = members.into_iter().collect();
+        sorted.sort_unstable();
+        let net = std::rc::Rc::new(sorted);
+        for &id in net.iter() {
+            nets.insert(id, net.clone());
+        }
+    }
+    nets
+}
 
-    let mut visited: HashSet<i64> = HashSet::from([wire_id]);
-    let mut queue: VecDeque<i64> = VecDeque::from([wire_id]);
+/// La net de un cable (ver `all_nets`), incluido él mismo; ids ordenados.
+pub fn net_of_wire(data: &ProjectData, wire_id: i64) -> Vec<i64> {
+    all_nets(data)
+        .get(&wire_id)
+        .map_or_else(|| vec![wire_id], |net| net.as_ref().clone())
+}
 
-    while let Some(current) = queue.pop_front() {
-        for point in points_by_wire.get(&current).into_iter().flatten() {
-            for &neighbor in wires_by_point.get(point).into_iter().flatten() {
-                if visited.insert(neighbor) {
-                    queue.push_back(neighbor);
+/// "Termina en" de una vía con cable (plan 4.3): los extremos finales de su net
+/// — pines de conector, masas, componentes — y los splices por los que pasa.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PinDestinations {
+    pub cavity_assignment_id: i64,
+    pub ends: Vec<WireEnd>,
+    pub via_splices: Vec<i64>,
+}
+
+/// Por qué rama llega un nodo a un splice: `Here` es el nodo del splice; si no,
+/// el segmento por el que se sale del splice hacia ese nodo (y, en un splice
+/// sobre un segmento, hacia qué punta). Es un árbol: cada nodo, una sola rama.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Here,
+    Branch { segment: i64, toward_a: bool },
+}
+
+fn splice_sides(data: &ProjectData, splice_id: i64) -> HashMap<i64, Side> {
+    let mut sides: HashMap<i64, Side> = HashMap::new();
+    let Some(splice) = data.splice_instances.iter().find(|s| s.id == splice_id) else {
+        return sides;
+    };
+    // Desde dónde sale cada rama. En un splice sobre un segmento, ese segmento
+    // separa sus dos puntas y no se cruza.
+    let starts: Vec<(i64, Side)> = if let Some(at) = splice.node_id {
+        sides.insert(at, Side::Here);
+        data.segments
+            .iter()
+            .filter_map(|seg| {
+                let side = Side::Branch {
+                    segment: seg.id,
+                    toward_a: false,
+                };
+                if seg.node_a_id == at {
+                    Some((seg.node_b_id, side))
+                } else if seg.node_b_id == at {
+                    Some((seg.node_a_id, side))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else if let Some(seg) = data
+        .segments
+        .iter()
+        .find(|s| Some(s.id) == splice.segment_id)
+    {
+        vec![
+            (
+                seg.node_a_id,
+                Side::Branch {
+                    segment: seg.id,
+                    toward_a: true,
+                },
+            ),
+            (
+                seg.node_b_id,
+                Side::Branch {
+                    segment: seg.id,
+                    toward_a: false,
+                },
+            ),
+        ]
+    } else {
+        Vec::new()
+    };
+    let blocked = splice.segment_id;
+    for (start, side) in starts {
+        if sides.contains_key(&start) {
+            continue;
+        }
+        sides.insert(start, side);
+        let mut queue = VecDeque::from([start]);
+        while let Some(node) = queue.pop_front() {
+            for seg in &data.segments {
+                if Some(seg.id) == blocked || (seg.node_a_id != node && seg.node_b_id != node) {
+                    continue;
+                }
+                let next = if seg.node_a_id == node {
+                    seg.node_b_id
+                } else {
+                    seg.node_a_id
+                };
+                if let Entry::Vacant(e) = sides.entry(next) {
+                    e.insert(side);
+                    queue.push_back(next);
                 }
             }
         }
     }
+    sides
+}
 
-    let mut result: Vec<i64> = visited.into_iter().collect();
-    result.sort_unstable();
-    result
+/// "Termina en" de cada vía con cable. Del otro lado de un splice solo cuenta lo
+/// que está del otro lado (Martin): se ocultan los extremos que llegan al splice
+/// por la misma rama que la vía consultada (desde una bobina no se ven las otras
+/// bobinas, sí los pines del conector de motor; desde el motor, todas las
+/// bobinas). Lo que está en el nodo del splice no comparte rama con nada. Si así
+/// no quedara ningún destino, se muestran todos. No sigue por las masas.
+pub fn pin_destinations(data: &ProjectData) -> Vec<PinDestinations> {
+    let nets = all_nets(data);
+    let mut sides: HashMap<i64, HashMap<i64, Side>> = HashMap::new();
+    let mut out = Vec::new();
+    for connector in &data.connector_instances {
+        for cavity in &connector.cavities {
+            let is_here =
+                |e: &WireEnd| e.kind == "cavity" && e.cavity_assignment_id == Some(cavity.id);
+            let here: Vec<&WireInstance> = data
+                .wire_instances
+                .iter()
+                .filter(|w| is_here(&w.end_a) || is_here(&w.end_b))
+                .collect();
+            if here.is_empty() {
+                continue;
+            }
+            let members: HashSet<i64> = here
+                .iter()
+                .flat_map(|w| nets[&w.id].iter().copied())
+                .collect();
+            let my_splices: Vec<i64> = here
+                .iter()
+                .flat_map(|w| [&w.end_a, &w.end_b])
+                .filter(|e| e.kind == "splice")
+                .filter_map(|e| e.splice_id)
+                .collect();
+            for &s in &my_splices {
+                sides.entry(s).or_insert_with(|| splice_sides(data, s));
+            }
+            let same_side = |end: &WireEnd| {
+                let Some(node) = wire_end_node(data, end) else {
+                    return false;
+                };
+                !my_splices.is_empty()
+                    && my_splices
+                        .iter()
+                        .all(|s| match sides[s].get(&connector.node_id) {
+                            Some(&mine @ Side::Branch { .. }) => sides[s].get(&node) == Some(&mine),
+                            _ => false,
+                        })
+            };
+            let mut ends: Vec<WireEnd> = Vec::new();
+            let mut hidden: Vec<WireEnd> = Vec::new();
+            let mut via: Vec<i64> = Vec::new();
+            for wire in data
+                .wire_instances
+                .iter()
+                .filter(|w| members.contains(&w.id))
+            {
+                for end in [&wire.end_a, &wire.end_b] {
+                    if is_here(end) || connection_point(end).is_none() {
+                        continue;
+                    }
+                    if let Some(splice) = end.splice_id.filter(|_| end.kind == "splice") {
+                        if !via.contains(&splice) {
+                            via.push(splice);
+                        }
+                        continue;
+                    }
+                    let list = if same_side(end) {
+                        &mut hidden
+                    } else {
+                        &mut ends
+                    };
+                    if !list.contains(end) {
+                        list.push(end.clone());
+                    }
+                }
+            }
+            if ends.is_empty() {
+                ends = hidden;
+            }
+            out.push(PinDestinations {
+                cavity_assignment_id: cavity.id,
+                ends,
+                via_splices: via,
+            });
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -243,7 +447,6 @@ mod tests {
             harness_code: "T-01".into(),
             client: None,
             revision: None,
-            format_version: 1,
             main_connector_instance_id: None,
             markup_pct: 0.0,
             default_cut_margin_pct: 10.0,
@@ -633,5 +836,93 @@ mod tests {
         ];
 
         assert_eq!(net_of_wire(&data, 1), vec![1, 2]);
+    }
+
+    fn wire(id: i64, end_a: WireEnd, end_b: WireEnd) -> WireInstance {
+        WireInstance {
+            id,
+            short_id: format!("W{id:03}"),
+            library_part_id: 1,
+            color: None,
+            signal_type_id: None,
+            specific_name: None,
+            manual_cut_margin_pct: None,
+            manual_length_mm: None,
+            label: None,
+            end_a,
+            end_b,
+        }
+    }
+
+    fn cavity(id: i64) -> WireEnd {
+        wire_end("cavity", Some(id), None, None, None)
+    }
+
+    fn destinations_of(data: &ProjectData, cavity_id: i64) -> (Vec<WireEnd>, Vec<i64>) {
+        let d = pin_destinations(data)
+            .into_iter()
+            .find(|d| d.cavity_assignment_id == cavity_id)
+            .unwrap();
+        (d.ends, d.via_splices)
+    }
+
+    #[test]
+    fn a_ground_lug_ends_the_net() {
+        // Dos pines al mismo ojal G1: cada uno termina en G1, no en el otro.
+        let mut data = topology_with_connectors_and_a_splice();
+        let g1 = wire_end("ground", None, None, Some(1), None);
+        data.wire_instances = vec![
+            wire(1, cavity(100), g1.clone()),
+            wire(2, cavity(101), g1.clone()),
+        ];
+        assert_eq!(net_of_wire(&data, 1), vec![1]);
+        assert_eq!(destinations_of(&data, 100), (vec![g1], vec![]));
+    }
+
+    #[test]
+    fn ends_at_shows_only_the_other_side_of_a_splice() {
+        // SP1 en el breakout (nodo 2): X1 llega por S1, X9 por S2 y X4 por S3.
+        // X9 lleva dos vías al splice (101 y 103), por la misma rama.
+        let mut data = topology_with_connectors_and_a_splice();
+        data.connector_instances[1].cavities.push(CavityAssignment {
+            id: 103,
+            cavity_id: "48".into(),
+            external_reference: None,
+        });
+        let sp1 = wire_end("splice", None, Some(1), None, None);
+        data.wire_instances = vec![
+            wire(1, cavity(100), sp1.clone()),
+            wire(2, sp1.clone(), cavity(101)),
+            wire(3, sp1.clone(), cavity(103)),
+            wire(4, sp1.clone(), cavity(102)),
+        ];
+        // Desde X9:47 no se ve X9:48 (misma rama); sí X1 y X4.
+        assert_eq!(
+            destinations_of(&data, 101),
+            (vec![cavity(100), cavity(102)], vec![1])
+        );
+        // Desde X1 se ven todas.
+        assert_eq!(
+            destinations_of(&data, 100),
+            (vec![cavity(101), cavity(103), cavity(102)], vec![1])
+        );
+    }
+
+    #[test]
+    fn ends_at_shows_everything_when_all_ends_are_on_the_same_side() {
+        // Splice sobre el segmento 2 (nodo 2 — nodo 3): X1 (nodo 1) y X4 (nodo 4)
+        // llegan los dos por la punta del nodo 2. Desde X1, X4 estaría oculto
+        // (misma rama), pero no queda otro destino: se muestra igual.
+        let mut data = topology_with_connectors_and_a_splice();
+        data.splice_instances[0].node_id = None;
+        data.splice_instances[0].segment_id = Some(2);
+        data.splice_instances[0].offset_from_end_mm = Some(10.0);
+        data.splice_instances[0].offset_from_node_id = Some(2);
+        let sp1 = wire_end("splice", None, Some(1), None, None);
+        data.wire_instances = vec![
+            wire(1, cavity(100), sp1.clone()),
+            wire(2, sp1.clone(), cavity(102)),
+        ];
+        assert_eq!(destinations_of(&data, 100), (vec![cavity(102)], vec![1]));
     }
 }

@@ -185,9 +185,10 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
 
   async function queryWire() {
     if (!project || selectedWireId === null) return;
+    await flushProjectEdits(); // la consulta se hace sobre lo que tiene el backend
     const [routeResult, netResult] = await Promise.all([
-      invoke<number[] | null>("wire_route", { project, wireId: selectedWireId }),
-      invoke<number[]>("wire_net", { project, wireId: selectedWireId }),
+      invoke<number[] | null>("wire_route", { wireId: selectedWireId }),
+      invoke<number[]>("wire_net", { wireId: selectedWireId }),
     ]);
     setRoute(routeResult);
     setNet(netResult);

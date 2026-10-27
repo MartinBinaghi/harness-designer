@@ -1,10 +1,10 @@
 /**
  * Contenido de las hojas que se imprimen o exportan (etapa 6): lista de corte,
  * hoja de pinout por conector y lista de etiquetas. Funciones puras sobre el
- * proyecto, la biblioteca y los largos de corte ya calculados (`compute_costs`),
+ * proyecto, la biblioteca y los largos de corte ya calculados (`calc_results`),
  * sin React, para chequearlas con `node tools/check_sheets.ts`.
  */
-import type { CoveringCut, SegmentDiameterInfo, WireCutLength } from "./costTypes";
+import type { CoveringCut, PinDestinations, SegmentDiameterInfo, WireCutLength } from "./costTypes";
 import { devicePinName, partLabel, type Library } from "./libraryTypes.ts";
 import { endLabel } from "./projectEdit.ts";
 import type { ProjectData, WireEnd, WireInstance } from "./types";
@@ -273,7 +273,7 @@ export function heatShrinkSize(suppliedMm: number): string {
 /**
  * Termocontraíble del tramo que llega a un conector (lista de corte, título de
  * cada bloque): el asignado al segmento o, si no tiene, el más chico de la
- * biblioteca que sirve para su diámetro (sugerido por `compute_costs`). Sin
+ * biblioteca que sirve para su diámetro (sugerido por `calc_results`). Sin
  * ninguno que sirva, el diámetro del mazo para saber qué comprar.
  */
 export function connectorHeatShrink(project: ProjectData, library: Library, connectorId: number, diameters: SegmentDiameterInfo[]): string[] {
@@ -389,141 +389,25 @@ export function wireTotals(rows: CutRow[]): WireTotal[] {
 
 const isCavity = (end: WireEnd, cavityId: number) => end.kind === "cavity" && end.cavity_assignment_id === cavityId;
 
-/** Nodo donde está un extremo de cable (null: sin lugar en la topología, o un componente sobre un segmento). */
-function endNode(project: ProjectData, end: WireEnd): number | null {
-  if (end.kind === "cavity") {
-    const c = project.connector_instances.find((x) => x.cavities.some((cav) => cav.id === end.cavity_assignment_id));
-    return c?.node_id ?? null;
-  }
-  if (end.kind === "ground") return project.ground_points.find((g) => g.id === end.ground_point_id)?.node_id ?? null;
-  if (end.kind === "splice") return project.splice_instances.find((s) => s.id === end.splice_id)?.node_id ?? null;
-  return project.component_instances.find((k) => k.id === end.component_instance_id)?.node_id ?? null;
-}
-
 /**
- * Por qué rama llega cada nodo a un splice: "here" en el nodo del splice, y si
- * no, el tramo por el que sale del splice hacia ese nodo (en un splice sobre un
- * segmento, la punta "a" o "b"). Es un árbol: cada nodo tiene una sola rama.
+ * "Termina en" de un pin, escrito: sus destinos y por qué splices pasa. Qué
+ * destinos son (nets que no siguen por las masas, solo el otro lado de un
+ * splice) lo decide el núcleo (`pin_destinations` en topology.rs); acá solo se
+ * nombran.
  */
-function spliceSides(project: ProjectData, spliceId: number): Map<number, string> {
-  const sides = new Map<number, string>();
-  const s = project.splice_instances.find((x) => x.id === spliceId);
-  if (!s) return sides;
-  const spread = (start: number, skipSegment: number, label: string) => {
-    const queue = [start];
-    sides.set(start, label);
-    while (queue.length) {
-      const n = queue.shift()!;
-      for (const seg of project.segments) {
-        if (seg.id === skipSegment || (seg.node_a_id !== n && seg.node_b_id !== n)) continue;
-        const next = seg.node_a_id === n ? seg.node_b_id : seg.node_a_id;
-        if (sides.has(next)) continue;
-        sides.set(next, label);
-        queue.push(next);
-      }
-    }
-  };
-  if (s.node_id != null) {
-    sides.set(s.node_id, "here");
-    for (const seg of project.segments) {
-      if (seg.node_a_id === s.node_id) spread(seg.node_b_id, seg.id, `s${seg.id}`);
-      else if (seg.node_b_id === s.node_id) spread(seg.node_a_id, seg.id, `s${seg.id}`);
-    }
-  } else {
-    const seg = project.segments.find((x) => x.id === s.segment_id);
-    if (seg) {
-      spread(seg.node_a_id, seg.id, "a");
-      spread(seg.node_b_id, seg.id, "b");
-    }
-  }
-  return sides;
-}
-
-/**
- * "Termina en" de un pin (plan 4.3): los otros extremos de su net que no son
- * uniones — pines de conector, masas, componentes —, y por qué splices pasa.
- * `netOf` devuelve los cables de la net de un cable (comando `wire_net`).
- *
- * Del otro lado de un splice solo cuenta lo que está del otro lado (Martin): no
- * se muestran los pines que llegan al splice por la misma rama que este (desde
- * una bobina no se ven las otras bobinas, sí los pines del conector de motor;
- * desde el motor, todas las bobinas). Lo que está en el nodo del splice no
- * comparte rama con nada. Si así no quedara ningún destino, se muestran todos.
- */
-export function terminatesAt(project: ProjectData, library: Library, cavityId: number, netOf: (wireId: number) => number[]): string {
-  const here = project.wire_instances.filter((w) => isCavity(w.end_a, cavityId) || isCavity(w.end_b, cavityId));
-  const netIds = new Set(here.flatMap((w) => [w.id, ...netOf(w.id)]));
-  const myNode = project.connector_instances.find((c) => c.cavities.some((cav) => cav.id === cavityId))?.node_id ?? null;
-  const mySplices = here
-    .flatMap((w) => [w.end_a, w.end_b])
-    .filter((e) => e.kind === "splice" && e.splice_id != null)
-    .map((e) => spliceSides(project, e.splice_id!));
-  const sameSide = (end: WireEnd) => {
-    const node = endNode(project, end);
-    if (myNode == null || node == null || mySplices.length === 0) return false;
-    return mySplices.every((sides) => {
-      const mine = sides.get(myNode);
-      return mine !== undefined && mine !== "here" && sides.get(node) === mine;
-    });
-  };
-  const dests: string[] = [];
-  const hidden: string[] = [];
-  const via: string[] = [];
-  for (const wire of project.wire_instances.filter((w) => netIds.has(w.id))) {
-    for (const end of [wire.end_a, wire.end_b]) {
-      if (isCavity(end, cavityId)) continue;
-      const label =
-        end.kind === "cavity"
-          ? cavityLabel(project, library, end.cavity_assignment_id)
-          : end.kind === "ground"
-            ? groundLabel(project, end.ground_point_id)
-            : end.kind === "splice"
-              ? spliceLabel(project, end.splice_id)
-              : endLabel(project, end);
-      const list = end.kind === "splice" ? via : sameSide(end) ? hidden : dests;
-      if (label !== "—" && !list.includes(label)) list.push(label);
-    }
-  }
-  if (dests.length === 0) dests.push(...hidden);
-  if (dests.length === 0 && via.length === 0) return "—";
-  return `${dests.join(", ") || "—"}${via.length ? ` (via ${via.join(", ")})` : ""}`;
-}
-
-/**
- * Net de cada cable para "Termina en": los cables unidos por compartir vía,
- * splice o componente (cable → splice → cable…), como topology::net_of_wire
- * pero **sin seguir por las masas**: un pin que va a G1 termina en G1, no en
- * todo lo que está atornillado al mismo ojal (Martin: desde una bobina se veían
- * las otras bobinas). Se calcula acá, sin ir al backend, para mostrarlo
- * mientras se tipea.
- */
-export function wireNets(project: ProjectData): Map<number, number[]> {
-  const parent = new Map(project.wire_instances.map((w) => [w.id, w.id]));
-  const find = (id: number): number => {
-    const p = parent.get(id)!;
-    if (p === id) return id;
-    const root = find(p);
-    parent.set(id, root);
-    return root;
-  };
-  const byPoint = new Map<string, number>();
-  for (const w of project.wire_instances) {
-    for (const e of [w.end_a, w.end_b]) {
-      if (e.kind === "ground") continue;
-      const ref = e.kind === "cavity" ? e.cavity_assignment_id : e.kind === "splice" ? e.splice_id : e.component_instance_id;
-      if (ref == null) continue;
-      const key = `${e.kind}:${ref}`;
-      const other = byPoint.get(key);
-      if (other === undefined) byPoint.set(key, w.id);
-      else parent.set(find(w.id), find(other));
-    }
-  }
-  const nets = new Map<number, number[]>();
-  for (const w of project.wire_instances) {
-    const root = find(w.id);
-    nets.set(root, [...(nets.get(root) ?? []), w.id]);
-  }
-  return new Map(project.wire_instances.map((w) => [w.id, nets.get(find(w.id))!]));
+export function terminatesAt(project: ProjectData, library: Library, destination: PinDestinations | undefined): string {
+  if (!destination) return "—";
+  const label = (end: WireEnd) =>
+    end.kind === "cavity"
+      ? cavityLabel(project, library, end.cavity_assignment_id)
+      : end.kind === "ground"
+        ? groundLabel(project, end.ground_point_id)
+        : endLabel(project, end);
+  const unique = (labels: string[]) => [...new Set(labels.filter((l) => l !== "—"))];
+  const ends = unique(destination.ends.map(label));
+  const via = unique(destination.via_splices.map((id) => spliceLabel(project, id)));
+  if (ends.length === 0 && via.length === 0) return "—";
+  return `${ends.join(", ") || "—"}${via.length ? ` (via ${via.join(", ")})` : ""}`;
 }
 
 /** "SP1 · Coils pin 2": el splice con su nombre. */
@@ -587,7 +471,7 @@ export function pageChunks<T extends { goesTo: string }>(rows: T[], pageMm: numb
   return chunks;
 }
 
-export function pinoutRows(project: ProjectData, library: Library, connectorId: number, netOf: (wireId: number) => number[]): PinRow[] {
+export function pinoutRows(project: ProjectData, library: Library, connectorId: number, destinationOf: (cavityId: number) => PinDestinations | undefined): PinRow[] {
   const connector = project.connector_instances.find((c) => c.id === connectorId);
   if (!connector) return [];
   return connector.cavities.map((cav) => {
@@ -595,7 +479,7 @@ export function pinoutRows(project: ProjectData, library: Library, connectorId: 
     const pinName = devicePinName(library, connector.device_connector_id, cav.cavity_id);
     const wires = project.wire_instances.filter((w) => isCavity(w.end_a, cav.id) || isCavity(w.end_b, cav.id));
     if (wires.length === 0) return { pin: cav.cavity_id, fn: pinName ?? "n/c", goesTo: cav.external_reference ?? "" };
-    const goesTo = terminatesAt(project, library, cav.id, netOf);
+    const goesTo = terminatesAt(project, library, destinationOf(cav.id));
     return {
       pin: cav.cavity_id,
       fn: pinName ?? [...new Set(wires.map((w) => wireFunction(library, w)))].join(" / "),

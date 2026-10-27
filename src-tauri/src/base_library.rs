@@ -386,9 +386,6 @@ pub fn base_library() -> Library {
                         .map(|(pin, socket)| if gender == "male" { pin } else { socket }),
                     seal_plug_part_id: seal_plug_id,
                     adhesive_heatshrink_length_mm: None,
-                    image_side: None,
-                    image_front: None,
-                    image_back: None,
                     cavities: (1..=ways)
                         .map(|n| ConnectorDefCavity {
                             cavity_id: cavity_label(family.series, ways, n),
@@ -461,9 +458,6 @@ pub fn base_library() -> Library {
             contact_part_id: Some(socket_ids[0]),
             seal_plug_part_id: Some(plug_id),
             adhesive_heatshrink_length_mm: None,
-            image_side: None,
-            image_front: None,
-            image_back: None,
             cavities: (1..=ways)
                 .map(|n| ConnectorDefCavity {
                     cavity_id: n.to_string(),
@@ -536,9 +530,6 @@ pub fn base_library() -> Library {
             contact_part_id,
             seal_plug_part_id,
             adhesive_heatshrink_length_mm: None,
-            image_side: None,
-            image_front: None,
-            image_back: None,
             cavities: h
                 .cavities
                 .iter()
@@ -992,11 +983,11 @@ mod tests {
     #[ignore]
     fn update_bundled_library() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/default-library.db");
-        let conn = crate::db::open_existing_library(path).unwrap();
+        let conn = crate::db::open_library(path).unwrap();
         let before = crate::model::library::load(&conn).unwrap();
         drop(conn);
         let merged = merge_base_library(&before);
-        let mut conn = crate::db::create_or_open_library(path).unwrap();
+        let mut conn = crate::db::library_for_saving(path).unwrap();
         crate::model::library::save(&mut conn, &merged).unwrap();
         println!("{} -> {} parts", before.parts.len(), merged.parts.len());
     }

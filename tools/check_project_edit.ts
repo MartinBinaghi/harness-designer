@@ -65,12 +65,12 @@ console.log("project edit: ok");
   const pin = (id: number) => ({ kind: "cavity" as const, cavity_assignment_id: id, splice_id: null, ground_point_id: null, component_instance_id: null });
   const lib = { wire_defs: [{ part_id: 20 }, { part_id: 21 }] } as unknown as Library;
   const withWires = { ...p, wire_instances: [{ library_part_id: 21, id: 4 }, { library_part_id: 21, id: 9 }] } as unknown as ProjectData;
-  const added = addWire(withWires, lib, pin(1), pin(2));
+  const added = addWire(withWires, lib, null, pin(1), pin(2));
   assert.ok(typeof added !== "string");
   const w = added.project.wire_instances.at(-1)!;
   assert.deepEqual([w.id, w.short_id, w.library_part_id], [10, "W010", 21]);
-  assert.equal(typeof addWire(withWires, lib, pin(1), pin(1)), "string");
-  assert.equal((addWire(p, lib, pin(1), pin(2)) as { project: ProjectData }).project.wire_instances[0].library_part_id, 20);
+  assert.equal(typeof addWire(withWires, lib, null, pin(1), pin(1)), "string");
+  assert.equal((addWire(p, lib, null, pin(1), pin(2)) as { project: ProjectData }).project.wire_instances[0].library_part_id, 20);
   console.log("project edit (wires): ok");
 }
 
@@ -169,9 +169,9 @@ console.log("project edit: ok");
   assert.equal(parseEnd(proj, par, "PDM30 OUT1"), null);
 
   // Dos cables desde X4:2: uno a PDM30 OUT11 y otro a masa.
-  const a = addWireAtCavity(proj, lib, 42);
+  const a = addWireAtCavity(proj, lib, null, 42);
   assert.ok(typeof a !== "string");
-  const b = addWireAtCavity(a.project, lib, 42);
+  const b = addWireAtCavity(a.project, lib, null, 42);
   assert.ok(typeof b !== "string");
   let q = setOtherEnd(b.project, a.wireId, 42, parseEnd(b.project, lib, "PDM30 OUT11")!);
   assert.ok(typeof q !== "string");
@@ -207,21 +207,24 @@ console.log("project edit: ok");
   console.log("project edit (splices, grounds, components): ok");
 }
 
-// Cable nuevo desde un pin: un tipo que entre en el contacto de esa vía (no el primero de la biblioteca).
+// Cable nuevo desde un pin: un tipo que entre en algún contacto que pueda llevar esa vía,
+// según los calibres que interpreta el núcleo (gauge_facts): no el primero de la biblioteca.
 {
   const { addWireAtCavity } = await import("../src/projectEdit.ts");
-  const { gaugeMm2 } = await import("../src/libraryTypes.ts");
-  assert.ok(Math.abs(gaugeMm2("20 AWG")! - 0.517) < 0.01);
-  assert.equal(gaugeMm2("0.5 mm²"), 0.5);
   const lib = {
     wire_defs: [{ part_id: 26, gauge: "26 AWG" }, { part_id: 20, gauge: "20 AWG" }, { part_id: 18, gauge: "18 AWG" }],
-    connector_defs: [{ part_id: 1, contact_part_id: 50 }],
-    contact_defs: [{ part_id: 50, gauge_min: "20 AWG", gauge_max: "16 AWG" }],
+    connector_defs: [{ part_id: 1, contact_part_id: 50, cavities: [{ cavity_id: "1", contact_size: "20" }] }],
   } as unknown as Library;
+  // 26 AWG ≈ 0.13 mm², 20 AWG ≈ 0.52, 18 AWG ≈ 0.82; el contacto de la vía toma de 20 a 16 AWG (0.52–1.31).
+  const gauges = { wire_mm2: { "26": 0.13, "20": 0.52, "18": 0.82 }, contact_ranges: { "1": { "20": [[0.52, 1.31]] as [number, number][] } } };
   const proj = { ...base, connector_instances: [{ id: 1, short_id: "X1", library_part_id: 1, cavities: [{ id: 11, cavity_id: "1" }] }], wire_instances: [], twist_groups: [] } as unknown as ProjectData;
-  const r = addWireAtCavity(proj, lib, 11);
+  const r = addWireAtCavity(proj, lib, gauges, 11);
   assert.ok(typeof r !== "string");
   assert.equal(r.project.wire_instances[0].library_part_id, 20);
+  // Sin los datos del núcleo todavía, no se descarta ninguno: el primero.
+  const early = addWireAtCavity(proj, lib, null, 11);
+  assert.ok(typeof early !== "string");
+  assert.equal(early.project.wire_instances[0].library_part_id, 26);
   console.log("project edit (new wire fits the contact): ok");
 }
 

@@ -1,8 +1,9 @@
 // Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: node tools/check_sheets.ts
 import assert from "node:assert/strict";
-import { assemblyBranches, colorWord, connectorHeatShrink, coveringRows, pageChunks, wireNets, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
+import { assemblyBranches, colorWord, connectorHeatShrink, coveringRows, pageChunks, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
 import type { Library } from "../src/libraryTypes.ts";
 import type { ProjectData } from "../src/types.ts";
+import type { PinDestinations } from "../src/costTypes.ts";
 
 const cav = (id: number, pin: string, extra = {}) => ({ id, cavity_id: pin, external_reference: null, ...extra });
 const conn = (id: number, short_id: string, name: string, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name, library_part_id: 1, node_id: id, cavities });
@@ -41,7 +42,14 @@ const cuts = [
   { wire_id: 3, length_with_twist_mm: 200, margin_pct: 10, twist_min_margin_pct: 2, cut_length_mm: 220 },
   { wire_id: 4, length_with_twist_mm: 50, margin_pct: 10, twist_min_margin_pct: 2, cut_length_mm: 55 },
 ];
-const net = (id: number) => (id === 4 ? [4] : [1, 2, 3]);
+// "Termina en" como lo calcula el núcleo (pin_destinations, con sus tests en topology.rs):
+// X1:1 → X2:1 y X3:1 por SP1; X2:1 → X1:1 y X3:1 por SP1; X1:2 → G1.
+const destinations = new Map([
+  [11, { cavity_assignment_id: 11, ends: [end("cavity", { cavity: 21 }), end("cavity", { cavity: 31 })], via_splices: [1] }],
+  [21, { cavity_assignment_id: 21, ends: [end("cavity", { cavity: 11 }), end("cavity", { cavity: 31 })], via_splices: [1] }],
+  [12, { cavity_assignment_id: 12, ends: [end("ground", { ground: 1 })], via_splices: [] }],
+]) as Map<number, PinDestinations>;
+const destinationOf = (cavityId: number) => destinations.get(cavityId);
 
 // Por largo: 330, 220, 110, 55 — pero W004 sube junto a W002 (mismo trenzado).
 assert.deepEqual(cutListRows(project, library, cuts, "length").map((r) => r.id), ["W002", "W004", "W003", "W001"]);
@@ -61,13 +69,14 @@ assert.deepEqual(byPin.find((g) => g.connectorId === 1)!.rows.map((r) => [r.id, 
 // Totales por tipo, en metros.
 assert.deepEqual(wireTotals(byType), [{ wireType: "20 AWG", count: 2, meters: 0.275 }, { wireType: "22 AWG M22759/32", count: 2, meters: 0.44 }]);
 
-// Termina en: los otros pines de la net, pasando por el splice.
-assert.equal(terminatesAt(project, library, 11, net), "X2:1 · MAP, X3:1 · TPS (via SP1)");
-assert.equal(terminatesAt(project, library, 21, net), "X1:1 · ECU, X3:1 · TPS (via SP1)");
-assert.equal(terminatesAt(project, library, 12, net), "G1 · Chassis");
+// Termina en, escrito: cada destino con su nombre, y por qué splices pasa.
+assert.equal(terminatesAt(project, library, destinationOf(11)), "X2:1 · MAP, X3:1 · TPS (via SP1)");
+assert.equal(terminatesAt(project, library, destinationOf(21)), "X1:1 · ECU, X3:1 · TPS (via SP1)");
+assert.equal(terminatesAt(project, library, destinationOf(12)), "G1 · Chassis");
+assert.equal(terminatesAt(project, library, undefined), "—");
 
 // Pinout con el formato del taller: un renglón por vía; sin cable, "n/c" y la referencia externa.
-assert.deepEqual(pinoutRows(project, library, 1, net), [
+assert.deepEqual(pinoutRows(project, library, 1, destinationOf), [
   { pin: "1", fn: "5V", goesTo: "X2:1 · MAP, X3:1 · TPS (via SP1)" },
   { pin: "2", fn: "GND", goesTo: "G1 · Chassis" },
   { pin: "3", fn: "n/c", goesTo: "" },
@@ -111,8 +120,8 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
 {
   const devLib = { ...library, device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "1", name: "OUT11", function: null }] }] }] } as unknown as Library;
   const pdm = { ...project, connector_instances: project.connector_instances.map((c) => (c.id === 2 ? { ...c, name: "PDM30", device_connector_id: 3 } : c)) } as ProjectData;
-  assert.equal(pinoutRows(pdm, devLib, 2, net)[0].fn, "OUT11");
-  assert.equal(terminatesAt(pdm, devLib, 11, net), "PDM30 · OUT11 (X2:1), X3:1 · TPS (via SP1)");
+  assert.equal(pinoutRows(pdm, devLib, 2, destinationOf)[0].fn, "OUT11");
+  assert.equal(terminatesAt(pdm, devLib, destinationOf(11)), "PDM30 · OUT11 (X2:1), X3:1 · TPS (via SP1)");
   // En la lista de corte, el extremo lleva el nombre del pin.
   assert.equal(cutListRows(pdm, devLib, cuts, "pin").find((r) => r.id === "W002")!.to, "X2:1 OUT11");
 }
@@ -131,32 +140,6 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual(cov.map((r) => [r.between, r.size, r.part, r.cutMm]), [["Breakout 9 – X2", '1/4"', "DR-25-1/4", 385]]);
   // La pieza con adhesivo lleva el largo de su ConnectorDef (varía según el conector).
   assert.deepEqual(terminationRows(p, lib), [["X2 · MAP", "90° boot", "not chosen"], ["X3 · TPS", "Adhesive heat-shrink", '1/4" · DR-25-1/4 · cut 40 mm'], ["Breakout 9", "T-mold", "T-202"]]);
-}
-
-// Nets armadas en el frontend: igual que el backend (X1:1 → SP1 → X2:1 y X3:1 es una net; X1:2 → G1, otra).
-{
-  const nets = wireNets(project);
-  assert.deepEqual([...nets.get(1)!].sort(), [1, 2, 3]);
-  assert.deepEqual(nets.get(4), [4]);
-  assert.equal(terminatesAt(project, library, 11, (id) => nets.get(id)!), "X2:1 · MAP, X3:1 · TPS (via SP1)");
-}
-
-// Del otro lado del splice (Martin): SP1 en el nodo de X1; X2 y X3 llegan por la misma rama (S1).
-// Desde X2 solo se ve X1; desde X1, los dos.
-{
-  const tree = {
-    ...project,
-    connector_instances: project.connector_instances.map((c) => ({ ...c, node_id: c.id })),
-    splice_instances: [{ id: 1, short_id: "SP1", name: "", node_id: 1, segment_id: null }],
-    segments: [{ id: 1, node_a_id: 1, node_b_id: 4 }, { id: 2, node_a_id: 4, node_b_id: 2 }, { id: 3, node_a_id: 4, node_b_id: 3 }],
-  } as unknown as ProjectData;
-  const nets = wireNets(tree);
-  const netOf = (id: number) => nets.get(id)!;
-  assert.equal(terminatesAt(tree, library, 21, netOf), "X1:1 · ECU (via SP1)");
-  assert.equal(terminatesAt(tree, library, 11, netOf), "X2:1 · MAP, X3:1 · TPS (via SP1)");
-  // Si X3 llega por otra rama (directo al nodo del splice), desde X2 sí se ve.
-  const branched = { ...tree, segments: [{ id: 1, node_a_id: 1, node_b_id: 2 }, { id: 2, node_a_id: 1, node_b_id: 3 }] } as unknown as ProjectData;
-  assert.equal(terminatesAt(branched, library, 21, netOf), "X1:1 · ECU, X3:1 · TPS (via SP1)");
 }
 
 // Bloques largos de pinout: tramos que entran en una hoja; un renglón de varias líneas cuenta más.
@@ -189,20 +172,6 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual(b[0].outlets.map((o) => [o.branch, o.lengthMm]), [[1, 1000]]);
   assert.deepEqual(b[1].outlets.map((o) => [o.id, o.name, o.branch]), [["X2", "MAP", null], ["", "", 2]]);
   assert.deepEqual(b[2].outlets.map((o) => o.id), ["G1", "X3"]); // G1 (y 7) arriba de X3 (y 10)
-}
-
-// "Termina en" no sigue por las masas: dos pines al mismo ojal terminan en el ojal, no uno en el otro.
-{
-  const grounded = {
-    ...project,
-    wire_instances: [
-      wire(1, 20, "GND", end("cavity", { cavity: 21 }), end("ground", { ground: 1 })),
-      wire(2, 20, "GND", end("cavity", { cavity: 31 }), end("ground", { ground: 1 })),
-    ],
-  } as unknown as ProjectData;
-  const nets = wireNets(grounded);
-  assert.deepEqual(nets.get(1), [1]);
-  assert.equal(terminatesAt(grounded, library, 21, (id) => nets.get(id)!), "G1 · Chassis");
 }
 
 console.log("sheets: ok");

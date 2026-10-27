@@ -42,7 +42,6 @@ pub fn sample_project() -> ProjectData {
             harness_code: "MOT-01".into(),
             client: None,
             revision: Some("A".into()),
-            format_version: 1,
             main_connector_instance_id: Some(1),
             markup_pct: 0.0,
             default_cut_margin_pct: 10.0,
@@ -350,9 +349,6 @@ fn connector_def(
         contact_part_id: contact,
         seal_plug_part_id: None,
         adhesive_heatshrink_length_mm: None,
-        image_side: None,
-        image_front: None,
-        image_back: None,
         cavities: (1..=ways)
             .map(|n| ConnectorDefCavity {
                 cavity_id: n.to_string(),

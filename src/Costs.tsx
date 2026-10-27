@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { ProjectData, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 import type { CostReport } from "./costTypes";
@@ -10,18 +8,13 @@ interface Props {
   library: Library;
   selection: Selection;
   onSelect: (s: Selection) => void;
+  /** Costos de la revisión actual (se recalculan solos), o null mientras se calculan. */
+  report: CostReport | null;
 }
 
-export default function Costs({ project, library, selection, onSelect }: Props) {
-  const [report, setReport] = useState<CostReport | null>(null);
-
+export default function Costs({ project, library, selection, onSelect, report }: Props) {
   if (!project) {
     return <p>Open or load a project first (Topology tab).</p>;
-  }
-
-  async function run() {
-    const result = await invoke<CostReport>("compute_costs", { project, library });
-    setReport(result);
   }
 
   function wireLabel(wireId: number): string {
@@ -54,7 +47,7 @@ export default function Costs({ project, library, selection, onSelect }: Props) 
   return (
     <>
       <div className="toolbar">
-        <button className="button-primary" onClick={run}>Compute</button>
+        {!report && <span className="status">Computing…</span>}
         {report && (
           <span className="status">
             {report.cut_list.length} wires · {report.bom.length} parts · total ${report.cost_summary.total_usd.toFixed(2)}

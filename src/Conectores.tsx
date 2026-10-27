@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { useSettled } from "./useBackedState";
 import type { CavityAssignment, ConnectorInstance, ProjectData, Selection, WireInstance } from "./types";
-import type { CostReport } from "./costTypes";
+import type { CostReport, GaugeFacts, PinDestinations } from "./costTypes";
 import { devicePinName, partLabel, type Library } from "./libraryTypes";
 import { TrashIcon } from "./icons";
 import {
@@ -24,7 +22,7 @@ import {
   wiresAtCavity,
 } from "./projectEdit";
 import { ConnectorPartSelect } from "./Inspector";
-import { terminatesAt, wireNets } from "./sheets";
+import { terminatesAt } from "./sheets";
 
 /**
  * Conectores con su pinout: la lista a la izquierda y, del elegido, sus datos y
@@ -40,31 +38,24 @@ interface Props {
   library: Library;
   selection: Selection;
   onSelect: (s: Selection) => void;
+  /** Costos de la revisión actual (largos de corte), o null mientras se calculan. */
+  report: CostReport | null;
+  /** "Termina en" de cada vía con cable (por id de vía), calculado por el núcleo. */
+  destinations: Map<number, PinDestinations>;
+  /** Calibres ya interpretados por el núcleo, para el tipo de un cable nuevo. */
+  gauges: GaugeFacts | null;
 }
 
-export default function Conectores({ project, setProject, library, selection, onSelect }: Props) {
+export default function Conectores({ project, setProject, library, selection, onSelect, report, destinations, gauges }: Props) {
   const [search, setSearch] = useState("");
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [report, setReport] = useState<CostReport | null>(null);
 
   // Un conector elegido en el árbol, el diagrama o Checks se abre acá.
   useEffect(() => {
     if (selection?.kind === "connector") setCurrentId(selection.id);
   }, [selection]);
 
-  // Largos de corte: los calcula el backend, como en Costs y Print.
-  const calc = useSettled(project);
-  useEffect(() => {
-    if (!calc) return;
-    let cancelled = false;
-    void invoke<CostReport>("compute_costs", { project: calc, library }).then((r) => {
-      if (!cancelled) setReport(r);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [calc, library]);
 
   if (!project) return <p>Open or load a project first (Topology tab).</p>;
 
@@ -173,6 +164,8 @@ export default function Conectores({ project, setProject, library, selection, on
           library={library}
           connector={connector}
           report={report}
+          destinations={destinations}
+          gauges={gauges}
           selection={selection}
           onSelect={onSelect}
           setProject={setProject}
@@ -191,11 +184,13 @@ export default function Conectores({ project, setProject, library, selection, on
   );
 }
 
-function ConnectorEditor({ project, library, connector: c, report, selection, onSelect, setProject, apply, onDelete, onDuplicate, notice }: {
+function ConnectorEditor({ project, library, connector: c, report, destinations, gauges, selection, onSelect, setProject, apply, onDelete, onDuplicate, notice }: {
   project: ProjectData;
   library: Library;
   connector: ConnectorInstance;
   report: CostReport | null;
+  destinations: Map<number, PinDestinations>;
+  gauges: GaugeFacts | null;
   selection: Selection;
   onSelect: (s: Selection) => void;
   setProject: (p: ProjectData) => void;
@@ -205,9 +200,6 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
   notice: string | null;
 }) {
   const set = (patch: Partial<ConnectorInstance>) => setProject(patchItem(project, "connector_instances", c.id, patch));
-  // A dónde termina cada pin cuando pasa por un splice ("→ X1:NN, X1:PP (via SP1)").
-  const nets = wireNets(project);
-  const netOf = (id: number) => nets.get(id) ?? [id];
   const setCavity = (cavityId: number, patch: Partial<CavityAssignment>) =>
     set({ cavities: c.cavities.map((cav) => (cav.id === cavityId ? { ...cav, ...patch } : cav)) });
   const setWire = (w: WireInstance, patch: Partial<WireInstance>) => setProject(patchItem(project, "wire_instances", w.id, patch));
@@ -217,7 +209,7 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
   const datalistId = `goes-to-${c.id}`;
 
   function newWire(cavityId: number, patch: Partial<WireInstance> = {}) {
-    const result = addWireAtCavity(project, library, cavityId);
+    const result = addWireAtCavity(project, library, gauges, cavityId);
     if (typeof result === "string") return apply(result);
     apply(patchItem(result.project, "wire_instances", result.wireId, patch));
     onSelect({ kind: "wire", id: result.wireId });
@@ -363,14 +355,14 @@ function ConnectorEditor({ project, library, connector: c, report, selection, on
                           const end = text ? parseEnd(project, library, text) : BLANK_END;
                           if (!end) return apply(`"${text}" isn't a pin, splice, ground or component of this project.`);
                           if (w) return apply(setOtherEnd(project, w.id, cav.id, end));
-                          const created = addWireAtCavity(project, library, cav.id);
+                          const created = addWireAtCavity(project, library, gauges, cav.id);
                           if (typeof created === "string") return apply(created);
                           apply(setOtherEnd(created.project, created.wireId, cav.id, end));
                           onSelect({ kind: "wire", id: created.wireId });
                         }}
                       />
                       {i === 0 && wires.some((x) => otherEnd(x, cav.id).kind === "splice") && (
-                        <span className="cn-final" title="Where this pin ends, through the splice">→ {terminatesAt(project, library, cav.id, netOf)}</span>
+                        <span className="cn-final" title="Where this pin ends, through the splice">→ {terminatesAt(project, library, destinations.get(cav.id))}</span>
                       )}
                     </td>
                     <td className="cn-col-wire">

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import type {
   AccessoryDef,
   AccessoryDefConnectorMatch,
@@ -22,7 +23,8 @@ import type {
 import { FolderIcon, PencilIcon, TrashIcon } from "./icons";
 import { fileName, pickFileToOpen, pickFileToSave } from "./fileDialogs";
 import { readImageAsDataUrl } from "./imageFile";
-import { CONNECTOR_VIEWS, partLabel } from "./libraryTypes";
+import { partLabel } from "./libraryTypes";
+import { IMAGE_VIEWS, setConnectorImage, useConnectorImage, type ImageView } from "./connectorImages";
 import type { ProjectData } from "./types";
 import milStd1560 from "./data/mil-std-1560.json";
 import { connectorFace, type MilArrangements } from "./connectorFace";
@@ -850,55 +852,69 @@ function insertLabel(code: string): string {
 }
 
 /**
- * Imágenes del conector (frontal con numeración de pines, lateral, trasera):
- * se guardan dentro de la biblioteca, achicadas (ver imageFile.ts).
+ * Fotos del conector (frontal con numeración de pines, lateral, trasera): se
+ * achican (ver imageFile.ts) y se guardan en el archivo de la biblioteca, aparte
+ * de la ficha (ver connectorImages.ts). No entran en deshacer, como un adjunto.
  */
-function ConnectorImages({ cd, onChange }: { cd: ConnectorDef; onChange: (patch: Partial<ConnectorDef>) => void }) {
+function ConnectorImages({ partId }: { partId: number }) {
   const [error, setError] = useState<string | null>(null);
-  async function load(key: (typeof CONNECTOR_VIEWS)[number]["key"], file: File | undefined) {
-    if (!file) return;
-    try {
-      setError(null);
-      onChange({ [key]: await readImageAsDataUrl(file) });
-    } catch {
-      setError(`Couldn't read ${file.name} as an image.`);
-    }
-  }
   return (
     <div className="connector-images">
       <div className="connector-images-row">
-        {CONNECTOR_VIEWS.map(({ key, label }) => {
-          const src = cd[key];
-          return (
-            <div key={key} className="connector-image-slot">
-              <div className="connector-image-box">
-                {src ? <img src={src} alt={`${label} view`} /> : <span className="hint">no image</span>}
-              </div>
-              <div className="connector-image-actions">
-                <span>{label}</span>
-                <label className="link-button">
-                  {src ? "Replace…" : "Load…"}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
-                    hidden
-                    onChange={(e) => {
-                      void load(key, e.currentTarget.files?.[0]);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                </label>
-                {src && (
-                  <button className="link-button" onClick={() => onChange({ [key]: null })}>
-                    Remove
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {IMAGE_VIEWS.map(({ view, label }) => (
+          <ImageSlot key={view} partId={partId} view={view} label={label} onError={setError} />
+        ))}
       </div>
       {error && <p className="diagram-notice">{error}</p>}
+    </div>
+  );
+}
+
+function ImageSlot({ partId, view, label, onError }: { partId: number; view: ImageView; label: string; onError: (e: string | null) => void }) {
+  const src = useConnectorImage(partId, view);
+  async function load(file: File | undefined) {
+    if (!file) return;
+    try {
+      onError(null);
+      await setConnectorImage(partId, view, await readImageAsDataUrl(file));
+    } catch (e) {
+      onError(`Couldn't load ${file.name}: ${String(e)}`);
+    }
+  }
+  async function remove() {
+    if (!(await ask(`Remove the ${label.toLowerCase()} photo? This can't be undone.`, { kind: "warning" }))) return;
+    try {
+      onError(null);
+      await setConnectorImage(partId, view, null);
+    } catch (e) {
+      onError(`Couldn't remove the photo: ${String(e)}`);
+    }
+  }
+  return (
+    <div className="connector-image-slot">
+      <div className="connector-image-box">
+        {src ? <img src={src} alt={`${label} view`} /> : <span className="hint">{src === undefined ? "…" : "no image"}</span>}
+      </div>
+      <div className="connector-image-actions">
+        <span>{label}</span>
+        <label className="link-button">
+          {src ? "Replace…" : "Load…"}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+            hidden
+            onChange={(e) => {
+              void load(e.currentTarget.files?.[0]);
+              e.currentTarget.value = "";
+            }}
+          />
+        </label>
+        {src && (
+          <button className="link-button" onClick={() => void remove()}>
+            Remove
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1048,9 +1064,6 @@ function blankConnectorDef(partId: number): ConnectorDef {
     contact_part_id: null,
     seal_plug_part_id: null,
     adhesive_heatshrink_length_mm: null,
-    image_side: null,
-    image_front: null,
-    image_back: null,
     cavities: [],
   };
 }
@@ -1337,7 +1350,7 @@ function ConnectorDetail({ library, project, cd, part, missing, onPart, onCd, on
 
         <section className="lib-card">
           <h3>Images</h3>
-          <ConnectorImages cd={cd} onChange={onCd} />
+          <ConnectorImages partId={cd.part_id} />
           <h3>Used in</h3>
           {!project ? (
             <p className="hint">No project open.</p>

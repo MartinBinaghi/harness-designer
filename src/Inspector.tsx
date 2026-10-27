@@ -1,12 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettled } from "./useBackedState";
 import type { CostReport, WireCutLength } from "./costTypes";
 import { changeConnectorPart, nextId, patchItem, wireCategoryPatch } from "./projectEdit";
 import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
 
 type Placed = Pick<SpliceInstance, "node_id" | "segment_id" | "offset_from_end_mm" | "offset_from_node_id">;
-import { choiceKey, CONNECTOR_VIEWS, connectorChoices, partLabel, type ConnectorChoice, type Library } from "./libraryTypes";
+import { choiceKey, connectorChoices, partLabel, type ConnectorChoice, type Library } from "./libraryTypes";
+import { IMAGE_VIEWS, useConnectorImage, useImageViews, type ImageView } from "./connectorImages";
 import { EndEditor } from "./Cables";
 import { ConnectorFaceView } from "./ConnectorFaceView";
 import { NODE_KINDS, NODE_KIND_LABELS, TERMINATIONS, TERMINATION_LABELS as NODE_TERMINATION_LABELS } from "./Topologia";
@@ -110,20 +110,27 @@ function Select<T extends string | number>({ value, options, onChange, empty }: 
  * Cara dibujada del conector (con las vías usadas resaltadas) y las imágenes
  * cargadas en la biblioteca para su parte (frontal primero).
  */
-export function ConnectorViews({ library, partId, only, used }: { library: Library; partId: number; only?: "image_front"; used?: Set<string> }) {
+export function ConnectorViews({ library, partId, only, used }: { library: Library; partId: number; only?: ImageView; used?: Set<string> }) {
   const def = library.connector_defs.find((d) => d.part_id === partId);
-  const views = CONNECTOR_VIEWS.filter((v) => (!only || v.key === only) && def?.[v.key]);
+  const present = useImageViews(partId);
   if (!def) return null;
   return (
     <div className="connector-views">
       <ConnectorFaceView def={def} used={used} />
-      {views.map(({ key, label }) => (
-        <figure key={key}>
-          <img src={def[key]!} alt={`${label} view`} />
-          <figcaption className="field-label">{label} view</figcaption>
-        </figure>
+      {IMAGE_VIEWS.filter((v) => (!only || v.view === only) && present.includes(v.view)).map(({ view, label }) => (
+        <ConnectorPhoto key={view} partId={partId} view={view} label={label} />
       ))}
     </div>
+  );
+}
+
+function ConnectorPhoto({ partId, view, label }: { partId: number; view: ImageView; label: string }) {
+  const src = useConnectorImage(partId, view);
+  return (
+    <figure>
+      {src ? <img src={src} alt={`${label} view`} /> : <span className="hint">…</span>}
+      <figcaption className="field-label">{label} view</figcaption>
+    </figure>
   );
 }
 
@@ -170,22 +177,19 @@ export function usedCavities(project: ProjectData, connector: ConnectorInstance)
  * Recorrido y largo de un cable: los segmentos por los que pasa, el largo con
  * trenzado, el margen y el de corte (o el puesto a mano). Lo calcula el backend.
  */
-function WireLength({ project, library, wire }: { project: ProjectData; library: Library; wire: WireInstance }) {
-  const [info, setInfo] = useState<{ route: number[] | null; cut: WireCutLength | undefined } | null>(null);
-  const calc = useSettled(project);
+function WireLength({ project, wire, report, projectRevision }: { project: ProjectData; wire: WireInstance; report: CostReport | null; projectRevision: number }) {
+  const [route, setRoute] = useState<number[] | null | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      invoke<number[] | null>("wire_route", { project: calc, wireId: wire.id }),
-      invoke<CostReport>("compute_costs", { project: calc, library }),
-    ]).then(([route, report]) => {
-      if (!cancelled) setInfo({ route, cut: report.cut_list.find((c) => c.wire_id === wire.id) });
+    void invoke<number[] | null>("wire_route", { wireId: wire.id }).then((r) => {
+      if (!cancelled) setRoute(r);
     });
     return () => {
       cancelled = true;
     };
-  }, [calc, library, wire.id]);
-  if (!info) return <span className="hint">…</span>;
+  }, [projectRevision, wire.id]);
+  if (route === undefined || !report) return <span className="hint">…</span>;
+  const info: { route: number[] | null; cut: WireCutLength | undefined } = { route, cut: report.cut_list.find((c) => c.wire_id === wire.id) };
   const segments = (info.route ?? []).map((id) => project.segments.find((s) => s.id === id)).filter((s) => s !== undefined);
   return (
     <div className="inspector-length">
@@ -206,19 +210,9 @@ function WireLength({ project, library, wire }: { project: ProjectData; library:
 }
 
 /** Diámetro del segmento (bundle y con coberturas) y el termo que sugiere el cálculo. */
-function SegmentDiameter({ project, library, segmentId }: { project: ProjectData; library: Library; segmentId: number }) {
-  const [info, setInfo] = useState<CostReport["segment_diameters"][number] | null | undefined>(undefined);
-  const calc = useSettled(project);
-  useEffect(() => {
-    let cancelled = false;
-    void invoke<CostReport>("compute_costs", { project: calc, library }).then((report) => {
-      if (!cancelled) setInfo(report.segment_diameters.find((d) => d.segment_id === segmentId) ?? null);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [calc, library, segmentId]);
-  if (info === undefined) return <span className="hint">…</span>;
+function SegmentDiameter({ library, segmentId, report }: { library: Library; segmentId: number; report: CostReport | null }) {
+  if (!report) return <span className="hint">…</span>;
+  const info = report.segment_diameters.find((d) => d.segment_id === segmentId) ?? null;
   if (info === null) return <span className="hint">No wires in this segment.</span>;
   const suggested = info.covering_options.find((c) => c.fits);
   return (
@@ -294,9 +288,13 @@ interface Props {
   onSelect: (s: Selection) => void;
   /** Los problemas de Checks: se muestran los de lo seleccionado. */
   findings: Finding[];
+  /** Costos de la revisión actual, o null mientras se calculan. */
+  report: CostReport | null;
+  /** Revisión del proyecto en el backend: el recorrido del cable se rehace cuando cambia. */
+  projectRevision: number;
 }
 
-export default function Inspector({ project, setProject, library, selection, onSelect, findings }: Props) {
+export default function Inspector({ project, setProject, library, selection, onSelect, findings, report, projectRevision }: Props) {
   if (!project || !selection) {
     return (
       <div className="inspector-panel">
@@ -441,7 +439,7 @@ export default function Inspector({ project, setProject, library, selection, onS
           <Field label="Length">
             <NumberInput value={seg.length_mm} min={1} unit="mm" onCommit={(v) => v !== null && set({ length_mm: v })} />
           </Field>
-          <Field label="Diameter"><SegmentDiameter project={project} library={library} segmentId={seg.id} /></Field>
+          <Field label="Diameter"><SegmentDiameter library={library} segmentId={seg.id} report={report} /></Field>
           <Field label="Twist pitch">
             <NumberInput value={seg.twist_pitch_mm} nullable min={1} unit="mm" placeholder="project default" onCommit={(v) => set({ twist_pitch_mm: v })} />
           </Field>
@@ -592,7 +590,7 @@ export default function Inspector({ project, setProject, library, selection, onS
           </Field>
           <Field label="From"><EndEditor end={w.end_a} project={project} onChange={(end_a) => set({ end_a })} /></Field>
           <Field label="To"><EndEditor end={w.end_b} project={project} onChange={(end_b) => set({ end_b })} /></Field>
-          <Field label="Length"><WireLength project={project} library={library} wire={w} /></Field>
+          <Field label="Length"><WireLength project={project} wire={w} report={report} projectRevision={projectRevision} /></Field>
           <Field label="Cut length by hand">
             <NumberInput value={w.manual_length_mm} nullable unit="mm" placeholder="from the route" onCommit={(v) => set({ manual_length_mm: v })} />
           </Field>

@@ -1,11 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettled } from "./useBackedState";
 import type { ProjectData } from "./types";
 import { partLabel, type Library } from "./libraryTypes";
-import type { CostReport } from "./costTypes";
-import { assemblyBranches, connectorHeatShrink, coveringRows, wireNets, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
+import type { CostReport, PinDestinations } from "./costTypes";
+import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
 import { ConnectorFaceView } from "./ConnectorFaceView";
+import { useConnectorImage } from "./connectorImages";
 import { AssemblySheet } from "./AssemblySheet";
 import { AssemblyOverview, BranchFan, branchesWithSheet } from "./AssemblyBranches";
 import { usedCavities } from "./Inspector";
@@ -36,6 +36,12 @@ interface Props {
   project: ProjectData | null;
   setProject: (p: ProjectData) => void;
   library: Library;
+  /** Costos de la revisión actual, o null mientras se calculan. */
+  report: CostReport | null;
+  /** "Termina en" de cada vía con cable (por id de vía), calculado por el núcleo. */
+  destinations: Map<number, PinDestinations>;
+  /** Revisión del proyecto en el backend: las distancias se rehacen cuando cambia. */
+  projectRevision: number;
 }
 
 /** Redondeo del largo de corte, siempre hacia arriba (se guarda en el proyecto). */
@@ -47,7 +53,7 @@ const CUT_ROUNDING: [number | null, string][] = [
   [100, "Up to 100 mm"],
 ];
 
-export default function Impresion({ project, setProject, library }: Props) {
+export default function Impresion({ project, setProject, library, report, destinations, projectRevision }: Props) {
   const [doc, setDoc] = useState<Doc>("cut");
   const [sort, setSort] = useState<CutSort>("pin");
   const [paper, setPaper] = useState<Paper>("A4");
@@ -59,41 +65,28 @@ export default function Impresion({ project, setProject, library }: Props) {
   const [assemblyLayout, setAssemblyLayout] = useState<"branches" | "whole">("branches");
   const [showDistances, setShowDistances] = useState(true);
   const [distances, setDistances] = useState<Record<string, number> | null>(null);
-  const [data, setData] = useState<{ report: CostReport; nets: Map<number, number[]> } | null>(null);
 
-  // Largos de corte: los calcula el backend, igual que en Costs y el diagrama. Las
-  // nets de "Termina en", las mismas que en la pestaña Connectors (`wireNets`).
-  const calc = useSettled(project);
-  useEffect(() => {
-    if (!calc) return;
-    let cancelled = false;
-    void (async () => {
-      const report = await invoke<CostReport>("compute_costs", { project: calc, library });
-      if (!cancelled) setData({ report, nets: wireNets(calc) });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [calc, library]);
 
   // Distancia acumulada desde el conector principal (hoja de armado, plan 10.2).
   const mainNode = project?.connector_instances.find((c) => c.id === project.project.main_connector_instance_id)?.node_id;
   useEffect(() => {
-    if (!project || mainNode === undefined || !showDistances) return setDistances(null);
+    if (!projectRevision || mainNode === undefined || !showDistances) return setDistances(null);
     let cancelled = false;
-    void invoke<Record<string, number>>("node_distances", { project, fromNodeId: mainNode }).then((d) => {
+    void invoke<Record<string, number>>("node_distances", { fromNodeId: mainNode }).then((d) => {
       if (!cancelled) setDistances(d);
     });
     return () => {
       cancelled = true;
     };
-  }, [project, mainNode, showDistances]);
+  }, [projectRevision, mainNode, showDistances]);
+
+  const data = report ? { report } : null;
 
   if (!project) return <p>Open or load a project first (Topology tab).</p>;
 
   const [w, h] = PAPER_MM[paper];
   const sheetWidth = `${landscape ? h : w}mm`;
-  const netOf = (id: number) => data?.nets.get(id) ?? [id];
+  const destinationOf = (cavityId: number) => destinations.get(cavityId);
 
   // El título del documento es el nombre que el diálogo propone para el PDF
   // (y el encabezado del navegador, si se deja activado): "MOT-01 Cut list".
@@ -185,7 +178,7 @@ export default function Impresion({ project, setProject, library }: Props) {
           {project.connector_instances
             .filter((c) => !skipped.has(c.id))
             .map((c, i) => (
-              <PinoutBlock key={c.id} first={i === 0} project={project} library={library} connectorId={c.id} netOf={netOf} pageMm={(landscape ? w : h) - 28} charsPerLine={landscape ? 60 : 42} />
+              <PinoutBlock key={c.id} first={i === 0} project={project} library={library} connectorId={c.id} destinationOf={destinationOf} pageMm={(landscape ? w : h) - 28} charsPerLine={landscape ? 60 : 42} />
             ))}
         </table>
       </section>
@@ -361,12 +354,12 @@ export default function Impresion({ project, setProject, library }: Props) {
 const GENDER_ES = { male: "macho", female: "hembra" } as const;
 
 /** Un conector en la hoja de pinout: nombre, conector y vista ocupan todo el alto del bloque. */
-function PinoutBlock({ first, project, library, connectorId, netOf, pageMm, charsPerLine }: {
+function PinoutBlock({ first, project, library, connectorId, destinationOf, pageMm, charsPerLine }: {
   first: boolean;
   project: ProjectData;
   library: Library;
   connectorId: number;
-  netOf: (wireId: number) => number[];
+  destinationOf: (cavityId: number) => PinDestinations | undefined;
   /** Alto útil de una hoja y caracteres por línea de "Termina en", para partir bloques largos. */
   pageMm: number;
   charsPerLine: number;
@@ -378,7 +371,7 @@ function PinoutBlock({ first, project, library, connectorId, netOf, pageMm, char
   return (
     <>
       {/* El primero de la hoja comparte la primera página con el título (~14 mm). */}
-      {pageChunks(pinoutRows(project, library, c.id, netOf), pageMm, charsPerLine, first ? pageMm - 14 : pageMm).map((rows, i) => (
+      {pageChunks(pinoutRows(project, library, c.id, destinationOf), pageMm, charsPerLine, first ? pageMm - 14 : pageMm).map((rows, i) => (
         <PinoutChunk key={i} first={first && i === 0} cont={i > 0} project={project} library={library} connectorId={connectorId} rows={rows} />
       ))}
     </>
@@ -395,6 +388,7 @@ function PinoutChunk({ first, cont, project, library, connectorId, rows }: {
 }) {
   const c = project.connector_instances.find((x) => x.id === connectorId)!;
   const def = library.connector_defs.find((d) => d.part_id === c.library_part_id);
+  const photo = useConnectorImage(def?.part_id, "front");
   const span = Math.max(rows.length, 1);
   // La vista ocupa el alto del bloque (~4,2 mm por renglón), sin estirar los renglones.
   const viewHeight = { "--view-h": `${Math.min(40, Math.max(12, span * 4.2))}mm` } as CSSProperties;
@@ -402,8 +396,8 @@ function PinoutChunk({ first, cont, project, library, connectorId, rows }: {
   // Un conector pendiente igual lleva su dibujo si se sabe la pieza; la nota va debajo.
   const views = (
     <td rowSpan={span} className={`pinout-view${c.status === "pending" ? " pinout-pending" : ""}`} style={viewHeight}>
-      {def?.image_front ? (
-        <img src={def.image_front} alt={`${c.short_id} front view`} />
+      {photo ? (
+        <img src={photo} alt={`${c.short_id} front view`} />
       ) : (
         def && <ConnectorFaceView def={def} used={usedCavities(project, c)} fixedSide="front" />
       )}

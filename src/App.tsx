@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -15,7 +15,9 @@ import Impresion from "./Impresion";
 import Tree from "./TreePanel";
 import Inspector from "./Inspector";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./icons";
-import { useBackedState, useSettled } from "./useBackedState";
+import { useBackedState } from "./useBackedState";
+import type { CalcResults } from "./costTypes";
+import { reloadConnectorImages } from "./connectorImages";
 import type { Finding, HistoryStatus, ProjectData, ProjectStatus, Selection } from "./types";
 import type { Library } from "./libraryTypes";
 
@@ -38,14 +40,14 @@ export default function App() {
 
   const [selection, setSelection] = useState<Selection>(null);
   const [projectPath, setProjectPath] = useState("");
-  const [projectStatus, setProjectStatus] = useState<ProjectStatus>({ loaded: false, can_undo: false, can_redo: false, unsaved: false });
+  const [projectStatus, setProjectStatus] = useState<ProjectStatus>({ loaded: false, can_undo: false, can_redo: false, unsaved: false, revision: 0 });
   const refreshProjectStatus = useCallback(async () => {
     setProjectStatus(await invoke<ProjectStatus>("project_status"));
   }, []);
   const commitProject = useCallback(
     async (next: ProjectData | null) => {
       if (!next) return;
-      await invoke<ProjectData>("edit_project", { project: next });
+      await invoke("edit_project", { project: next });
       await refreshProjectStatus();
     },
     [refreshProjectStatus],
@@ -81,7 +83,7 @@ export default function App() {
   const [appNotice, setAppNotice] = useState("");
 
   const [libraryPath, setLibraryPath] = useState("");
-  const [libraryStatus, setLibraryStatus] = useState<HistoryStatus>({ can_undo: false, can_redo: false });
+  const [libraryStatus, setLibraryStatus] = useState<HistoryStatus>({ can_undo: false, can_redo: false, revision: 0 });
   const refreshLibraryStatus = useCallback(async () => {
     setLibraryStatus(await invoke<HistoryStatus>("library_status"));
   }, []);
@@ -94,8 +96,7 @@ export default function App() {
   }, []);
   const commitLibrary = useCallback(
     async (next: Library) => {
-      const change = await invoke<LibraryChange>("edit_library", { library: next });
-      noteLibrarySave(change.save_error);
+      noteLibrarySave(await invoke<string | null>("edit_library", { library: next }));
       await refreshLibraryStatus();
     },
     [refreshLibraryStatus, noteLibrarySave],
@@ -107,6 +108,7 @@ export default function App() {
     (next: Library) => {
       libraryHistory.reset(next);
       void refreshLibraryStatus();
+      reloadConnectorImages().catch((e) => setAppNotice(`Couldn't read the connector photos: ${String(e)}`));
     },
     [libraryHistory, refreshLibraryStatus],
   );
@@ -188,25 +190,33 @@ export default function App() {
     };
   }, []);
 
-  const [findings, setFindings] = useState<Finding[]>([]);
-
-  // Chequeos en vivo: se recalculan solos cada vez que cambia el proyecto o
-  // la biblioteca, para que la barra de estado siempre refleje el dato real
-  // (no depende de que alguien entre a la pantalla de Checks y la corra a mano).
-  const calc = useSettled(project);
+  // Costos y chequeos: un solo pedido por revisión del proyecto o de la
+  // biblioteca (el backend los calcula con lo que ya tiene y los guarda), y
+  // de acá van a cada pantalla. Así la barra de estado siempre refleja el dato
+  // real, sin que nadie tenga que entrar a Checks.
+  const [calc, setCalc] = useState<CalcResults | null>(null);
   useEffect(() => {
-    if (!calc) {
-      setFindings([]);
+    if (!projectStatus.loaded) {
+      setCalc(null);
       return;
     }
     let cancelled = false;
-    invoke<Finding[]>("run_checks", { project: calc, library }).then((result) => {
-      if (!cancelled) setFindings(result);
-    });
+    invoke<CalcResults>("calc_results").then(
+      (result) => {
+        if (!cancelled) setCalc(result);
+      },
+      (e) => {
+        if (!cancelled) setAppNotice(`Couldn't compute costs and checks: ${String(e)}`);
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [calc, library]);
+  }, [projectStatus.loaded, projectStatus.revision, libraryStatus.revision]);
+  const findings = calc?.findings ?? NO_FINDINGS;
+  const report = calc?.report ?? null;
+  const gauges = calc?.gauges ?? null;
+  const destinations = useMemo(() => new Map((calc?.destinations ?? []).map((d) => [d.cavity_assignment_id, d])), [calc]);
 
   // Undo/Redo por teclado, apuntando al documento de la pantalla activa (el
   // proyecto en Topology/Connectors/Wires/Costs, la biblioteca en Library).
@@ -330,6 +340,8 @@ export default function App() {
             <Diagrama
               project={project}
               setProject={setProject}
+              report={report}
+              projectRevision={projectStatus.revision}
               library={library}
               findings={findings}
               selection={selection}
@@ -337,10 +349,10 @@ export default function App() {
             />
           </Pane>
           <Pane name="Schematic" active={section === "Schematic"} visited={visited} canvas>
-            <Esquema project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+            <Esquema project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} projectRevision={projectStatus.revision} gauges={gauges} />
           </Pane>
           <Pane name="Connectors" active={section === "Connectors"} visited={visited}>
-            <Conectores project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+            <Conectores project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} report={report} destinations={destinations} gauges={gauges} />
           </Pane>
           <Pane name="Wires" active={section === "Wires"} visited={visited}>
             <Cables project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
@@ -352,12 +364,12 @@ export default function App() {
             <Checks project={project} findings={findings} selection={selection} onSelect={setSelection} />
           </Pane>
           <Pane name="Costs" active={section === "Costs"} visited={visited}>
-            <Costs project={project} library={library} selection={selection} onSelect={setSelection} />
+            <Costs project={project} library={library} selection={selection} onSelect={setSelection} report={report} />
           </Pane>
           <Pane name="Print" active={section === "Print"} visited={visited}>
-            <Impresion project={project} setProject={setProject} library={library} />
+            <Impresion project={project} setProject={setProject} library={library} report={report} destinations={destinations} projectRevision={projectStatus.revision} />
           </Pane>
-        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} />}
+        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} report={report} projectRevision={projectStatus.revision} />}
       </div>
 
       <div className="status-bar">
@@ -405,3 +417,6 @@ const Pane = memo(
   },
   (prev, next) => !prev.active && !next.active && prev.visited.has(prev.name) === next.visited.has(next.name),
 );
+
+/** Lista vacía estable (sin proyecto), para no re-renderizar en cada vuelta. */
+const NO_FINDINGS: Finding[] = [];

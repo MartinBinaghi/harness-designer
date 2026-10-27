@@ -14,7 +14,6 @@ pub struct Project {
     pub harness_code: String,
     pub client: Option<String>,
     pub revision: Option<String>,
-    pub format_version: i64,
     pub main_connector_instance_id: Option<i64>,
     pub markup_pct: f64,
     pub default_cut_margin_pct: f64,
@@ -182,7 +181,6 @@ impl ProjectData {
                 harness_code: String::new(),
                 client: None,
                 revision: None,
-                format_version: 1,
                 main_connector_instance_id: None,
                 markup_pct: 0.0,
                 default_cut_margin_pct: 10.0,
@@ -348,14 +346,9 @@ fn wire_end(
 }
 
 pub fn load(conn: &Connection) -> Result<ProjectData> {
-    let cut_round = if crate::db::has_column(conn, "project", "cut_round_mm") {
-        "cut_round_mm"
-    } else {
-        "NULL"
-    };
     let project = conn.query_row(
-        &format!("SELECT name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, {cut_round}
-         FROM project WHERE id = 1"),
+        "SELECT name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm
+         FROM project WHERE id = 1",
         [],
         |row| {
             Ok(Project {
@@ -363,17 +356,18 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 harness_code: row.get(1)?,
                 client: row.get(2)?,
                 revision: row.get(3)?,
-                format_version: row.get(4)?,
-                main_connector_instance_id: row.get(5)?,
-                markup_pct: row.get(6)?,
-                default_cut_margin_pct: row.get(7)?,
-                default_twist_pitch_factor: row.get(8)?,
-                fill_factor: row.get(9)?,
-                labor_hours: row.get(10)?,
-                labor_rate_usd: row.get(11)?,
-                cost_on_purchased: row.get(12)?,
-                spare_pcts: serde_json::from_str(&row.get::<_, String>(13)?).unwrap_or_default(),
-                cut_round_mm: row.get(14)?,
+                main_connector_instance_id: row.get(4)?,
+                markup_pct: row.get(5)?,
+                default_cut_margin_pct: row.get(6)?,
+                default_twist_pitch_factor: row.get(7)?,
+                fill_factor: row.get(8)?,
+                labor_hours: row.get(9)?,
+                labor_rate_usd: row.get(10)?,
+                cost_on_purchased: row.get(11)?,
+                // Un JSON roto es un error del archivo, no "sin repuestos".
+                spare_pcts: serde_json::from_str(&row.get::<_, String>(12)?)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(e)))?,
+                cut_round_mm: row.get(13)?,
             })
         },
     )?;
@@ -462,14 +456,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         })?
         .collect::<Result<Vec<_>>>()?;
 
-    let splice_name = if crate::db::has_column(conn, "splice_instances", "name") {
-        "name"
-    } else {
-        "''"
-    };
-    let mut splice_instances_stmt = conn.prepare(&format!(
-        "SELECT id, short_id, library_part_id, node_id, segment_id, offset_from_end_mm, offset_from_node_id, {splice_name} FROM splice_instances",
-    ))?;
+    let mut splice_instances_stmt = conn.prepare("SELECT id, short_id, library_part_id, node_id, segment_id, offset_from_end_mm, offset_from_node_id, name FROM splice_instances")?;
     let splice_instances = splice_instances_stmt
         .query_map([], |row| {
             Ok(SpliceInstance {
@@ -595,14 +582,13 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     let p = &data.project;
     tx.execute(
-        "INSERT INTO project (id, name, harness_code, client, revision, format_version, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        "INSERT INTO project (id, name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             p.name,
             p.harness_code,
             p.client,
             p.revision,
-            p.format_version,
             p.main_connector_instance_id,
             p.markup_pct,
             p.default_cut_margin_pct,
@@ -757,7 +743,6 @@ mod tests {
                 harness_code: "MOT-01".into(),
                 client: None,
                 revision: Some("A".into()),
-                format_version: 1,
                 main_connector_instance_id: Some(1),
                 markup_pct: 0.0,
                 default_cut_margin_pct: 10.0,

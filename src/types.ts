@@ -5,7 +5,6 @@ export interface Project {
   harness_code: string;
   client: string | null;
   revision: string | null;
-  format_version: number;
   main_connector_instance_id: number | null;
   markup_pct: number;
   default_cut_margin_pct: number;
@@ -139,6 +138,8 @@ export interface TwistGroup {
 export interface HistoryStatus {
   can_undo: boolean;
   can_redo: boolean;
+  /** Cambia con cada estado distinto del documento: los cálculos se vuelven a pedir cuando cambia. */
+  revision: number;
 }
 
 export interface ProjectStatus extends HistoryStatus {

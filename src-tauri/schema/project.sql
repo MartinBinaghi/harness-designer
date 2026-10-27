@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS project (
     harness_code                TEXT NOT NULL,
     client                      TEXT,
     revision                    TEXT,
-    format_version              INTEGER NOT NULL,
     main_connector_instance_id  INTEGER,
     markup_pct                  REAL NOT NULL DEFAULT 0,
     default_cut_margin_pct      REAL NOT NULL DEFAULT 10,

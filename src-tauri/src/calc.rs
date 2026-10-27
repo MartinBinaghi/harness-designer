@@ -972,7 +972,6 @@ mod tests {
                 harness_code: "T-01".into(),
                 client: None,
                 revision: None,
-                format_version: 1,
                 main_connector_instance_id: None,
                 markup_pct: 0.0,
                 default_cut_margin_pct: 10.0,
@@ -1337,7 +1336,6 @@ mod tests {
             harness_code: "T-01".into(),
             client: None,
             revision: None,
-            format_version: 1,
             main_connector_instance_id: None,
             markup_pct: 20.0,
             default_cut_margin_pct: 10.0,
@@ -1521,9 +1519,6 @@ mod tests {
             contact_part_id: None,
             seal_plug_part_id: None,
             adhesive_heatshrink_length_mm: None,
-            image_side: None,
-            image_front: None,
-            image_back: None,
             cavities: vec![],
         }
     }
@@ -1656,11 +1651,11 @@ mod tests {
     #[ignore]
     fn bench_real_project() {
         let project = crate::model::project::load(
-            &crate::db::open_existing_project(&std::env::var("HD_PROJECT").unwrap()).unwrap(),
+            &crate::db::open_project(&std::env::var("HD_PROJECT").unwrap()).unwrap(),
         )
         .unwrap();
         let library = crate::model::library::load(
-            &crate::db::open_existing_library(&std::env::var("HD_LIBRARY").unwrap()).unwrap(),
+            &crate::db::open_library(&std::env::var("HD_LIBRARY").unwrap()).unwrap(),
         )
         .unwrap();
         let time = |label: &str, f: &dyn Fn()| {

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettled } from "./useBackedState";
 import {
   ReactFlow,
   Background,
@@ -20,6 +19,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { GaugeFacts } from "./costTypes";
 import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, type SchematicBlock, type SchematicPin } from "./schematic";
 import { addWire } from "./projectEdit";
 import type { ProjectData, Selection, WireEnd } from "./types";
@@ -130,9 +130,13 @@ interface Props {
   library: Library;
   selection: Selection;
   onSelect: (s: Selection) => void;
+  /** Revisión del proyecto en el backend: la net resaltada se rehace cuando cambia. */
+  projectRevision: number;
+  /** Calibres ya interpretados por el núcleo, para el tipo de un cable nuevo. */
+  gauges: GaugeFacts | null;
 }
 
-export default function Esquema({ project, setProject, library, selection, onSelect }: Props) {
+export default function Esquema({ project, setProject, library, selection, onSelect, projectRevision, gauges }: Props) {
   const [showAllPins, setShowAllPins] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [netWires, setNetWires] = useState<Set<number>>(new Set());
@@ -147,20 +151,19 @@ export default function Esquema({ project, setProject, library, selection, onSel
   }, [notice]);
 
   // Cable seleccionado: se resalta él y el resto de su net.
-  const calc = useSettled(project);
   useEffect(() => {
-    if (!calc || selection?.kind !== "wire") {
+    if (!projectRevision || selection?.kind !== "wire") {
       setNetWires(new Set());
       return;
     }
     let cancelled = false;
-    void invoke<number[]>("wire_net", { project: calc, wireId: selection.id }).then((ids) => {
+    void invoke<number[]>("wire_net", { wireId: selection.id }).then((ids) => {
       if (!cancelled) setNetWires(new Set(ids));
     });
     return () => {
       cancelled = true;
     };
-  }, [calc, selection]);
+  }, [projectRevision, selection]);
 
   const isSelected = (b: SchematicBlock) =>
     !!selection &&
@@ -208,7 +211,7 @@ export default function Esquema({ project, setProject, library, selection, onSel
     const a = handleToEnd(c.sourceHandle ?? null);
     const b = handleToEnd(c.targetHandle ?? null);
     if (!a || !b) return;
-    const result = addWire(project!, library, a, b);
+    const result = addWire(project!, library, gauges, a, b);
     if (typeof result === "string") return setNotice(result);
     setProject(result.project);
     onSelect({ kind: "wire", id: result.wireId });

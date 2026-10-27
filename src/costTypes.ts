@@ -108,3 +108,30 @@ export interface CostReport {
   splice_output_gauges: SpliceOutputGaugeInfo[];
   covering_cuts: CoveringCut[];
 }
+
+/** "Termina en" de una vía con cable, calculado por el núcleo (`pin_destinations`). */
+export interface PinDestinations {
+  cavity_assignment_id: number;
+  ends: import("./types").WireEnd[];
+  via_splices: number[];
+}
+
+/**
+ * Calibres ya interpretados por el núcleo (`gauge_facts`), para elegir el tipo
+ * de un cable nuevo con el mismo criterio que los chequeos. Las claves son ids
+ * en texto (así llegan en JSON).
+ */
+export interface GaugeFacts {
+  /** Tipo de cable → sección (mm²); null si su calibre no se entiende. */
+  wire_mm2: Record<string, number | null>;
+  /** Conector → tamaño de contacto → rango (mm²) de cada contacto usable; null = desconocido. */
+  contact_ranges: Record<string, Record<string, ([number, number] | null)[]>>;
+}
+
+/** Todo lo que el núcleo calcula para una revisión (comando `calc_results`). */
+export interface CalcResults {
+  report: CostReport;
+  findings: import("./types").Finding[];
+  destinations: PinDestinations[];
+  gauges: GaugeFacts;
+}

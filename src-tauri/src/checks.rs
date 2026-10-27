@@ -307,20 +307,19 @@ fn check_used_cavities_without_contact(data: &ProjectData, library: &Library) ->
 }
 
 fn check_same_net_different_function(data: &ProjectData) -> Vec<Finding> {
+    // Todas las nets de una pasada; cada una se mira una vez (por su primer cable).
+    let nets = crate::topology::all_nets(data);
+    let by_id: std::collections::HashMap<i64, &crate::model::project::WireInstance> =
+        data.wire_instances.iter().map(|w| (w.id, w)).collect();
     let mut seen = HashSet::new();
     let mut findings = Vec::new();
     for wire in &data.wire_instances {
-        if !seen.insert(wire.id) {
+        let net = &nets[&wire.id];
+        if !seen.insert(net[0]) {
             continue;
         }
-        let net = crate::topology::net_of_wire(data, wire.id);
-        for &id in &net {
-            seen.insert(id);
-        }
-        let net_wires: Vec<&crate::model::project::WireInstance> = net
-            .iter()
-            .filter_map(|id| data.wire_instances.iter().find(|w| w.id == *id))
-            .collect();
+        let net_wires: Vec<&crate::model::project::WireInstance> =
+            net.iter().filter_map(|id| by_id.get(id).copied()).collect();
         let names: HashSet<&str> = net_wires
             .iter()
             .filter_map(|w| w.specific_name.as_deref())
@@ -627,7 +626,6 @@ mod tests {
                 harness_code: "T-01".into(),
                 client: None,
                 revision: None,
-                format_version: 1,
                 main_connector_instance_id: None,
                 markup_pct: 0.0,
                 default_cut_margin_pct: 10.0,
@@ -1122,9 +1120,6 @@ mod tests {
             contact_part_id: Some(contact_part_id),
             seal_plug_part_id: None,
             adhesive_heatshrink_length_mm: None,
-            image_side: None,
-            image_front: None,
-            image_back: None,
             cavities: vec![],
         }
     }
@@ -1216,9 +1211,6 @@ mod tests {
             contact_part_id: None,
             seal_plug_part_id: None,
             adhesive_heatshrink_length_mm: None,
-            image_side: None,
-            image_front: None,
-            image_back: None,
             cavities: vec![],
         }];
         library.accessory_defs = vec![crate::model::library::AccessoryDef {

@@ -16,7 +16,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use model::{library::Library, project::ProjectData};
-use state::{AppState, HistoryStatus, ProjectStatus};
+use state::{AppState, CalcResults, HistoryStatus, ProjectStatus};
 use undo::History;
 
 /// Biblioteca abierta y su archivo (donde se autoguarda).
@@ -36,10 +36,15 @@ fn use_library_file(
     path: &str,
     remember: bool,
 ) -> Result<Library, String> {
-    let conn = db::open_existing_library(path)?;
+    let conn = db::open_library(path)?;
     let library = model::library::load(&conn).map_err(|e| e.to_string())?;
+    // Fotos de conectores borrados en una sesión anterior (en la sesión se
+    // guardan, por si se deshace el borrado). Si no se pueden limpiar, se
+    // limpian la próxima vez: no impide abrir.
+    let _ = model::library::remove_orphan_images(&conn);
     *state.library.lock().unwrap() = History::new(library.clone());
     *state.library_path.lock().unwrap() = Some(path.to_string());
+    *state.library_in_sync.lock().unwrap() = true;
     if remember {
         remember_library(app, path);
     }
@@ -103,16 +108,21 @@ fn open_library(path: String, app: AppHandle, state: State<AppState>) -> Result<
     use_library_file(&app, &state, &path, true)
 }
 
-fn write_library(path: &str, library: &Library) -> Result<(), String> {
-    let mut conn = db::create_or_open_library(path).map_err(|e| e.to_string())?;
-    model::library::save(&mut conn, library).map_err(|e| e.to_string())
-}
-
-/// "Guardar como": copia la biblioteca a otro archivo, que pasa a ser el actual.
+/// "Guardar como": copia la biblioteca (con sus fotos) a otro archivo, que pasa
+/// a ser el actual.
 #[tauri::command]
 fn save_library(path: String, app: AppHandle, state: State<AppState>) -> Result<(), String> {
-    write_library(&path, state.library.lock().unwrap().get())?;
+    let history = state.library.lock().unwrap();
+    let mut target = db::library_for_saving(&path)?;
+    model::library::save(&mut target, history.get()).map_err(|e| e.to_string())?;
+    let current = state.library_path.lock().unwrap().clone();
+    if let Some(current) = current.filter(|c| *c != path) {
+        let source = db::open_library(&current)?;
+        model::library::copy_images(&source, &mut target)
+            .map_err(|e| format!("The library was saved, but not its connector photos: {e}"))?;
+    }
     *state.library_path.lock().unwrap() = Some(path.clone());
+    *state.library_in_sync.lock().unwrap() = true;
     remember_library(&app, &path);
     Ok(())
 }
@@ -125,24 +135,50 @@ struct LibraryChange {
     save_error: Option<String>,
 }
 
-/// Autoguardado: cada cambio en la biblioteca va derecho a su archivo.
-// ponytail: reescribe la biblioteca entera (imágenes incluidas) en cada cambio; si con muchas imágenes se nota, guardar solo las filas que cambian o hacerlo en otro hilo.
-fn autosaved(state: &AppState, library: &Library) -> LibraryChange {
-    let save_error = match state.library_path.lock().unwrap().as_deref() {
-        Some(path) => write_library(path, library)
-            .err()
-            .map(|e| format!("Library changes aren't being saved to {path}: {e}")),
-        None => None,
+/// Autoguardado: cada cambio de la biblioteca va derecho a su archivo, y solo
+/// lo que cambió entre `before` y `after` (las partes tocadas). Si el archivo
+/// no estaba al día (falló un guardado anterior), se escribe entero. Devuelve
+/// el error para mostrar, si hubo.
+fn autosave(state: &AppState, before: &Library, after: &Library) -> Option<String> {
+    let path = state.library_path.lock().unwrap().clone()?;
+    let mut in_sync = state.library_in_sync.lock().unwrap();
+    let result = db::library_for_saving(&path).and_then(|mut conn| {
+        if *in_sync {
+            let changes = model::library::changes(before, after);
+            model::library::save_changes(&mut conn, after, &changes)
+        } else {
+            model::library::save(&mut conn, after)
+        }
+        .map_err(|e| e.to_string())
+    });
+    *in_sync = result.is_ok();
+    result
+        .err()
+        .map(|e| format!("Library changes aren't being saved to {path}: {e}"))
+}
+
+/// Deshacer/rehacer de la biblioteca: guarda el paso y devuelve el estado.
+fn library_step(state: &AppState, undo: bool) -> LibraryChange {
+    let mut history = state.library.lock().unwrap();
+    let moved = if undo { history.undo() } else { history.redo() };
+    let before = if undo {
+        history.redo_target()
+    } else {
+        history.undo_target()
+    };
+    let save_error = match (moved, before) {
+        (true, Some(before)) => autosave(state, before, history.get()),
+        _ => None,
     };
     LibraryChange {
-        library: library.clone(),
+        library: history.get().clone(),
         save_error,
     }
 }
 
 #[tauri::command]
 fn open_project(path: String, state: State<AppState>) -> Result<ProjectData, String> {
-    let conn = db::open_existing_project(&path)?;
+    let conn = db::open_project(&path)?;
     let project = model::project::load(&conn).map_err(|e| e.to_string())?;
     *state.project.lock().unwrap() = Some(History::new(project.clone()));
     *state.project_path.lock().unwrap() = Some(path);
@@ -185,7 +221,7 @@ fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
         std::fs::copy(&path, format!("{path}.bak"))
             .map_err(|e| format!("couldn't make the backup copy before saving: {e}"))?;
     }
-    let mut conn = db::create_or_open_project(&path).map_err(|e| e.to_string())?;
+    let mut conn = db::project_for_saving(&path)?;
     model::project::save(&mut conn, history.get()).map_err(|e| e.to_string())?;
     history.mark_saved();
     *state.project_path.lock().unwrap() = Some(path);
@@ -212,7 +248,7 @@ struct SampleProject {
 #[tauri::command]
 fn sample_project(app: AppHandle, state: State<AppState>) -> Result<SampleProject, String> {
     let path = settings::bundled(&app, "sample-project.db")?;
-    let conn = db::open_existing_project(&path.to_string_lossy())?;
+    let conn = db::open_bundled_project(&path.to_string_lossy())?;
     let project = model::project::load(&conn).map_err(|e| e.to_string())?;
     *state.project.lock().unwrap() = Some(History::new(project.clone()));
     *state.project_path.lock().unwrap() = None;
@@ -222,19 +258,25 @@ fn sample_project(app: AppHandle, state: State<AppState>) -> Result<SampleProjec
     Ok(SampleProject { project, notice })
 }
 
+/// Una edición del proyecto (la pantalla ya la tiene: no se devuelve de vuelta).
 #[tauri::command]
-fn edit_project(project: ProjectData, state: State<AppState>) -> Result<ProjectData, String> {
+fn edit_project(project: ProjectData, state: State<AppState>) -> Result<(), String> {
     let mut guard = state.project.lock().unwrap();
     let history = guard.as_mut().ok_or("no hay proyecto cargado")?;
     history.edit(project);
-    Ok(history.get().clone())
+    Ok(())
 }
 
+/// Una edición de la biblioteca, guardada sola en su archivo. Devuelve el error
+/// de guardado, si hubo (la biblioteca no se devuelve: la pantalla ya la tiene).
 #[tauri::command]
-fn edit_library(library: Library, state: State<AppState>) -> LibraryChange {
+fn edit_library(library: Library, state: State<AppState>) -> Option<String> {
     let mut history = state.library.lock().unwrap();
     history.edit(library);
-    autosaved(&state, history.get())
+    let before = history
+        .undo_target()
+        .expect("una edición deja el estado anterior para deshacer");
+    autosave(&state, before, history.get())
 }
 
 #[tauri::command]
@@ -255,16 +297,12 @@ fn redo_project(state: State<AppState>) -> Result<ProjectData, String> {
 
 #[tauri::command]
 fn undo_library(state: State<AppState>) -> LibraryChange {
-    let mut history = state.library.lock().unwrap();
-    history.undo();
-    autosaved(&state, history.get())
+    library_step(&state, true)
 }
 
 #[tauri::command]
 fn redo_library(state: State<AppState>) -> LibraryChange {
-    let mut history = state.library.lock().unwrap();
-    history.redo();
-    autosaved(&state, history.get())
+    library_step(&state, false)
 }
 
 #[tauri::command]
@@ -275,12 +313,14 @@ fn project_status(state: State<AppState>) -> ProjectStatus {
             can_undo: history.can_undo(),
             can_redo: history.can_redo(),
             unsaved: history.unsaved(),
+            revision: history.revision(),
         },
         None => ProjectStatus {
             loaded: false,
             can_undo: false,
             can_redo: false,
             unsaved: false,
+            revision: 0,
         },
     }
 }
@@ -291,30 +331,39 @@ fn library_status(state: State<AppState>) -> HistoryStatus {
     HistoryStatus {
         can_undo: history.can_undo(),
         can_redo: history.can_redo(),
+        revision: history.revision(),
     }
 }
 
-// Estas cuatro quedan como funciones puras sobre los datos que les pasa el
-// frontend (no leen AppState): son consultas de solo lectura sobre lo que se
-// ve en pantalla en este instante, que puede ir unos milisegundos adelante
-// del último commit al historial (ver debounce en useBackedState.ts del
-// frontend). Leer AppState acá las dejaría desactualizadas mientras el
-// usuario tipea.
-#[tauri::command]
-fn wire_route(project: ProjectData, wire_id: i64) -> Option<Vec<i64>> {
-    topology::wire_route(&project, wire_id)
+// Consultas y cálculos: leen el proyecto y la biblioteca del estado (la copia
+// de verdad), no los reciben en cada pedido. La pantalla los vuelve a pedir
+// cuando cambia la revisión (ver `ProjectStatus::revision`).
+
+/// Lo que se hace con el proyecto abierto (error si no hay ninguno).
+fn with_project<R>(state: &AppState, f: impl FnOnce(&ProjectData) -> R) -> Result<R, String> {
+    let guard = state.project.lock().unwrap();
+    let history = guard.as_ref().ok_or("no project open")?;
+    Ok(f(history.get()))
 }
 
 #[tauri::command]
-fn wire_net(project: ProjectData, wire_id: i64) -> Vec<i64> {
-    topology::net_of_wire(&project, wire_id)
+fn wire_route(wire_id: i64, state: State<AppState>) -> Result<Option<Vec<i64>>, String> {
+    with_project(&state, |p| topology::wire_route(p, wire_id))
+}
+
+#[tauri::command]
+fn wire_net(wire_id: i64, state: State<AppState>) -> Result<Vec<i64>, String> {
+    with_project(&state, |p| topology::net_of_wire(p, wire_id))
 }
 
 /// Distancia acumulada desde un nodo a cada nodo alcanzable (mm). Las claves
 /// de un HashMap<i64, _> se serializan como texto en JSON.
 #[tauri::command]
-fn node_distances(project: ProjectData, from_node_id: i64) -> std::collections::HashMap<i64, f64> {
-    topology::distances_from_node(&project, from_node_id)
+fn node_distances(
+    from_node_id: i64,
+    state: State<AppState>,
+) -> Result<std::collections::HashMap<i64, f64>, String> {
+    with_project(&state, |p| topology::distances_from_node(p, from_node_id))
 }
 
 /// La biblioteca recibida + las partes de la biblioteca base que le faltan.
@@ -324,14 +373,113 @@ fn merge_base_library(library: Library) -> Library {
     base_library::merge_base_library(&library)
 }
 
+/// Costos y chequeos del proyecto abierto con la biblioteca abierta, de una
+/// sola pasada (comparten la memoria de recorridos y diámetros). Se guardan
+/// por revisión: varias pantallas pidiendo lo mismo no recalculan.
 #[tauri::command]
-fn run_checks(project: ProjectData, library: Library) -> Vec<checks::Finding> {
-    calc::with_cache(|| checks::run_checks(&project, &library))
+fn calc_results(state: State<AppState>) -> Result<CalcResults, String> {
+    // Orden de los candados: proyecto, biblioteca, cálculo (igual en todo el programa).
+    let project = state.project.lock().unwrap();
+    let project = project.as_ref().ok_or("no project open")?;
+    let library = state.library.lock().unwrap();
+    let key = (project.revision(), library.revision());
+    let mut cached = state.calc.lock().unwrap();
+    if let Some((k, results)) = cached.as_ref() {
+        if *k == key {
+            return Ok(results.clone());
+        }
+    }
+    let results = calc::with_cache(|| CalcResults {
+        report: calc::compute_cost_report(project.get(), library.get()),
+        findings: checks::run_checks(project.get(), library.get()),
+        destinations: topology::pin_destinations(project.get()),
+        gauges: contacts::gauge_facts(library.get()),
+    });
+    *cached = Some((key, results.clone()));
+    Ok(results)
+}
+
+// --- Fotos de los conectores --------------------------------------------------
+// Viven en el archivo de la biblioteca, aparte de las fichas (ver library.sql):
+// la pantalla pide la lista y cada foto cuando la muestra, y cargar o sacar una
+// foto se escribe directo (como un adjunto: no entra en deshacer).
+
+/// Tamaño máximo de una foto ya achicada (800 px WebP pesa ~50–150 kB): un
+/// límite para que un dato roto o malicioso no infle la biblioteca.
+const MAX_IMAGE_CHARS: usize = 3_000_000;
+
+fn library_file(state: &AppState) -> Result<String, String> {
+    state
+        .library_path
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| "no library open".to_string())
+}
+
+fn check_view(view: &str) -> Result<(), String> {
+    if model::library::IMAGE_VIEWS.contains(&view) {
+        Ok(())
+    } else {
+        Err(format!("unknown connector view: {view}"))
+    }
+}
+
+/// Qué fotos hay: parte -> vistas.
+#[tauri::command]
+fn connector_image_index(
+    state: State<AppState>,
+) -> Result<std::collections::BTreeMap<i64, Vec<String>>, String> {
+    let conn = db::open_library(&library_file(&state)?)?;
+    model::library::image_index(&conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn compute_costs(project: ProjectData, library: Library) -> calc::CostReport {
-    calc::with_cache(|| calc::compute_cost_report(&project, &library))
+fn connector_image(
+    part_id: i64,
+    view: String,
+    state: State<AppState>,
+) -> Result<Option<String>, String> {
+    check_view(&view)?;
+    let conn = db::open_library(&library_file(&state)?)?;
+    model::library::image(&conn, part_id, &view).map_err(|e| e.to_string())
+}
+
+/// Pone o saca (`data: null`) una foto. Solo imágenes en data URL (se muestran
+/// en `<img src>`: nada de otros esquemas), de un conector que existe.
+#[tauri::command]
+fn set_connector_image(
+    part_id: i64,
+    view: String,
+    data: Option<String>,
+    state: State<AppState>,
+) -> Result<(), String> {
+    check_view(&view)?;
+    if let Some(data) = &data {
+        let is_image =
+            data.starts_with("data:image/") && data[..data.len().min(64)].contains(";base64,");
+        if !is_image {
+            return Err("that file isn't an image".into());
+        }
+        if data.len() > MAX_IMAGE_CHARS {
+            return Err("the image is too big".into());
+        }
+    }
+    if !state
+        .library
+        .lock()
+        .unwrap()
+        .get()
+        .connector_defs
+        .iter()
+        .any(|d| d.part_id == part_id)
+    {
+        return Err(format!(
+            "part #{part_id} isn't a connector of the open library"
+        ));
+    }
+    let conn = db::open_library(&library_file(&state)?)?;
+    model::library::set_image(&conn, part_id, &view, data.as_deref()).map_err(|e| e.to_string())
 }
 
 /// Guarda un texto exportado (ej. la lista de etiquetas en CSV) en la ruta
@@ -368,8 +516,10 @@ pub fn run() {
             wire_net,
             node_distances,
             merge_base_library,
-            run_checks,
-            compute_costs,
+            calc_results,
+            connector_image_index,
+            connector_image,
+            set_connector_image,
             write_text_file
         ])
         .run(tauri::generate_context!())

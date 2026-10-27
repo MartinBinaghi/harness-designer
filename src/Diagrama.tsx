@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettled } from "./useBackedState";
 import {
   ReactFlow,
   Background,
@@ -360,10 +359,13 @@ interface Props {
   findings: Finding[];
   selection: Selection;
   onSelect: (s: Selection) => void;
+  /** Costos de la revisión actual (diámetros), o null mientras se calculan. */
+  report: CostReport | null;
+  /** Revisión del proyecto en el backend: las consultas de recorrido se rehacen cuando cambia. */
+  projectRevision: number;
 }
 
-export default function Diagrama({ project, setProject, library, findings, selection, onSelect }: Props) {
-  const [report, setReport] = useState<CostReport | null>(null);
+export default function Diagrama({ project, setProject, library, findings, selection, onSelect, report, projectRevision }: Props) {
   const [distances, setDistances] = useState<Record<string, number> | null>(null);
   const [showDistances, setShowDistances] = useState(false);
   const [highlight, setHighlight] = useState<{ wire: Set<number>; net: Set<number> }>({ wire: new Set(), net: new Set() });
@@ -399,46 +401,34 @@ export default function Diagrama({ project, setProject, library, findings, selec
     [shapeKey, needsLayout], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // Diámetro por segmento (etapa 4): mismo cálculo que la pantalla de Costs.
-  const calc = useSettled(project);
-  useEffect(() => {
-    if (!calc) return;
-    let cancelled = false;
-    void invoke<CostReport>("compute_costs", { project: calc, library }).then((r) => {
-      if (!cancelled) setReport(r);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [calc, library]);
 
   const mainConnector = project?.connector_instances.find((c) => c.id === project.project.main_connector_instance_id);
   useEffect(() => {
-    if (!calc || !mainConnector || !showDistances) {
+    if (!projectRevision || !mainConnector || !showDistances) {
       setDistances(null);
       return;
     }
     let cancelled = false;
-    void invoke<Record<string, number>>("node_distances", { project: calc, fromNodeId: mainConnector.node_id }).then((d) => {
+    void invoke<Record<string, number>>("node_distances", { fromNodeId: mainConnector.node_id }).then((d) => {
       if (!cancelled) setDistances(d);
     });
     return () => {
       cancelled = true;
     };
-  }, [calc, mainConnector?.node_id, showDistances]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectRevision, mainConnector?.node_id, showDistances]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cable seleccionado (desde Wires o el Inspector): se resalta su recorrido y el de toda su net.
   useEffect(() => {
-    if (!calc || selection?.kind !== "wire") {
+    if (!projectRevision || selection?.kind !== "wire") {
       setHighlight({ wire: new Set(), net: new Set() });
       return;
     }
     const wireId = selection.id;
     let cancelled = false;
     void (async () => {
-      const netIds = await invoke<number[]>("wire_net", { project: calc, wireId });
+      const netIds = await invoke<number[]>("wire_net", { wireId });
       const ids = netIds.includes(wireId) ? netIds : [wireId, ...netIds];
-      const routes = await Promise.all(ids.map((id) => invoke<number[] | null>("wire_route", { project: calc, wireId: id })));
+      const routes = await Promise.all(ids.map((id) => invoke<number[] | null>("wire_route", { wireId: id })));
       if (cancelled) return;
       const net = new Set(routes.flatMap((r) => r ?? []));
       const wire = new Set(routes[ids.indexOf(wireId)] ?? []);
@@ -447,7 +437,7 @@ export default function Diagrama({ project, setProject, library, findings, selec
     return () => {
       cancelled = true;
     };
-  }, [calc, selection]);
+  }, [projectRevision, selection]);
 
   const issues = useMemo(() => (project ? issuesByElement(project, findings) : null), [project, findings]);
   const tree = useMemo(
@@ -851,7 +841,7 @@ function NodePanel({ project, library, report, nodeId, onClose, onAssign }: {
           {partNumber(connector.library_part_id)}
           {def ? ` · ${def.series ?? ""} ${def.cavities.length}-way ${def.gender}` : ""}
         </div>
-        <ConnectorViews library={library} partId={connector.library_part_id} only="image_front" used={usedCavities(project, connector)} />
+        <ConnectorViews library={library} partId={connector.library_part_id} only="front" used={usedCavities(project, connector)} />
         <table className="compact-table dg-pinout">
           <thead>
             <tr><th>Pin</th><th>Function</th><th>Goes to</th><th>Gauge</th><th>Color</th><th>Cut</th></tr>

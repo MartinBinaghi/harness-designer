@@ -5,8 +5,9 @@
 //! `String`: SQLite ya valida los valores permitidos con CHECK, duplicarlo como
 //! enum de Rust no agrega nada a esta escala.
 
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result, Transaction};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Part {
@@ -49,12 +50,6 @@ pub struct ConnectorDef {
     /// Largo de la pieza de termo con adhesivo que va detrás de este conector
     /// (varía según el conector; plan 9.3).
     pub adhesive_heatshrink_length_mm: Option<f64>,
-    /// Vistas del conector (lateral, frontal con numeración de pines, trasera)
-    /// como data URL ("data:image/webp;base64,…"): la imagen vive dentro del
-    /// archivo de la biblioteca, así se puede copiar y llevar a otra máquina.
-    pub image_side: Option<String>,
-    pub image_front: Option<String>,
-    pub image_back: Option<String>,
     pub cavities: Vec<ConnectorDefCavity>,
 }
 
@@ -235,7 +230,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut connector_defs_stmt = conn.prepare(
-        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm FROM connector_defs",
+        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm FROM connector_defs",
     )?;
     let mut connector_defs = connector_defs_stmt
         .query_map([], |row| {
@@ -250,18 +245,15 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 back_width_mm: row.get(7)?,
                 back_height_mm: row.get(8)?,
                 suggested_termination: row.get(9)?,
-                image_side: row.get(10)?,
-                image_front: row.get(11)?,
-                image_back: row.get(12)?,
-                contact_part_id: row.get(13)?,
-                seal_plug_part_id: row.get(14)?,
-                adhesive_heatshrink_length_mm: row.get(15)?,
+                contact_part_id: row.get(10)?,
+                seal_plug_part_id: row.get(11)?,
+                adhesive_heatshrink_length_mm: row.get(12)?,
                 cavities: Vec::new(),
             })
         })?
         .collect::<Result<Vec<_>>>()?;
     for connector_def in &mut connector_defs {
-        let mut cavities_stmt = conn.prepare(
+        let mut cavities_stmt = conn.prepare_cached(
             "SELECT cavity_id, contact_size FROM connector_def_cavities WHERE connector_def_id = ?1 ORDER BY rowid",
         )?;
         connector_def.cavities = cavities_stmt
@@ -280,7 +272,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
     let mut device_defs = Vec::new();
     for part_id in device_def_ids {
-        let mut connectors_stmt = conn.prepare(
+        let mut connectors_stmt = conn.prepare_cached(
             "SELECT id, label, connector_def_id FROM device_def_connectors WHERE device_def_id = ?1 ORDER BY rowid",
         )?;
         let mut connectors = connectors_stmt
@@ -294,7 +286,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
             })?
             .collect::<Result<Vec<_>>>()?;
         for connector in &mut connectors {
-            let mut pins_stmt = conn.prepare(
+            let mut pins_stmt = conn.prepare_cached(
                 "SELECT id, cavity_id, name, function FROM device_def_pins WHERE device_def_connector_id = ?1 ORDER BY rowid",
             )?;
             connector.pins = pins_stmt
@@ -357,7 +349,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         })?
         .collect::<Result<Vec<_>>>()?;
     for wire_def in &mut wire_defs {
-        let mut conductors_stmt = conn.prepare(
+        let mut conductors_stmt = conn.prepare_cached(
             "SELECT id, label, gauge, color, is_shield FROM wire_def_conductors WHERE wire_def_id = ?1 ORDER BY rowid",
         )?;
         wire_def.conductors = conductors_stmt
@@ -431,7 +423,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         })?
         .collect::<Result<Vec<_>>>()?;
     for accessory_def in &mut accessory_defs {
-        let mut matches_stmt = conn.prepare(
+        let mut matches_stmt = conn.prepare_cached(
             "SELECT series, shell_size FROM accessory_def_connector_matches WHERE accessory_def_id = ?1 ORDER BY rowid",
         )?;
         accessory_def.compatible_connectors = matches_stmt
@@ -455,7 +447,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         })?
         .collect::<Result<Vec<_>>>()?;
     for t_mold_def in &mut t_mold_defs {
-        let mut legs_stmt = conn.prepare(
+        let mut legs_stmt = conn.prepare_cached(
             "SELECT min_diameter_mm, max_diameter_mm, leg_length_mm FROM t_mold_def_legs WHERE t_mold_def_id = ?1 ORDER BY position",
         )?;
         t_mold_def.legs = legs_stmt
@@ -496,38 +488,137 @@ pub fn load(conn: &Connection) -> Result<Library> {
     })
 }
 
-/// Reemplaza el contenido entero de la biblioteca. A esta escala (una biblioteca
-/// personal, no miles de partes) es más simple que diffear contra lo existente.
+/// Tablas de las fichas, de hijas a madres (el orden en que se pueden vaciar).
+const PART_TABLES: [&str; 17] = [
+    "device_def_pins",
+    "device_def_connectors",
+    "device_defs",
+    "wire_def_conductors",
+    "wire_defs",
+    "connector_def_cavities",
+    "connector_defs",
+    "contact_defs",
+    "seal_plug_defs",
+    "splice_defs",
+    "component_defs",
+    "accessory_def_connector_matches",
+    "accessory_defs",
+    "t_mold_def_legs",
+    "t_mold_defs",
+    "covering_defs",
+    "parts",
+];
+
+/// Reemplaza el contenido entero de la biblioteca (archivo nuevo, "Save as", o
+/// después de un guardado que falló). Las fotos (`connector_def_images`) no se
+/// tocan: se manejan aparte (ver `set_image`).
 pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     let tx = conn.transaction()?;
     // Los conectores se referencian entre sí (contraparte): al insertar el
     // macho, la hembra todavía no está. Las claves foráneas se validan al
     // hacer commit, cuando ya están todas las filas.
     tx.pragma_update(None, "defer_foreign_keys", true)?;
-    for table in [
-        "device_def_pins",
-        "device_def_connectors",
-        "device_defs",
-        "wire_def_conductors",
-        "wire_defs",
-        "connector_def_cavities",
-        "connector_defs",
-        "contact_defs",
-        "seal_plug_defs",
-        "splice_defs",
-        "component_defs",
-        "accessory_def_connector_matches",
-        "accessory_defs",
-        "t_mold_def_legs",
-        "t_mold_defs",
-        "covering_defs",
-        "signal_types",
-        "parts",
-    ] {
+    for table in PART_TABLES.iter().chain(&["signal_types"]) {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
+    write_parts(&tx, library, None)?;
+    write_signal_types(&tx, library)?;
+    tx.commit()
+}
 
+/// Qué cambió entre dos estados de la biblioteca: las partes (con todas sus
+/// fichas) y si cambiaron los tipos de señal.
+#[derive(Debug, Default, PartialEq)]
+pub struct LibraryChanges {
+    pub parts: HashSet<i64>,
+    pub signal_types: bool,
+}
+
+/// Una parte y todas sus fichas, para comparar dos estados parte por parte.
+#[derive(Default, PartialEq)]
+struct PartRecord<'a> {
+    part: Option<&'a Part>,
+    connector: Option<&'a ConnectorDef>,
+    device: Option<&'a DeviceDef>,
+    contact: Option<&'a ContactDef>,
+    seal_plug: Option<&'a SealPlugDef>,
+    wire: Option<&'a WireDef>,
+    splice: Option<&'a SpliceDef>,
+    component: Option<&'a ComponentDef>,
+    covering: Option<&'a CoveringDef>,
+    accessory: Option<&'a AccessoryDef>,
+    t_mold: Option<&'a TMoldDef>,
+}
+
+fn part_records(library: &Library) -> HashMap<i64, PartRecord<'_>> {
+    let mut records: HashMap<i64, PartRecord> = HashMap::new();
+    for x in &library.parts {
+        records.entry(x.id).or_default().part = Some(x);
+    }
+    macro_rules! defs {
+        ($field:ident, $list:ident) => {
+            for x in &library.$list {
+                records.entry(x.part_id).or_default().$field = Some(x);
+            }
+        };
+    }
+    defs!(connector, connector_defs);
+    defs!(device, device_defs);
+    defs!(contact, contact_defs);
+    defs!(seal_plug, seal_plug_defs);
+    defs!(wire, wire_defs);
+    defs!(splice, splice_defs);
+    defs!(component, component_defs);
+    defs!(covering, covering_defs);
+    defs!(accessory, accessory_defs);
+    defs!(t_mold, t_mold_defs);
+    records
+}
+
+pub fn changes(before: &Library, after: &Library) -> LibraryChanges {
+    let (a, b) = (part_records(before), part_records(after));
+    LibraryChanges {
+        parts: a
+            .keys()
+            .chain(b.keys())
+            .filter(|id| a.get(id) != b.get(id))
+            .copied()
+            .collect(),
+        signal_types: before.signal_types != after.signal_types,
+    }
+}
+
+/// Guarda solo lo que cambió: cada parte cambiada se borra (sus fichas se van
+/// en cascada) y se vuelve a escribir si sigue existiendo. El archivo tiene que
+/// tener el estado anterior a `changes`; si un guardado falló, usar `save`.
+pub fn save_changes(
+    conn: &mut Connection,
+    library: &Library,
+    changes: &LibraryChanges,
+) -> Result<()> {
+    if changes.parts.is_empty() && !changes.signal_types {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    tx.pragma_update(None, "defer_foreign_keys", true)?;
+    for id in &changes.parts {
+        tx.execute("DELETE FROM parts WHERE id = ?1", [id])?;
+    }
+    write_parts(&tx, library, Some(&changes.parts))?;
+    if changes.signal_types {
+        tx.execute("DELETE FROM signal_types", [])?;
+        write_signal_types(&tx, library)?;
+    }
+    tx.commit()
+}
+
+/// Escribe las partes de `library` (todas, o solo las de `only`) con sus fichas.
+fn write_parts(tx: &Transaction, library: &Library, only: Option<&HashSet<i64>>) -> Result<()> {
+    let keep = |id: i64| only.is_none_or(|ids| ids.contains(&id));
     for part in &library.parts {
+        if !keep(part.id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO parts (id, part_number, manufacturer, description, category, purchase_unit, qty_per_pack, price_usd, price_date)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -546,9 +637,12 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for connector_def in &library.connector_defs {
+        if !keep(connector_def.part_id) {
+            continue;
+        }
         tx.execute(
-            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, image_side, image_front, image_back, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 connector_def.part_id,
                 connector_def.gender,
@@ -560,9 +654,6 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
                 connector_def.back_width_mm,
                 connector_def.back_height_mm,
                 connector_def.suggested_termination,
-                connector_def.image_side,
-                connector_def.image_front,
-                connector_def.image_back,
                 connector_def.contact_part_id,
                 connector_def.seal_plug_part_id,
                 connector_def.adhesive_heatshrink_length_mm,
@@ -577,6 +668,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for device_def in &library.device_defs {
+        if !keep(device_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO device_defs (part_id) VALUES (?1)",
             params![device_def.part_id],
@@ -596,6 +690,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for contact_def in &library.contact_defs {
+        if !keep(contact_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO contact_defs (part_id, gender, contact_size, gauge_min, gauge_max) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
@@ -609,6 +706,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for seal_plug_def in &library.seal_plug_defs {
+        if !keep(seal_plug_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO seal_plug_defs (part_id, contact_size) VALUES (?1, ?2)",
             params![seal_plug_def.part_id, seal_plug_def.contact_size],
@@ -616,6 +716,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for wire_def in &library.wire_defs {
+        if !keep(wire_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO wire_defs (part_id, gauge, spec, color, outer_diameter_mm, default_cut_margin_pct) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
@@ -643,6 +746,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for splice_def in &library.splice_defs {
+        if !keep(splice_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO splice_defs (part_id, gauge_min, gauge_max, max_wires) VALUES (?1, ?2, ?3, ?4)",
             params![splice_def.part_id, splice_def.gauge_min, splice_def.gauge_max, splice_def.max_wires],
@@ -650,6 +756,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for component_def in &library.component_defs {
+        if !keep(component_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO component_defs (part_id, component_type, value, package) VALUES (?1, ?2, ?3, ?4)",
             params![
@@ -662,6 +771,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for covering_def in &library.covering_defs {
+        if !keep(covering_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO covering_defs (part_id, supplied_diameter_mm, shrunk_diameter_mm, shrunk_wall_thickness_mm, has_adhesive) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
@@ -675,6 +787,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for accessory_def in &library.accessory_defs {
+        if !keep(accessory_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO accessory_defs (part_id, orientation, cable_side_min_diameter_mm, cable_side_max_diameter_mm, leg_length_mm, overlap_mm) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
@@ -695,6 +810,9 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
     }
 
     for t_mold_def in &library.t_mold_defs {
+        if !keep(t_mold_def.part_id) {
+            continue;
+        }
         tx.execute(
             "INSERT INTO t_mold_defs (part_id, overlap_mm) VALUES (?1, ?2)",
             params![t_mold_def.part_id, t_mold_def.overlap_mm],
@@ -707,6 +825,10 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn write_signal_types(tx: &Transaction, library: &Library) -> Result<()> {
     for signal_type in &library.signal_types {
         tx.execute(
             "INSERT INTO signal_types (id, name, default_color) VALUES (?1, ?2, ?3)",
@@ -714,6 +836,81 @@ pub fn save(conn: &mut Connection, library: &Library) -> Result<()> {
         )?;
     }
 
+    Ok(())
+}
+
+/// Vistas de las fotos de los conectores, en el orden en que se muestran.
+pub const IMAGE_VIEWS: [&str; 3] = ["front", "side", "back"];
+
+/// Qué fotos hay: parte -> vistas (ordenadas). Liviano: sin los datos.
+pub fn image_index(conn: &Connection) -> Result<BTreeMap<i64, Vec<String>>> {
+    let mut stmt =
+        conn.prepare("SELECT part_id, view FROM connector_def_images ORDER BY part_id, view")?;
+    let mut index: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    for row in stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })? {
+        let (part_id, view) = row?;
+        index.entry(part_id).or_default().push(view);
+    }
+    Ok(index)
+}
+
+/// Una foto (data URL), si la hay.
+pub fn image(conn: &Connection, part_id: i64, view: &str) -> Result<Option<String>> {
+    conn.query_row(
+        "SELECT data FROM connector_def_images WHERE part_id = ?1 AND view = ?2",
+        params![part_id, view],
+        |row| row.get(0),
+    )
+    .optional()
+}
+
+/// Pone (o con `None`, saca) una foto. Quien llama valida la vista y el dato.
+pub fn set_image(conn: &Connection, part_id: i64, view: &str, data: Option<&str>) -> Result<()> {
+    match data {
+        Some(data) => conn.execute(
+            "INSERT INTO connector_def_images (part_id, view, data) VALUES (?1, ?2, ?3)
+             ON CONFLICT (part_id, view) DO UPDATE SET data = excluded.data",
+            params![part_id, view, data],
+        )?,
+        None => conn.execute(
+            "DELETE FROM connector_def_images WHERE part_id = ?1 AND view = ?2",
+            params![part_id, view],
+        )?,
+    };
+    Ok(())
+}
+
+/// Fotos de conectores que ya no existen (se borraron en una sesión anterior;
+/// durante la sesión se conservan, por si se deshace el borrado).
+pub fn remove_orphan_images(conn: &Connection) -> Result<usize> {
+    conn.execute(
+        "DELETE FROM connector_def_images WHERE part_id NOT IN (SELECT part_id FROM connector_defs)",
+        [],
+    )
+}
+
+/// Copia todas las fotos de una biblioteca a otra ("Save as").
+pub fn copy_images(from: &Connection, to: &mut Connection) -> Result<()> {
+    let mut stmt = from.prepare("SELECT part_id, view, data FROM connector_def_images")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>>>()?;
+    let tx = to.transaction()?;
+    tx.execute("DELETE FROM connector_def_images", [])?;
+    for (part_id, view, data) in rows {
+        tx.execute(
+            "INSERT INTO connector_def_images (part_id, view, data) VALUES (?1, ?2, ?3)",
+            params![part_id, view, data],
+        )?;
+    }
     tx.commit()
 }
 
@@ -737,9 +934,6 @@ mod tests {
             contact_part_id: None,
             seal_plug_part_id: None,
             adhesive_heatshrink_length_mm: None,
-            image_side: None,
-            image_front: None,
-            image_back: None,
             cavities: vec![],
         };
         // Rectangular 12 × 9.5 mm -> diagonal ≈ 15.31 mm.
@@ -842,9 +1036,6 @@ mod tests {
                 contact_part_id: None,
                 seal_plug_part_id: None,
                 adhesive_heatshrink_length_mm: None,
-                image_side: None,
-                image_front: Some("data:image/webp;base64,UklGRhIAAABXRUJQVlA4".into()),
-                image_back: None,
                 cavities: vec![ConnectorDefCavity {
                     cavity_id: "N".into(),
                     contact_size: "20".into(),
@@ -950,5 +1141,96 @@ mod tests {
         save(&mut conn, &library).unwrap();
         let loaded = load(&conn).unwrap();
         assert_eq!(loaded, library);
+    }
+
+    #[test]
+    fn saving_only_the_changes_gives_the_same_file_as_saving_everything() {
+        let path = std::env::temp_dir().join(format!(
+            "harness-test-{}-incremental.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let path = path.to_string_lossy().into_owned();
+        let before = crate::base_library::base_library();
+        let mut conn = crate::db::library_for_saving(&path).unwrap();
+        save(&mut conn, &before).unwrap();
+
+        // Una vía renombrada, una parte borrada, una nueva y otro tipo de señal.
+        let mut after = before.clone();
+        after.connector_defs[0].cavities[0].cavity_id = "X".into();
+        let gone = after.covering_defs.pop().unwrap().part_id;
+        after.parts.retain(|p| p.id != gone);
+        let new_id = after.parts.iter().map(|p| p.id).max().unwrap() + 1;
+        after.parts.push(Part {
+            id: new_id,
+            part_number: "NEW-1".into(),
+            manufacturer: None,
+            description: None,
+            category: "splice".into(),
+            purchase_unit: "unit".into(),
+            qty_per_pack: 1.0,
+            price_usd: None,
+            price_date: None,
+        });
+        after.splice_defs.push(SpliceDef {
+            part_id: new_id,
+            gauge_min: None,
+            gauge_max: Some("6 mm²".into()),
+            max_wires: 8,
+        });
+        after.signal_types.push(SignalType {
+            id: 99,
+            name: "CAN".into(),
+            default_color: "white".into(),
+        });
+
+        let changes = changes(&before, &after);
+        assert_eq!(
+            changes.parts,
+            HashSet::from([before.connector_defs[0].part_id, gone, new_id])
+        );
+        assert!(changes.signal_types);
+        save_changes(&mut conn, &after, &changes).unwrap();
+        assert_eq!(load(&conn).unwrap(), after);
+        assert_eq!(super::changes(&after, &after), LibraryChanges::default());
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn photos_live_apart_and_survive_saving_the_part() {
+        let path =
+            std::env::temp_dir().join(format!("harness-test-{}-photos.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let path = path.to_string_lossy().into_owned();
+        let library = crate::base_library::base_library();
+        let id = library.connector_defs[0].part_id;
+        let mut conn = crate::db::library_for_saving(&path).unwrap();
+        save(&mut conn, &library).unwrap();
+        set_image(&conn, id, "front", Some("data:image/webp;base64,AAA")).unwrap();
+
+        // Guardar la parte (se borra y se vuelve a escribir) no se lleva la foto.
+        let mut edited = library.clone();
+        edited.connector_defs[0].shell_size = Some("9".into());
+        save_changes(&mut conn, &edited, &changes(&library, &edited)).unwrap();
+        assert_eq!(
+            image(&conn, id, "front").unwrap().as_deref(),
+            Some("data:image/webp;base64,AAA")
+        );
+
+        // Sin el conector, la foto queda huérfana y se limpia (al abrir la biblioteca).
+        let mut without = edited.clone();
+        without.connector_defs.retain(|d| d.part_id != id);
+        without.parts.retain(|p| p.id != id);
+        for d in &mut without.connector_defs {
+            if d.counterpart_id == Some(id) {
+                d.counterpart_id = None;
+            }
+        }
+        save_changes(&mut conn, &without, &changes(&edited, &without)).unwrap();
+        assert_eq!(remove_orphan_images(&conn).unwrap(), 1);
+        assert!(image_index(&conn).unwrap().is_empty());
+        drop(conn);
+        let _ = std::fs::remove_file(path);
     }
 }
