@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Ícono de Harness Designer: la "H" de la barra de título, en el azul de la app. -->
-  <rect x="64" y="64" width="896" height="896" rx="180" fill="#1868db"/>
-  <rect x="280" y="250" width="130" height="524" rx="22" fill="#ffffff"/>
-  <rect x="614" y="250" width="130" height="524" rx="22" fill="#ffffff"/>
-  <rect x="380" y="447" width="264" height="130" fill="#ffffff"/>
-</svg>
