@@ -1,12 +1,12 @@
 /**
  * Pinout de un conector de dispositivo (Library → Devices): una fila por vía de
  * la carcasa del arnés, edición de nombre/función y pegado de la tabla que
- * manda el cliente. Funciones puras, sin React: `node tools/check_device_pins.ts`.
+ * manda el cliente. Funciones puras, sin React: tests/devicePins.test.ts.
  *
  * Un nombre repetido en dos vías (OUT1 en A1 y A10) es una misma salida
  * repartida en dos pines ("pines en paralelo"): no hay otra cosa que cargar.
  */
-import type { ConnectorDef, DeviceDefConnector, Library } from "./libraryTypes.ts";
+import type { ConnectorDef, DeviceDefConnector, Library } from "../model/library.ts";
 
 export interface DevicePinRow {
   cavityId: string;

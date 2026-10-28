@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { HelpIcon } from "./icons";
-import type { Finding, ProjectData, Selection } from "./types";
+import { HelpIcon } from "../components/icons";
+import type { Finding, ProjectData, Selection } from "../model/project";
 
 interface Props {
   project: ProjectData | null;

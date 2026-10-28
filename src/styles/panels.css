@@ -1,0 +1,187 @@
+/* Paneles laterales: árbol (izquierda) e Inspector (derecha). */
+
+/* Panel de árbol (izquierda) y de inspector (derecha): navegador de
+   topología y detalle del elemento seleccionado, siempre visibles junto a
+   la pantalla activa (no otra pestaña más). */
+.tree-panel-title,
+.inspector-header {
+  padding: 0.6rem 0.9rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector-header {
+  color: #fff;
+  background: var(--accent);
+  text-transform: none;
+  font-size: 0.85rem;
+  letter-spacing: 0;
+  font-weight: 600;
+  border-bottom: none;
+}
+
+.tree-panel .hint,
+.inspector-panel .hint {
+  margin: 0.75rem 0.9rem;
+  max-width: none;
+}
+
+.tree-row.tree-root {
+  padding: 0.6rem 0.9rem 0.3rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.3rem 0.75rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: var(--font-ui);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tree-row:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tree-row-selected,
+.tree-row-selected:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tree-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  flex: 0 0 auto;
+}
+
+.tree-dot-connector { background: var(--accent); }
+.tree-dot-ground { background: var(--text-muted); }
+.tree-dot-splice { background: var(--warning); }
+.tree-dot-breakout { background: var(--warning); }
+.tree-dot-node { background: var(--border); }
+
+.tree-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-length {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.inspector-body {
+  padding: 0.25rem 0.9rem;
+}
+
+.inspector-field {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector-field:last-child {
+  border-bottom: none;
+}
+
+.inspector-field-value {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+/* Campo editable dentro del Inspector (largo de un segmento). */
+.inspector-input-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.inspector-input {
+  width: 6em;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+
+.inspector-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.inspector-input-wide {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.inspector-field-value select.inspector-input {
+  font-family: var(--font-mono);
+}
+
+.inspector-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+}
+
+.inspector-hint {
+  margin: 0.6rem 0 0;
+  font-size: 0.75rem;
+}
+
+/* EndEditor (desde/hasta de un cable) dentro del Inspector: con el mismo aspecto que los demás campos. */
+.inspector-field-value select:not(.inspector-input) {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+
+/* Inspector: recorrido y largo del cable. */
+.inspector-length {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+/* Inspector: problemas de lo seleccionado (los mismos de Checks). */
+.inspector-findings {
+  margin: 0.6rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.inspector-findings .finding {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.55rem;
+}

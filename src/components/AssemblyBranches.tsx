@@ -1,5 +1,5 @@
-import type { ProjectData } from "./types";
-import type { AssemblyBranch } from "./sheets";
+import type { ProjectData } from "../model/project";
+import type { AssemblyBranch } from "../logic/sheets";
 
 /**
  * Hoja de armado por breakouts (pedido de Martin, como la hoja a mano del

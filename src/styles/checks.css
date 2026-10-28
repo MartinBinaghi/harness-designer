@@ -1,0 +1,82 @@
+/* Lista de hallazgos (pestaña Checks, Inspector, barra de estado). */
+
+/* Lista de hallazgos (chequeos): indicador circular + texto, como la barra
+   de estado de una herramienta de ingeniería, no una tarjeta con borde de
+   color a un costado. */
+.findings {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.finding {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.finding:last-child {
+  border-bottom: none;
+}
+
+.finding::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  transform: translateY(-1px);
+}
+
+.finding-error::before {
+  background: var(--error);
+}
+
+.finding-warning::before {
+  background: var(--warning);
+}
+
+.hint {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  max-width: 60ch;
+  margin: 0 0 0.8rem;
+}
+
+section {
+  margin-bottom: 2rem;
+}
+
+/* Checks: un grupo desplegable por verificación. */
+.findings-group {
+  margin-bottom: 0.5rem;
+}
+
+.findings-group summary {
+  cursor: pointer;
+  padding: 0.3rem 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.findings-group .findings {
+  margin-bottom: 0.5rem;
+}
+
+.findings-count {
+  margin-left: 0.3rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-2, #e9ebee);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}

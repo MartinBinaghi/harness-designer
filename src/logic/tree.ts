@@ -1,4 +1,4 @@
-import type { Node, Segment } from "./types";
+import type { Node, Segment } from "../model/project";
 
 export interface TreeEntry {
   nodeId: number;

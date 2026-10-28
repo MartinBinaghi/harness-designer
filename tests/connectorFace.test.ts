@@ -1,8 +1,8 @@
-// Chequeo de la cara dibujada de los conectores. Uso: node tools/check_connector_face.ts
+// Chequeo de la cara dibujada de los conectores. Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { connectorFace, hull, wireSide, type MilArrangements } from "../src/connectorFace.ts";
-import type { ConnectorDef } from "../src/libraryTypes.ts";
+import { connectorFace, hull, wireSide, type MilArrangements } from "../src/logic/connectorFace.ts";
+import type { ConnectorDef } from "../src/model/library.ts";
 
 const mil: MilArrangements = JSON.parse(readFileSync(new URL("../src/data/mil-std-1560.json", import.meta.url), "utf8")).arrangements;
 const def = (series: string, gender: "male" | "female", cavities: [string, string][], shell: string | null = null) =>

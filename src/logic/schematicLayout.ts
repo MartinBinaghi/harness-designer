@@ -1,7 +1,7 @@
 /**
  * Vista esquemática pin a pin (plan 10.3), generada desde los datos: qué
  * bloques hay, qué pines muestra cada uno, qué une cada cable y dónde va cada
- * bloque. Sin React, para chequearlo con `node tools/check_schematic.ts`.
+ * bloque. Sin React, para chequearlo con tests/schematicLayout.test.ts.
  *
  * Columnas: el conector principal a la izquierda, los puntos de unión
  * (splices, masas, componentes) en el medio y el resto de los conectores a la
@@ -9,8 +9,8 @@
  * de los pines con los que se une (baricentro), para que las líneas se crucen
  * lo menos posible.
  */
-import { devicePinName, type Library } from "./libraryTypes.ts";
-import type { ProjectData, WireEnd } from "./types";
+import { devicePinName, type Library } from "../model/library.ts";
+import type { ProjectData, WireEnd } from "../model/project";
 
 export const PIN_ROW = 22;
 export const BLOCK_HEADER = 44;

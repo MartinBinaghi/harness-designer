@@ -1,9 +1,9 @@
-// Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: node tools/check_sheets.ts
+// Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { assemblyBranches, colorWord, connectorHeatShrink, coveringRows, pageChunks, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/sheets.ts";
-import type { Library } from "../src/libraryTypes.ts";
-import type { ProjectData } from "../src/types.ts";
-import type { PinDestinations } from "../src/costTypes.ts";
+import { assemblyBranches, colorWord, connectorHeatShrink, coveringRows, pageChunks, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/logic/sheets.ts";
+import type { Library } from "../src/model/library.ts";
+import type { ProjectData } from "../src/model/project.ts";
+import type { PinDestinations } from "../src/model/calc.ts";
 
 const cav = (id: number, pin: string, extra = {}) => ({ id, cavity_id: pin, external_reference: null, ...extra });
 const conn = (id: number, short_id: string, name: string, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name, library_part_id: 1, node_id: id, cavities });

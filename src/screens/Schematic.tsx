@@ -19,11 +19,11 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { GaugeFacts } from "./costTypes";
-import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, type SchematicBlock, type SchematicPin } from "./schematic";
-import { addWire } from "./projectEdit";
-import type { ProjectData, Selection, WireEnd } from "./types";
-import type { Library } from "./libraryTypes";
+import type { GaugeFacts } from "../model/calc";
+import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, type SchematicBlock, type SchematicPin } from "../logic/schematicLayout";
+import { addWire } from "../logic/projectEdit";
+import type { ProjectData, Selection, WireEnd } from "../model/project";
+import type { Library } from "../model/library";
 
 /**
  * Vista esquemática pin a pin (plan 10.3): se genera sola desde los datos —
@@ -136,7 +136,7 @@ interface Props {
   gauges: GaugeFacts | null;
 }
 
-export default function Esquema({ project, setProject, library, selection, onSelect, projectRevision, gauges }: Props) {
+export default function Schematic({ project, setProject, library, selection, onSelect, projectRevision, gauges }: Props) {
   const [showAllPins, setShowAllPins] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [netWires, setNetWires] = useState<Set<number>>(new Set());

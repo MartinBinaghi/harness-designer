@@ -2,12 +2,12 @@
  * Contenido de las hojas que se imprimen o exportan (etapa 6): lista de corte,
  * hoja de pinout por conector y lista de etiquetas. Funciones puras sobre el
  * proyecto, la biblioteca y los largos de corte ya calculados (`calc_results`),
- * sin React, para chequearlas con `node tools/check_sheets.ts`.
+ * sin React, para chequearlas con tests/sheets.test.ts.
  */
-import type { CoveringCut, PinDestinations, SegmentDiameterInfo, WireCutLength } from "./costTypes";
-import { devicePinName, partLabel, type Library } from "./libraryTypes.ts";
+import type { CoveringCut, PinDestinations, SegmentDiameterInfo, WireCutLength } from "../model/calc";
+import { devicePinName, partLabel, type Library } from "../model/library.ts";
 import { endLabel } from "./projectEdit.ts";
-import type { ProjectData, WireEnd, WireInstance } from "./types";
+import type { ProjectData, WireEnd, WireInstance } from "../model/project";
 
 export type CutSort = "pin" | "type" | "length";
 

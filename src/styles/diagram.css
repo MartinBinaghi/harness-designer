@@ -1,0 +1,406 @@
+/* Diagrama de armado (pestaña Diagram). */
+
+/* ---------------------------------------------------------------------------
+   Diagrama de armado (pestaña Diagram, plan 10.2). Mismo lenguaje que el resto:
+   bloques planos con borde de 1px, IDs en mono, azul solo para lo seleccionado
+   o resaltado, error/warning como punto de color. */
+
+.screen-canvas {
+  padding: 0;
+  overflow: hidden;
+}
+
+.diagram-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.diagram-toolbar {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  margin: 0;
+}
+
+.diagram-toolbar label {
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.diagram-canvas {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.dg-block {
+  min-width: 130px;
+  max-width: 220px;
+  padding: 0.35rem 0.55rem;
+  background: var(--surface);
+  border: 1px solid var(--text-muted);
+  border-radius: 3px;
+  cursor: grab;
+}
+
+.dg-ground {
+  min-width: 0;
+}
+
+.dg-pending {
+  border-style: dashed;
+  border-color: var(--warning);
+}
+
+.dg-selected.dg-block {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+.dg-block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dg-id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* Nombre del conector o masa: lo principal del bloque. */
+.dg-title {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dg-name-id {
+  font-family: var(--font-mono);
+}
+
+.dg-name {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Género: macho relleno, hembra hueco (se leen distinto aun sin la letra). */
+.dg-gender {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 2px;
+  border: 1px solid var(--text);
+}
+
+.dg-gender-M {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.dg-gender-F {
+  color: var(--text);
+}
+
+.dg-gender-\? {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.dg-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.dg-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+.dg-tag-warning {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+/* Breakouts y puntos sin conector: un punto chico con sus notas debajo. */
+.dg-point {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--text-muted);
+  box-sizing: border-box;
+  cursor: grab;
+}
+
+.dg-point.dg-selected {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.dg-point-labels {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+  /* Fondo del lienzo para que un segmento que pase por debajo no tape el texto. */
+  background: var(--bg);
+  padding: 0 3px;
+}
+
+.dg-distance {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.dg-edge-label {
+  position: absolute;
+  pointer-events: all;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 1px 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dg-edge-label:hover,
+.dg-edge-label-selected {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dg-muted {
+  color: var(--text-muted);
+}
+
+/* Splice/componente sobre un segmento, en su posición real. */
+.dg-marker {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.dg-marker-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.dg-marker-label {
+  position: absolute;
+  left: 12px;
+  top: -14px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* Controles de zoom de React Flow: sin sombra (Flat Plane Rule). */
+.react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+
+.react-flow__controls-button {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Nodo de conector/masa sin nada asignado: borde punteado neutro (no es un error, falta cargarlo). */
+.dg-missing {
+  border-style: dashed;
+  border-color: var(--text-muted);
+}
+
+.dg-missing .dg-id,
+.dg-missing .dg-title {
+  color: var(--text-muted);
+}
+
+/* Edición desde el diagrama (etapa 5b). */
+.diagram-canvas {
+  position: relative;
+}
+
+.diagram-notice {
+  font-size: 0.82rem;
+  color: var(--warning);
+}
+
+/* "+" para crear una rama: solo visible al pasar el mouse por el nodo. */
+.react-flow__handle.dg-branch-handle {
+  width: 16px;
+  height: 16px;
+  right: -8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  /* "+" dibujado con dos barras centradas (no depende de la fuente). */
+  background:
+    linear-gradient(#fff, #fff) center / 8px 2px no-repeat,
+    linear-gradient(#fff, #fff) center / 2px 8px no-repeat,
+    var(--accent);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.react-flow__node:hover .react-flow__handle.dg-branch-handle {
+  opacity: 1;
+}
+
+
+.dg-edge-label-group {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: all;
+}
+
+.dg-edge-label-group .dg-edge-label {
+  position: static;
+}
+
+.dg-edge-action {
+  font-size: 0.68rem;
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+  border-radius: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dg-edge-input {
+  position: absolute;
+  pointer-events: all;
+  width: 5.5em;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+/* Panel de nodo (doble click): flota sobre el lienzo, a la derecha. */
+.dg-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: min(560px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.dg-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.4rem 0.4rem 0.8rem;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.dg-panel-head .icon-button {
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+.dg-panel-body {
+  padding: 0.6rem 0.8rem;
+  overflow: auto;
+}
+
+.dg-panel-sub {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.dg-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.dg-panel-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--text-muted);
+}
+
+table.dg-pinout {
+  width: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.dg-pin-unused td {
+  color: var(--text-muted);
+}
+
+/* Diagrama vacío: cómo empezar. */
+.diagram-empty {
+  max-width: 460px;
+  margin: 3rem auto;
+  padding: 1.2rem 1.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.diagram-empty p {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.diagram-empty ol {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+  max-width: none;
+}

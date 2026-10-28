@@ -2,11 +2,11 @@
  * Ediciones del proyecto que se pueden disparar desde más de una pantalla
  * (tablas y diagrama). Funciones puras: reciben el proyecto y devuelven uno
  * nuevo, o un mensaje si la operación no es válida. Sin React, para poder
- * chequearlas con `node tools/check_project_edit.ts`.
+ * chequearlas con tests/projectEdit.test.ts.
  */
-import type { CavityAssignment, ConnectorInstance, Node, ProjectData, Segment, WireEnd, WireInstance } from "./types";
-import { devicePinName, type Library } from "./libraryTypes.ts";
-import type { GaugeFacts } from "./costTypes";
+import type { CavityAssignment, ConnectorInstance, Node, ProjectData, Segment, WireEnd, WireInstance } from "../model/project";
+import { devicePinName, type Library } from "../model/library.ts";
+import type { GaugeFacts } from "../model/calc";
 
 export function nextId(ids: number[]): number {
   return ids.length === 0 ? 1 : Math.max(...ids) + 1;
@@ -530,4 +530,10 @@ export function duplicateConnector(project: ProjectData, connectorId: number): {
     project: { ...project, nodes, connector_instances: [...project.connector_instances, copy], wire_instances: [...project.wire_instances, ...wires] },
     id,
   };
+}
+
+/** Vías del conector que tienen al menos un cable. */
+export function usedCavities(project: ProjectData, connector: ConnectorInstance): Set<string> {
+  const ends = new Set(project.wire_instances.flatMap((w) => [w.end_a.cavity_assignment_id, w.end_b.cavity_assignment_id]));
+  return new Set(connector.cavities.filter((cav) => ends.has(cav.id)).map((cav) => cav.cavity_id));
 }

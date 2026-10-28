@@ -1,26 +1,12 @@
 import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { Node, ProjectData, Segment, Selection } from "./types";
-import type { Library } from "./libraryTypes";
-import { buildTreeText } from "./tree";
-import { FolderIcon, SaveIcon, TrashIcon } from "./icons";
-import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "./fileDialogs";
-import { deleteNode, deleteSegment, nextId } from "./projectEdit";
-
-export const NODE_KIND_LABELS: Record<Node["kind"], string> = {
-  connector_end: "Connector end",
-  breakout: "Breakout",
-  splice_point: "Splice point",
-  ground_point: "Ground point",
-};
-export const TERMINATION_LABELS: Record<NonNullable<Node["termination"]>, string> = {
-  t_mold: "T-mold",
-  adhesive_heatshrink: "Adhesive heat-shrink",
-  none: "None",
-};
-export const NODE_KINDS = Object.keys(NODE_KIND_LABELS) as Node["kind"][];
-export const TERMINATIONS = Object.keys(TERMINATION_LABELS) as NonNullable<Node["termination"]>[];
-
+import type { Node, ProjectData, Segment, Selection } from "../model/project";
+import { NODE_KINDS, NODE_KIND_LABELS, NODE_TERMINATIONS, NODE_TERMINATION_LABELS } from "../logic/nodeLabels";
+import type { Library } from "../model/library";
+import { buildTreeText } from "../logic/tree";
+import { FolderIcon, SaveIcon, TrashIcon } from "../components/icons";
+import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "../platform/fileDialogs";
+import { deleteNode, deleteSegment, nextId } from "../logic/projectEdit";
 
 interface Props {
   project: ProjectData | null;
@@ -42,7 +28,7 @@ interface Props {
   onSelect: (s: Selection) => void;
 }
 
-export default function Topologia({ project, setProject, loadProject, cancelProjectEdits, flushProjectEdits, confirmDiscard, afterSave, filePath, setFilePath, library, selection, onSelect }: Props) {
+export default function Topology({ project, setProject, loadProject, cancelProjectEdits, flushProjectEdits, confirmDiscard, afterSave, filePath, setFilePath, library, selection, onSelect }: Props) {
   const [status, setStatus] = useState("");
   const [selectedWireId, setSelectedWireId] = useState<number | null>(null);
   const [route, setRoute] = useState<number[] | null>(null);
@@ -244,7 +230,7 @@ export default function Topologia({ project, setProject, loadProject, cancelProj
                         }
                       >
                         <option value="">—</option>
-                        {TERMINATIONS.map((t) => <option key={t} value={t}>{TERMINATION_LABELS[t]}</option>)}
+                        {NODE_TERMINATIONS.map((t) => <option key={t} value={t}>{NODE_TERMINATION_LABELS[t]}</option>)}
                       </select>
                     </td>
                     <td>

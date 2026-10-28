@@ -1,0 +1,220 @@
+/* La ventana: barra de título, pestañas, cuerpo con paneles, barra de estado. */
+
+.app {
+  width: 100%;
+  height: 100vh;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Barra de título, al estilo de una app de escritorio (logo + nombre),
+   separada de la barra de pestañas que va justo debajo. */
+.app-header {
+  flex: 0 0 auto;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.9rem;
+  background: var(--titlebar-bg);
+  color: var(--titlebar-text);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+}
+
+.app-logo {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.62rem;
+}
+
+/* Controles de ventana, ya que la app corre sin decoración nativa */
+.window-button {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--titlebar-text);
+}
+
+.app-header .window-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: transparent;
+  color: var(--titlebar-text);
+}
+
+.app-header .window-button-close:hover {
+  background: var(--error);
+  color: #fff;
+}
+
+.field-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+}
+
+/* Cuerpo de la app: árbol fijo + pantalla + inspector, como una herramienta
+   de escritorio (FeatureManager + viewport + PropertyManager), no un
+   documento que scrollea entero. */
+.shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.tree-panel,
+.inspector-panel {
+  flex: 0 0 auto;
+  width: 220px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.tree-panel {
+  border-right: 1px solid var(--border);
+}
+
+.inspector-panel {
+  width: 260px;
+  border-left: 1px solid var(--border);
+}
+
+.screen {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 1.25rem 2rem 3rem;
+  box-sizing: border-box;
+}
+
+/* Barra de pestañas (nav principal, pestañas de Biblioteca): tabs planas con
+   indicador inferior, al estilo de la barra de secciones de una herramienta
+   de escritorio (no un segmented control de app web). */
+.tabs {
+  display: flex;
+  gap: 1.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 0.5rem 0.1rem;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.tabs button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+/* La pestaña activa es un botón deshabilitado; los íconos de la misma barra
+   (paneles, Undo/Redo) quedan fuera para no parecer pestañas activas. */
+.tabs button:disabled:not(.icon-button) {
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+  cursor: default;
+  opacity: 1;
+}
+
+/* Barra de estado inferior, siempre visible, con el resumen global de
+   chequeos (no depende de estar parado en la pantalla de Checks). */
+.status-bar {
+  flex: 0 0 auto;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 0.9rem;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  transform: translateY(-1px);
+}
+
+.status-dot-error {
+  background: var(--error);
+}
+
+.status-dot-warning {
+  background: var(--warning);
+}
+
+/* Aviso general en la barra de estado (clic para cerrarlo). */
+.status-notice {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  color: var(--warning);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Barra de estado: el nombre del arnés abre sus datos en el Inspector. */
+.status-project {
+  padding: 0 0.4rem;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.status-project:hover {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.inspector-harness-button {
+  margin: 0 0.9rem;
+}
+
+/* Pestañas abiertas antes: montadas pero ocultas (también al imprimir). */
+.screen[hidden] {
+  display: none !important;
+}

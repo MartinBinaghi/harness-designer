@@ -1,7 +1,7 @@
-// Chequeo del pinout de dispositivos (Library → Devices). Uso: node tools/check_device_pins.ts
+// Chequeo del pinout de dispositivos (Library → Devices). Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { applyPaste, devicePinRows, guessRoles, nextDeviceId, parsePinout, previewPaste, setDevicePin } from "../src/devicePins.ts";
-import type { ConnectorDef, DeviceDefConnector, Library } from "../src/libraryTypes.ts";
+import { applyPaste, devicePinRows, guessRoles, nextDeviceId, parsePinout, previewPaste, setDevicePin } from "../src/logic/devicePins.ts";
+import type { ConnectorDef, DeviceDefConnector, Library } from "../src/model/library.ts";
 
 const housing = { cavities: ["A1", "A2", "A10", "n", "N"].map((cavity_id) => ({ cavity_id, contact_size: "20" })) } as ConnectorDef;
 const pin = (id: number, cavity_id: string, name: string, fn: string | null = null) => ({ id, cavity_id, name, function: fn });

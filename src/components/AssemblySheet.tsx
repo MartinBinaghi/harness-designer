@@ -1,9 +1,9 @@
-import type { ProjectData } from "./types";
-import type { Library } from "./libraryTypes";
-import type { CostReport } from "./costTypes";
-import { BLOCK_SIZE, POINT_SIZE, autoLayout, isBlock, rootNodeId } from "./Diagrama";
-import { pxPerMm, rootedTree, scaledCenters } from "./diagramScale";
-import { heatShrinkSize } from "./sheets";
+import type { ProjectData } from "../model/project";
+import type { Library } from "../model/library";
+import type { CostReport } from "../model/calc";
+import { BLOCK_SIZE, POINT_SIZE, autoLayout, isBlock, rootNodeId } from "../logic/diagramLayout";
+import { pxPerMm, rootedTree, scaledCenters } from "../logic/diagramScale";
+import { heatShrinkSize } from "../logic/sheets";
 
 /**
  * Hoja de armado (etapa 6b, plan 10.2): el diagrama del arnés con sus medidas,

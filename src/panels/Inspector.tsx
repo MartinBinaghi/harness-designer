@@ -1,15 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CostReport, WireCutLength } from "./costTypes";
-import { changeConnectorPart, nextId, patchItem, wireCategoryPatch } from "./projectEdit";
-import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "./types";
+import type { CostReport, WireCutLength } from "../model/calc";
+import { changeConnectorPart, nextId, patchItem, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
+import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "../model/project";
+import { partLabel, type Library } from "../model/library";
+import { EndEditor } from "../components/EndEditor";
+import { ConnectorViews } from "../components/ConnectorViews";
+import { ConnectorPartSelect } from "../components/ConnectorPartSelect";
+import { NODE_KINDS, NODE_KIND_LABELS, NODE_TERMINATIONS, NODE_TERMINATION_LABELS } from "../logic/nodeLabels";
 
 type Placed = Pick<SpliceInstance, "node_id" | "segment_id" | "offset_from_end_mm" | "offset_from_node_id">;
-import { choiceKey, connectorChoices, partLabel, type ConnectorChoice, type Library } from "./libraryTypes";
-import { IMAGE_VIEWS, useConnectorImage, useImageViews, type ImageView } from "./connectorImages";
-import { EndEditor } from "./Cables";
-import { ConnectorFaceView } from "./ConnectorFaceView";
-import { NODE_KINDS, NODE_KIND_LABELS, TERMINATIONS, TERMINATION_LABELS as NODE_TERMINATION_LABELS } from "./Topologia";
 
 /**
  * Panel de detalle del elemento seleccionado (en cualquier pantalla). Todo lo
@@ -104,73 +104,6 @@ function Select<T extends string | number>({ value, options, onChange, empty }: 
       ))}
     </select>
   );
-}
-
-/**
- * Cara dibujada del conector (con las vías usadas resaltadas) y las imágenes
- * cargadas en la biblioteca para su parte (frontal primero).
- */
-export function ConnectorViews({ library, partId, only, used }: { library: Library; partId: number; only?: ImageView; used?: Set<string> }) {
-  const def = library.connector_defs.find((d) => d.part_id === partId);
-  const present = useImageViews(partId);
-  if (!def) return null;
-  return (
-    <div className="connector-views">
-      <ConnectorFaceView def={def} used={used} />
-      {IMAGE_VIEWS.filter((v) => (!only || v.view === only) && present.includes(v.view)).map(({ view, label }) => (
-        <ConnectorPhoto key={view} partId={partId} view={view} label={label} />
-      ))}
-    </div>
-  );
-}
-
-function ConnectorPhoto({ partId, view, label }: { partId: number; view: ImageView; label: string }) {
-  const src = useConnectorImage(partId, view);
-  return (
-    <figure>
-      {src ? <img src={src} alt={`${label} view`} /> : <span className="hint">…</span>}
-      <figcaption className="field-label">{label} view</figcaption>
-    </figure>
-  );
-}
-
-/**
- * Parte de un conector del proyecto: los conectores de dispositivos (PDM30 · A,
- * con los nombres de sus pines) y las carcasas de la biblioteca.
- */
-export function ConnectorPartSelect({ library, partId, deviceConnectorId, onChange, placeholder, className }: {
-  library: Library;
-  partId: number | null;
-  deviceConnectorId: number | null;
-  onChange: (choice: ConnectorChoice) => void;
-  placeholder?: string;
-  className?: string;
-}) {
-  const choices = connectorChoices(library);
-  const value = partId == null ? "" : choiceKey(partId, deviceConnectorId);
-  const group = (devices: boolean) =>
-    choices.filter((c) => (c.deviceConnectorId != null) === devices).map((c) => <option key={c.key} value={c.key}>{c.label}</option>);
-  return (
-    <select
-      className={className}
-      value={value}
-      onChange={(e) => {
-        const choice = choices.find((c) => c.key === e.currentTarget.value);
-        if (choice) onChange(choice);
-      }}
-    >
-      {placeholder !== undefined && <option value="">{placeholder}</option>}
-      {value && !choices.some((c) => c.key === value) && <option value={value}>{partLabel(library, partId)} (missing)</option>}
-      {library.device_defs.length > 0 && <optgroup label="Device connectors">{group(true)}</optgroup>}
-      <optgroup label="Connectors">{group(false)}</optgroup>
-    </select>
-  );
-}
-
-/** Vías del conector que tienen al menos un cable. */
-export function usedCavities(project: ProjectData, connector: ConnectorInstance): Set<string> {
-  const ends = new Set(project.wire_instances.flatMap((w) => [w.end_a.cavity_assignment_id, w.end_b.cavity_assignment_id]));
-  return new Set(connector.cavities.filter((cav) => ends.has(cav.id)).map((cav) => cav.cavity_id));
 }
 
 /**
@@ -400,7 +333,7 @@ export default function Inspector({ project, setProject, library, selection, onS
             <Select
               value={node.termination}
               empty="—"
-              options={TERMINATIONS.map((t) => ({ value: t, label: NODE_TERMINATION_LABELS[t] }))}
+              options={NODE_TERMINATIONS.map((t) => ({ value: t, label: NODE_TERMINATION_LABELS[t] }))}
               onChange={(v) => set({ termination: v, termination_library_part_id: null })}
             />
           </Field>

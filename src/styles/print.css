@@ -1,0 +1,385 @@
+/* Pestaña Print: hojas en papel y lo que se oculta al imprimir. */
+
+/* Print (etapa 6): opciones a la izquierda, hojas en papel a la derecha. */
+.print-screen {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.print-options {
+  flex: 0 0 240px;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.print-options fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.print-doc {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.print-doc input {
+  margin-top: 0.2rem;
+}
+
+.print-doc-name {
+  display: block;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.print-doc .hint {
+  display: block;
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.print-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.print-paper {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.print-connector-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.print-connectors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.print-connectors label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.print-cid {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.print-preview {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding-bottom: 2rem;
+}
+
+/* La hoja: papel blanco con el margen de impresión (10 mm) como padding. */
+.sheet {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: 10mm;
+  background: #fff;
+  color: #111;
+  box-shadow: 0 0 0 1px var(--border), 0 2px 6px rgba(0, 0, 0, 0.08);
+  font-family: var(--font-ui);
+  font-size: 9pt;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: 2mm;
+  margin-bottom: 4mm;
+  border-bottom: 1.5px solid #111;
+}
+
+.sheet-title {
+  font-size: 13pt;
+  font-weight: 700;
+}
+
+.sheet table {
+  width: 100%;
+  margin: 0 0 4mm;
+  border: 1px solid #999;
+  background: #fff;
+  font-family: var(--font-mono);
+  font-size: 8pt;
+}
+
+.sheet th {
+  padding: 1.2mm 2mm;
+  background: #e9ebee;
+  color: #333;
+  font-size: 6.5pt;
+  border-bottom: 1px solid #999;
+}
+
+.sheet td {
+  padding: 1.1mm 2mm;
+  border-bottom: 1px solid #d0d0d0;
+  color: #111;
+}
+
+.sheet tr {
+  break-inside: avoid;
+}
+
+.sheet .num {
+  text-align: right;
+}
+
+.sheet .strong {
+  font-weight: 700;
+}
+
+.sheet .check {
+  width: 7mm;
+  text-align: center;
+}
+
+.tick-box {
+  display: inline-block;
+  width: 3.2mm;
+  height: 3.2mm;
+  border: 1px solid #333;
+}
+
+/* Lista de corte: un bloque por conector, con su título como renglón. */
+.sheet .cut-group-title td {
+  padding: 1.6mm 2mm 1.2mm;
+  background: #dfe8f4;
+  border-top: 1.5px solid #111;
+  font-family: var(--font-ui);
+  font-size: 8.5pt;
+  font-weight: 700;
+}
+
+.cut-group-title {
+  break-after: avoid;
+}
+
+.cut-group-count {
+  margin-left: 3mm;
+  font-weight: 400;
+  font-size: 7pt;
+  color: #555;
+}
+
+.cut-group-hs {
+  float: right;
+  font-weight: 600;
+  font-size: 8pt;
+}
+
+.sheet h4 {
+  margin: 2mm 0 2mm;
+  font-size: 9pt;
+}
+
+.sheet-totals {
+  width: auto !important;
+  min-width: 90mm;
+}
+
+/* Hoja de pinout con el formato del taller: bloque por conector, encabezado celeste. */
+.sheet table.pinout-table {
+  table-layout: fixed;
+  border: 0;
+  font-family: var(--font-ui);
+  font-size: 8pt;
+}
+
+.pinout-table th {
+  padding: 1.6mm 1mm;
+  background: #a9c6e8;
+  color: #111;
+  font-size: 7.5pt;
+  text-align: center;
+  border: 1.5px solid #111;
+}
+
+.pinout-table td {
+  padding: 0.5mm 1.5mm;
+  border: 0;
+  border-left: 1px solid #555;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.pinout-block {
+  border: 1.5px solid #111;
+  break-inside: avoid;
+}
+
+.pinout-gap td {
+  height: 3mm;
+  padding: 0;
+  border: 0;
+}
+
+.pinout-name {
+  font-weight: 700;
+}
+
+.pinout-id,
+.pinout-pn {
+  display: block;
+  font-weight: 400;
+  font-size: 6.5pt;
+  color: #555;
+}
+
+.pinout-pin {
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet .pinout-nc {
+  color: #777;
+}
+
+.pinout-view img,
+.pinout-view .connector-face svg {
+  display: block;
+  max-width: 100%;
+  max-height: var(--view-h, 20mm);
+  margin: 0.5mm auto;
+}
+
+.pinout-view .connector-face figcaption {
+  display: none;
+}
+
+.pinout-pending {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 7pt;
+}
+
+@media print {
+  html,
+  body,
+  #root,
+  .app,
+  .shell,
+  .screen,
+  .print-screen,
+  .print-preview {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .app-header,
+  .app > .tabs,
+  .status-bar,
+  .tree-panel,
+  .inspector-panel,
+  .print-options {
+    display: none !important;
+  }
+
+  .sheet {
+    width: auto !important;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .sheet + .sheet {
+    break-before: page;
+  }
+}
+
+/* Hoja de armado: el dibujo ocupa el ancho de la hoja y no pasa de su alto. */
+svg.assembly {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 4mm;
+}
+
+.print-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+/* Hoja de pinout: conector pendiente, nota debajo del dibujo. */
+.pinout-pending-note {
+  margin-top: 1mm;
+  font-weight: 700;
+  font-size: 7pt;
+  text-transform: uppercase;
+}
+
+/* Hoja de armado por breakouts: listas de salidas de cada breakout (como la hoja a mano). */
+.assembly-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62mm, 1fr));
+  gap: 3mm 5mm;
+  margin-top: 4mm;
+  align-items: start;
+}
+
+.assembly-list {
+  break-inside: avoid;
+}
+
+.assembly-list h4 {
+  margin: 0 0 1mm;
+  font-size: 11pt;
+}
+
+.assembly-list h4 .assembly-muted {
+  font-size: 8pt;
+  font-weight: 400;
+}
+
+.sheet .assembly-list table {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 7.5pt;
+}
+
+.sheet .assembly-list td {
+  padding: 0.3mm 1mm;
+}
+
+.assembly-muted {
+  color: #555;
+}

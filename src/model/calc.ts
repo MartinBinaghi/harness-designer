@@ -112,7 +112,7 @@ export interface CostReport {
 /** "Termina en" de una vía con cable, calculado por el núcleo (`pin_destinations`). */
 export interface PinDestinations {
   cavity_assignment_id: number;
-  ends: import("./types").WireEnd[];
+  ends: import("./project").WireEnd[];
   via_splices: number[];
 }
 
@@ -131,7 +131,7 @@ export interface GaugeFacts {
 /** Todo lo que el núcleo calcula para una revisión (comando `calc_results`). */
 export interface CalcResults {
   report: CostReport;
-  findings: import("./types").Finding[];
+  findings: import("./project").Finding[];
   destinations: PinDestinations[];
   gauges: GaugeFacts;
 }

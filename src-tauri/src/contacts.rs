@@ -130,13 +130,16 @@ fn usable_contacts<'a>(
 /// mismo criterio que los chequeos, sin volver a interpretar calibres: la
 /// sección de cada tipo de cable y, por conector de la biblioteca y tamaño de
 /// contacto, el rango de cada contacto que puede llevar.
+/// Tamaño de contacto → rango (mm²) de cada contacto usable; `None` = rango desconocido.
+pub type ContactRanges = BTreeMap<String, Vec<Option<(f64, f64)>>>;
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct GaugeFacts {
     /// Tipo de cable → sección (mm²); `None` si su calibre no se entiende.
     pub wire_mm2: BTreeMap<i64, Option<f64>>,
     /// Conector → tamaño de contacto → rango (mm²) de cada contacto usable;
     /// `None` = rango desconocido (no descarta ningún calibre, como `takes`).
-    pub contact_ranges: BTreeMap<i64, BTreeMap<String, Vec<Option<(f64, f64)>>>>,
+    pub contact_ranges: BTreeMap<i64, ContactRanges>,
 }
 
 pub fn gauge_facts(library: &Library) -> GaugeFacts {

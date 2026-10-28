@@ -1,8 +1,8 @@
-// Chequeo de las ediciones del proyecto (diagrama/tablas). Uso: node tools/check_project_edit.ts
+// Chequeo de las ediciones del proyecto (diagrama/tablas). Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { addBranch, addJunction, assignConnector, connectNodes, deleteJunction, deleteNode, deleteSegment, splitSegment, wiresAtJunction } from "../src/projectEdit.ts";
-import type { ProjectData } from "../src/types.ts";
-import type { Library } from "../src/libraryTypes.ts";
+import { addBranch, addJunction, assignConnector, connectNodes, deleteJunction, deleteNode, deleteSegment, splitSegment, wiresAtJunction } from "../src/logic/projectEdit.ts";
+import type { ProjectData } from "../src/model/project.ts";
+import type { Library } from "../src/model/library.ts";
 
 const node = (id: number, kind: "connector_end" | "breakout") => ({ id, kind, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null });
 const seg = (id: number, a: number, b: number, len: number) => ({ id, node_a_id: a, node_b_id: b, length_mm: len, twist_pitch_mm: null, covering_library_part_id: 7 });
@@ -61,7 +61,7 @@ console.log("project edit: ok");
 
 // Cable nuevo de pin a pin: toma el tipo de cable más usado; mismo extremo dos veces se rechaza.
 {
-  const { addWire } = await import("../src/projectEdit.ts");
+  const { addWire } = await import("../src/logic/projectEdit.ts");
   const pin = (id: number) => ({ kind: "cavity" as const, cavity_assignment_id: id, splice_id: null, ground_point_id: null, component_instance_id: null });
   const lib = { wire_defs: [{ part_id: 20 }, { part_id: 21 }] } as unknown as Library;
   const withWires = { ...p, wire_instances: [{ library_part_id: 21, id: 4 }, { library_part_id: 21, id: 9 }] } as unknown as ProjectData;
@@ -76,7 +76,7 @@ console.log("project edit: ok");
 
 // Categoría de cable -> color sugerido; un color puesto a mano no se pisa. patchItem cambia solo el elemento pedido.
 {
-  const { wireCategoryPatch, patchItem } = await import("../src/projectEdit.ts");
+  const { wireCategoryPatch, patchItem } = await import("../src/logic/projectEdit.ts");
   const lib = { signal_types: [{ id: 1, name: "5V", default_color: "violet" }, { id: 2, name: "0V", default_color: "black" }] } as unknown as Library;
   const wire = (color: string | null, st: number | null) => ({ color, signal_type_id: st }) as unknown as ProjectData["wire_instances"][number];
   assert.deepEqual(wireCategoryPatch(lib, wire(null, null), 1), { signal_type_id: 1, color: "violet" });
@@ -89,7 +89,7 @@ console.log("project edit: ok");
 
 // Cambiar la parte de un conector conserva las vías con el mismo nombre (y sus cables); descarta las que no existen.
 {
-  const { changeConnectorPart } = await import("../src/projectEdit.ts");
+  const { changeConnectorPart } = await import("../src/logic/projectEdit.ts");
   const lib = { connector_defs: [{ part_id: 7, cavities: [{ cavity_id: "1", contact_size: "20" }, { cavity_id: "2", contact_size: "20" }, { cavity_id: "3", contact_size: "20" }] }] } as unknown as Library;
   const before = {
     ...p,
@@ -111,7 +111,7 @@ console.log("project edit: ok");
 // Duplicar un conector (Martin: bobinas iguales): mismas vías y cables; los que van a un
 // splice o masa siguen ahí, los que van a un pin de otro conector quedan sin destino.
 {
-  const { duplicateConnector } = await import("../src/projectEdit.ts");
+  const { duplicateConnector } = await import("../src/logic/projectEdit.ts");
   const end = (kind: string, ids: { cavity?: number; splice?: number; ground?: number }) => ({ kind, cavity_assignment_id: ids.cavity ?? null, splice_id: ids.splice ?? null, ground_point_id: ids.ground ?? null, component_instance_id: null });
   const proj = {
     ...p,
@@ -138,7 +138,7 @@ console.log("project edit: ok");
 
 // Pinout por conector: destinos escritos a mano, cables que salen de una vía, varios cables por vía.
 {
-  const { addWireAtCavity, deleteWire, endChoices, otherEnd, parseEnd, setOtherEnd, wiresAtCavity } = await import("../src/projectEdit.ts");
+  const { addWireAtCavity, deleteWire, endChoices, otherEnd, parseEnd, setOtherEnd, wiresAtCavity } = await import("../src/logic/projectEdit.ts");
   const lib = {
     wire_defs: [{ part_id: 100 }],
     device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "A6", name: "OUT11", function: null }] }] }],
@@ -210,7 +210,7 @@ console.log("project edit: ok");
 // Cable nuevo desde un pin: un tipo que entre en algún contacto que pueda llevar esa vía,
 // según los calibres que interpreta el núcleo (gauge_facts): no el primero de la biblioteca.
 {
-  const { addWireAtCavity } = await import("../src/projectEdit.ts");
+  const { addWireAtCavity } = await import("../src/logic/projectEdit.ts");
   const lib = {
     wire_defs: [{ part_id: 26, gauge: "26 AWG" }, { part_id: 20, gauge: "20 AWG" }, { part_id: 18, gauge: "18 AWG" }],
     connector_defs: [{ part_id: 1, contact_part_id: 50, cavities: [{ cavity_id: "1", contact_size: "20" }] }],
@@ -230,7 +230,7 @@ console.log("project edit: ok");
 
 // Cambiar a una parte con menos vías: los cables de las vías que desaparecen quedan sueltos de ese lado (no colgados).
 {
-  const { changeConnectorPart } = await import("../src/projectEdit.ts");
+  const { changeConnectorPart } = await import("../src/logic/projectEdit.ts");
   const lib = { connector_defs: [{ part_id: 7, cavities: [{ cavity_id: "1", contact_size: "20" }] }] } as unknown as Library;
   const end = (cav: number | null) => ({ kind: "cavity", cavity_assignment_id: cav, splice_id: null, ground_point_id: null, component_instance_id: null });
   const proj = {

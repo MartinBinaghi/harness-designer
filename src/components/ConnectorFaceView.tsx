@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { connectorFace, hull, minSpacing, wireSide, type MilArrangements } from "./connectorFace";
-import type { ConnectorDef } from "./libraryTypes";
-import milStd1560 from "./data/mil-std-1560.json";
+import { connectorFace, hull, minSpacing, wireSide, type MilArrangements } from "../logic/connectorFace";
+import type { ConnectorDef } from "../model/library";
+import milStd1560 from "../data/mil-std-1560.json";
 
 const MIL = milStd1560.arrangements as MilArrangements;
 

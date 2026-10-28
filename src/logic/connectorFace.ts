@@ -19,7 +19,7 @@
  * Coordenadas en mm, x a la derecha, y hacia abajo, vista desde la cara de
  * acople (frontal). La vista del lado de los cables es la misma espejada.
  */
-import type { ConnectorDef } from "./libraryTypes";
+import type { ConnectorDef } from "../model/library";
 
 export interface FaceCavity {
   id: string;

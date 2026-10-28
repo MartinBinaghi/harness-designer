@@ -2,32 +2,32 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
-import Topologia from "./Topologia";
-import Diagrama from "./Diagrama";
-import Esquema from "./Esquema";
-import LibraryScreen from "./Library";
-import Conectores from "./Conectores";
-import Cables from "./Cables";
-import Splices from "./Splices";
-import Checks from "./Checks";
-import Costs from "./Costs";
-import Impresion from "./Impresion";
-import Tree from "./TreePanel";
-import Inspector from "./Inspector";
-import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./icons";
-import { useBackedState } from "./useBackedState";
-import type { CalcResults } from "./costTypes";
-import { reloadConnectorImages } from "./connectorImages";
-import type { Finding, HistoryStatus, ProjectData, ProjectStatus, Selection } from "./types";
-import type { Library } from "./libraryTypes";
+import Topology from "./screens/Topology";
+import Diagram from "./screens/diagram/Diagram";
+import Schematic from "./screens/Schematic";
+import LibraryScreen from "./screens/library/Library";
+import Connectors from "./screens/Connectors";
+import Wires from "./screens/Wires";
+import Splices from "./screens/Splices";
+import Checks from "./screens/Checks";
+import Costs from "./screens/Costs";
+import Print from "./screens/Print";
+import Tree from "./panels/TreePanel";
+import Inspector from "./panels/Inspector";
+import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./components/icons";
+import { useBackedState } from "./platform/useBackedState";
+import type { CalcResults } from "./model/calc";
+import { reloadConnectorImages } from "./platform/connectorImages";
+import type { Finding, HistoryStatus, ProjectData, ProjectStatus, Selection } from "./model/project";
+import type { Library } from "./model/library";
 
 /** Espejo de lib.rs LibraryChange: la biblioteca y, si el autoguardado falló, por qué. */
 interface LibraryChange {
   library: Library;
   save_error: string | null;
 }
-import { emptyLibrary } from "./libraryTypes";
-import "./App.css";
+import { emptyLibrary } from "./model/library";
+import "./styles/index.css";
 
 const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Splices", "Checks", "Costs", "Print"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -321,7 +321,7 @@ export default function App() {
             />
           </Pane>
           <Pane name="Topology" active={section === "Topology"} visited={visited}>
-            <Topologia
+            <Topology
               project={project}
               setProject={setProject}
               loadProject={loadProject}
@@ -337,7 +337,7 @@ export default function App() {
             />
           </Pane>
           <Pane name="Diagram" active={section === "Diagram"} visited={visited} canvas>
-            <Diagrama
+            <Diagram
               project={project}
               setProject={setProject}
               report={report}
@@ -349,13 +349,13 @@ export default function App() {
             />
           </Pane>
           <Pane name="Schematic" active={section === "Schematic"} visited={visited} canvas>
-            <Esquema project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} projectRevision={projectStatus.revision} gauges={gauges} />
+            <Schematic project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} projectRevision={projectStatus.revision} gauges={gauges} />
           </Pane>
           <Pane name="Connectors" active={section === "Connectors"} visited={visited}>
-            <Conectores project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} report={report} destinations={destinations} gauges={gauges} />
+            <Connectors project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} report={report} destinations={destinations} gauges={gauges} />
           </Pane>
           <Pane name="Wires" active={section === "Wires"} visited={visited}>
-            <Cables project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+            <Wires project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
           </Pane>
           <Pane name="Splices" active={section === "Splices"} visited={visited}>
             <Splices project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
@@ -367,7 +367,7 @@ export default function App() {
             <Costs project={project} library={library} selection={selection} onSelect={setSelection} report={report} />
           </Pane>
           <Pane name="Print" active={section === "Print"} visited={visited}>
-            <Impresion project={project} setProject={setProject} library={library} report={report} destinations={destinations} projectRevision={projectStatus.revision} />
+            <Print project={project} setProject={setProject} library={library} report={report} destinations={destinations} projectRevision={projectStatus.revision} />
           </Pane>
         {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} report={report} projectRevision={projectStatus.revision} />}
       </div>

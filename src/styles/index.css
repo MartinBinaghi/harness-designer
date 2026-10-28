@@ -1,0 +1,12 @@
+/* Orden: lo general primero; cada pantalla después puede ajustar lo común. */
+@import "./base.css";
+@import "./controls.css";
+@import "./shell.css";
+@import "./checks.css";
+@import "./panels.css";
+@import "./connector-views.css";
+@import "./diagram.css";
+@import "./schematic.css";
+@import "./connectors.css";
+@import "./library.css";
+@import "./print.css";

@@ -17,6 +17,8 @@ dist-ssr
 *.db
 # Salvo los que trae el instalador: biblioteca por defecto y arnés de ejemplo.
 !src-tauri/resources/*.db
+# Las copias de respaldo que deja el programa al guardar o migrar (.bak, .v0.bak).
+*.bak
 
 # Editor directories and files
 .vscode/*
@@ -29,7 +31,3 @@ dist-ssr
 *.sln
 *.sw?
 
-# Generados por `tsc` al compilar (tsconfig.node.json es composite): no son fuente.
-*.tsbuildinfo
-vite.config.js
-vite.config.d.ts

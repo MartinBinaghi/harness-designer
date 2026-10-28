@@ -1,8 +1,8 @@
-// Chequeo de la vista esquemática pin a pin. Uso: node tools/check_schematic.ts
+// Chequeo de la vista esquemática pin a pin. Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { anchorY, buildSchematic } from "../src/schematic.ts";
-import type { Library } from "../src/libraryTypes.ts";
-import type { ProjectData } from "../src/types.ts";
+import { anchorY, buildSchematic } from "../src/logic/schematicLayout.ts";
+import type { Library } from "../src/model/library.ts";
+import type { ProjectData } from "../src/model/project.ts";
 
 const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null });
 const conn = (id: number, short_id: string, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name: short_id, library_part_id: 1, device_connector_id: null, node_id: id, termination: null, termination_library_part_id: null, backshell_library_part_id: null, status: "complete", is_interconnect: false, mates_with: null, cavities });

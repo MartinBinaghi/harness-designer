@@ -1,20 +1,20 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProjectData } from "./types";
-import { partLabel, type Library } from "./libraryTypes";
-import type { CostReport, PinDestinations } from "./costTypes";
-import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "./sheets";
-import { ConnectorFaceView } from "./ConnectorFaceView";
-import { useConnectorImage } from "./connectorImages";
-import { AssemblySheet } from "./AssemblySheet";
-import { AssemblyOverview, BranchFan, branchesWithSheet } from "./AssemblyBranches";
-import { usedCavities } from "./Inspector";
-import { fileName, pickFileToSave } from "./fileDialogs";
+import type { ProjectData } from "../model/project";
+import { partLabel, type Library } from "../model/library";
+import type { CostReport, PinDestinations } from "../model/calc";
+import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "../logic/sheets";
+import { ConnectorFaceView } from "../components/ConnectorFaceView";
+import { useConnectorImage } from "../platform/connectorImages";
+import { usedCavities } from "../logic/projectEdit";
+import { AssemblySheet } from "../components/AssemblySheet";
+import { AssemblyOverview, BranchFan, branchesWithSheet } from "../components/AssemblyBranches";
+import { fileName, pickFileToSave } from "../platform/fileDialogs";
 
 /**
  * Etapa 6: hojas para imprimir o guardar como PDF (diálogo de impresión del
  * sistema) y exportaciones. La vista previa son las mismas hojas que salen
- * impresas; el resto de la ventana se oculta al imprimir (App.css, @media print).
+ * impresas; el resto de la ventana se oculta al imprimir (styles, @media print).
  */
 
 type Doc = "cut" | "pinout" | "assembly" | "labels";
@@ -53,7 +53,7 @@ const CUT_ROUNDING: [number | null, string][] = [
   [100, "Up to 100 mm"],
 ];
 
-export default function Impresion({ project, setProject, library, report, destinations, projectRevision }: Props) {
+export default function Print({ project, setProject, library, report, destinations, projectRevision }: Props) {
   const [doc, setDoc] = useState<Doc>("cut");
   const [sort, setSort] = useState<CutSort>("pin");
   const [paper, setPaper] = useState<Paper>("A4");

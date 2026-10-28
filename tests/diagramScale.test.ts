@@ -1,6 +1,6 @@
-// Chequeo de la geometría del diagrama a escala. Uso: node tools/check_diagram_scale.ts
+// Chequeo de la geometría del diagrama a escala. Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { constrainDrag, pxPerMm, rootedTree, scaledCenters, type XY } from "../src/diagramScale.ts";
+import { constrainDrag, pxPerMm, rootedTree, scaledCenters, type XY } from "../src/logic/diagramScale.ts";
 
 const dist = (a: XY, b: XY) => Math.hypot(a.x - b.x, a.y - b.y);
 const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);

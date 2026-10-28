@@ -5,7 +5,7 @@
  * el segmento. Todo se calcula sobre el centro de cada nodo, que es donde
  * empiezan y terminan las líneas.
  *
- * Chequeo: `node tools/check_diagram_scale.ts`.
+ * Chequeo: tests/diagramScale.test.ts.
  */
 
 export type XY = { x: number; y: number };

@@ -1,0 +1,133 @@
+/* Vista pin a pin (pestaña Schematic). */
+
+/* Vista pin a pin (pestaña Schematic, plan 10.3). */
+.sc-block {
+  background: var(--surface);
+  border: 1px solid var(--text-muted);
+  border-radius: 3px;
+  font-size: 0.75rem;
+}
+
+.sc-selected.sc-block,
+.sc-selected .sc-junction-dot {
+  outline: 2px solid var(--accent);
+}
+
+.sc-block-head {
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0.3rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sc-block-id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.sc-block-name {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-pin {
+  height: 22px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.sc-pin-id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 2.2em;
+}
+
+.sc-pin-note {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-pin-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  border-bottom: none;
+}
+
+.react-flow__handle.sc-handle {
+  width: 7px;
+  height: 7px;
+  background: var(--surface);
+  border: 1px solid var(--text-muted);
+}
+
+.react-flow__handle.sc-handle:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.sc-junction {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.sc-junction-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text);
+  flex: 0 0 auto;
+}
+
+.sc-junction-ground .sc-junction-dot {
+  border-radius: 0;
+}
+
+.sc-junction-component .sc-junction-dot {
+  border-radius: 2px;
+  background: var(--surface);
+  border: 2px solid var(--text);
+}
+
+.sc-junction .react-flow__handle {
+  top: 50%;
+}
+
+.sc-junction .react-flow__handle-left {
+  left: 6px;
+}
+
+.sc-junction .react-flow__handle-right {
+  left: 6px;
+  right: auto;
+}
+
+/* En los puntos de unión, los handles (para arrastrar un cable) se ven solo al pasar el mouse. */
+.sc-junction .react-flow__handle.sc-handle {
+  opacity: 0;
+}
+
+.sc-junction:hover .react-flow__handle.sc-handle {
+  opacity: 1;
+}
+
+.sc-junction-label {
+  margin-left: 0.15rem;
+}

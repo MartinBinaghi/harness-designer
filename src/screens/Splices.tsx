@@ -1,9 +1,9 @@
 import { useState } from "react";
-import type { ProjectData, Selection } from "./types";
-import { partLabel, type Library } from "./libraryTypes";
-import { TrashIcon } from "./icons";
-import { addJunction, deleteJunction, wiresAtJunction, type JunctionKind } from "./projectEdit";
-import { NODE_KIND_LABELS } from "./Topologia";
+import type { ProjectData, Selection } from "../model/project";
+import { partLabel, type Library } from "../model/library";
+import { TrashIcon } from "../components/icons";
+import { addJunction, deleteJunction, wiresAtJunction, type JunctionKind } from "../logic/projectEdit";
+import { NODE_KIND_LABELS } from "../logic/nodeLabels";
 
 /**
  * Splices, masas y componentes (plan 7.3): donde se unen o terminan cables

@@ -1,7 +1,7 @@
-import type { ProjectData, Selection } from "./types";
-import type { Library } from "./libraryTypes";
-import type { CostReport } from "./costTypes";
-import { endLabel } from "./projectEdit";
+import type { ProjectData, Selection } from "../model/project";
+import type { Library } from "../model/library";
+import type { CostReport } from "../model/calc";
+import { endLabel } from "../logic/projectEdit";
 
 interface Props {
   project: ProjectData | null;

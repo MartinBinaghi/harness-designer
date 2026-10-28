@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import type { CavityAssignment, ConnectorInstance, ProjectData, Selection, WireInstance } from "./types";
-import type { CostReport, GaugeFacts, PinDestinations } from "./costTypes";
-import { devicePinName, partLabel, type Library } from "./libraryTypes";
-import { TrashIcon } from "./icons";
+import type { CavityAssignment, ConnectorInstance, ProjectData, Selection, WireInstance } from "../model/project";
+import type { CostReport, GaugeFacts, PinDestinations } from "../model/calc";
+import { devicePinName, partLabel, type Library } from "../model/library";
+import { TrashIcon } from "../components/icons";
 import {
   BLANK_END,
   addWireAtCavity,
@@ -20,9 +20,10 @@ import {
   setOtherEnd,
   wireCategoryPatch,
   wiresAtCavity,
-} from "./projectEdit";
-import { ConnectorPartSelect } from "./Inspector";
-import { terminatesAt } from "./sheets";
+} from "../logic/projectEdit";
+import { ConnectorPartSelect } from "../components/ConnectorPartSelect";
+import { GoesToInput } from "../components/GoesToInput";
+import { terminatesAt } from "../logic/sheets";
 
 /**
  * Conectores con su pinout: la lista a la izquierda y, del elegido, sus datos y
@@ -46,7 +47,7 @@ interface Props {
   gauges: GaugeFacts | null;
 }
 
-export default function Conectores({ project, setProject, library, selection, onSelect, report, destinations, gauges }: Props) {
+export default function Connectors({ project, setProject, library, selection, onSelect, report, destinations, gauges }: Props) {
   const [search, setSearch] = useState("");
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -423,25 +424,3 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
   );
 }
 
-/** "Goes to": texto libre con autocompletado; se confirma con Enter o al salir. */
-export function GoesToInput({ initial, list, onCommit }: { initial: string; list: string; onCommit: (text: string) => void }) {
-  const [text, setText] = useState(initial);
-  const commit = () => {
-    if (text.trim() !== initial) onCommit(text.trim());
-  };
-  return (
-    <input
-      className="cn-cell cn-mono"
-      list={list}
-      value={text}
-      placeholder="X4:2, SP1, G1, PDM30 OUT11…"
-      aria-label="Goes to"
-      onChange={(e) => setText(e.currentTarget.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") commit();
-        if (e.key === "Escape") setText(initial);
-      }}
-    />
-  );
-}

@@ -1,0 +1,545 @@
+/* Pestaña Library: fichas de conectores y dispositivos. */
+
+/* Biblioteca de conectores: parte trasera (forma + medidas) y generador de vías. */
+.back-size {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.back-size select {
+  width: 5.5em;
+  flex: 0 0 auto;
+}
+
+.back-size input {
+  width: 4em;
+}
+
+.cavity-editor {
+  margin-top: 0.75rem;
+}
+
+.cavity-generator {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.cavity-generator label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}
+
+.cavity-generator input {
+  width: 6em;
+}
+
+.cavity-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+/* Biblioteca → Connectors: lista compacta a la izquierda + ficha del elegido. */
+.lib-master-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+
+.lib-list {
+  flex: 1 1 260px;
+  max-width: 340px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 210px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.lib-list-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.lib-list-filters input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.filter-chip {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.filter-chip.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.lib-list-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.lib-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.85rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, var(--surface));
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.lib-list-row:hover:not(.selected) {
+  background: var(--surface-2);
+}
+
+.lib-list-row.selected {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.lib-list-pn {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-gender {
+  justify-self: end;
+  padding: 0 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.lib-list-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-missing-dot {
+  justify-self: end;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.lib-list-empty {
+  padding: 0 0.85rem;
+}
+
+.lib-list-footer {
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.lib-detail {
+  flex: 999 1 520px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.lib-detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.9rem;
+}
+
+.lib-detail-pn {
+  field-sizing: content;
+  min-width: 10ch;
+  padding: 0.1rem 0.3rem;
+  border-color: transparent;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.lib-detail-pn:hover,
+.lib-detail-pn:focus {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.lib-detail-sub {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.lib-detail-spacer {
+  flex: 1;
+}
+
+.lib-delete {
+  color: var(--error);
+}
+
+.lib-detail-missing {
+  margin: -0.4rem 0 0;
+  font-size: 0.78rem;
+  color: var(--warning);
+}
+
+.lib-detail-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+
+.lib-card {
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.lib-card h3 {
+  margin: 0 0 0.65rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, var(--surface));
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lib-card h3:not(:first-child) {
+  margin-top: 1.2rem;
+}
+
+.lib-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+
+.lib-fields label,
+.lib-fields > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lib-fields input,
+.lib-fields select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.lib-fields .back-size input,
+.lib-fields .back-size select {
+  width: auto;
+}
+
+.lib-field-wide {
+  grid-column: 1 / -1;
+}
+
+.lib-card .cavity-editor {
+  margin-top: 0;
+}
+
+.lib-card .cavity-summary {
+  margin-top: 0;
+}
+
+.lib-card .connector-face {
+  margin-top: 0.9rem;
+}
+
+.lib-card .connector-images {
+  margin-top: 0;
+}
+
+.lib-card .connector-images-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0;
+}
+
+.lib-card .connector-image-slot {
+  width: auto;
+  min-width: 0;
+}
+
+.lib-card .connector-image-box {
+  height: 80px;
+}
+
+.lib-card .connector-image-actions {
+  flex-wrap: wrap;
+  gap: 0.15rem 0.4rem;
+}
+
+.lib-used-in {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.lib-used-id {
+  margin-right: 0.35rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Cara dibujada en Devices: vías con nombre y vía elegida; más grande que en la ficha del conector. */
+.connector-face .cf-named circle {
+  fill: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  stroke: var(--accent);
+}
+
+.connector-face .cf-name {
+  font-weight: 500;
+}
+
+.connector-face .cf-pickable {
+  cursor: pointer;
+}
+
+.dev-face .connector-face svg {
+  max-width: 100%;
+  max-height: 380px;
+}
+
+/* Library → Devices: lista + ficha; conectores como chips; pinout + cara dibujada; pegado. */
+.lib-list-count {
+  justify-self: end;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.dev-part-fields {
+  grid-template-columns: minmax(0, 1fr) 8rem minmax(0, 2fr);
+}
+
+.dev-connector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dev-connector-chips .filter-chip {
+  padding: 0.3rem 0.85rem;
+  font-size: 0.82rem;
+}
+
+.dev-connector-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem 0.8rem;
+}
+
+.dev-connector-head label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dev-label input {
+  width: 4.5em;
+  font-family: var(--font-mono);
+}
+
+.dev-housing {
+  flex: 1 1 260px;
+}
+
+.dev-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.dev-pins {
+  flex: 1 1 420px;
+  min-width: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.dev-face {
+  flex: 1 1 320px;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+}
+
+table.dev-pin-table {
+  width: 100%;
+  margin: 0;
+  border: 0;
+}
+
+.dev-pin-table td {
+  padding: 0.1rem 0.35rem;
+}
+
+.dev-col-cav {
+  width: 5.5rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dev-col-name {
+  width: 11rem;
+}
+
+.dev-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dev-also {
+  flex: 0 0 auto;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+}
+
+.dev-warn {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--warning);
+}
+
+.dev-ok {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.dev-footnote {
+  margin: 0.6rem 0.75rem;
+}
+
+.dev-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dev-paste-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dev-paste-text textarea {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre;
+  resize: vertical;
+}
+
+.dev-paste-preview {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.dev-paste-preview table {
+  margin: 0;
+  border: 0;
+  width: 100%;
+}
+
+.dev-paste-preview th select {
+  font-size: 0.75rem;
+}
+
+.dev-paste-skip td {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--warning) 5%, var(--surface));
+}
+
+.dev-paste-ignored {
+  color: var(--text-muted);
+}
+
+.dev-paste-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.dev-replace {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dev-detail section {
+  margin-bottom: 0;
+}

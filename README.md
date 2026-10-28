@@ -63,17 +63,25 @@ Tests:
 
 ```bash
 cd src-tauri && cargo test           # calculations, checks, file format
-node tools/check_sheets.ts           # frontend logic (one script per module in tools/)
+pnpm test                            # frontend logic (tests/)
 ```
 
 ## Project layout
 
 ```
-src/                 React + TypeScript UI (screens, sheets, connector faces)
+src/                 React + TypeScript UI
+  screens/           One file (or folder) per tab
+  panels/            Tree and Inspector
+  components/        UI pieces shared by several screens
+  logic/             Pure functions, no React (tested in tests/)
+  model/             Data types shared with the Rust core
+  platform/          Bridge to the core and to the OS: backed state, photos, file dialogs
+  styles/            CSS
+tests/               Tests of src/logic
 src-tauri/src/       Rust core: model and SQLite files, calculations, checks, undo
 src-tauri/schema/    SQLite schemas for projects and libraries
 src-tauri/resources/ Sample library and sample harness shipped with the installer
-tools/               Logic checks for the frontend, MIL-STD-1560 parser, test helpers
+tools/               MIL-STD-1560 parser, app driver for manual tests (cdp/)
 docs/                Decision log (Spanish) and README images
 CLAUDE.md            Full design plan (Spanish)
 ```

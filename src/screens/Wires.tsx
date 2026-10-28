@@ -1,9 +1,9 @@
 import { useState } from "react";
-import type { ProjectData, Selection, WireEnd, WireInstance } from "./types";
-import { partLabel, type Library } from "./libraryTypes";
-import { TrashIcon } from "./icons";
-import { cavityOptions, componentOptions, deleteWire, endChoices, endLabel, groundOptions, nextId, parseEnd, spliceOptions, wireCategoryPatch } from "./projectEdit";
-import { GoesToInput } from "./Conectores";
+import type { ProjectData, Selection, WireEnd, WireInstance } from "../model/project";
+import { partLabel, type Library } from "../model/library";
+import { TrashIcon } from "../components/icons";
+import { deleteWire, endChoices, endLabel, nextId, parseEnd, wireCategoryPatch } from "../logic/projectEdit";
+import { GoesToInput } from "../components/GoesToInput";
 
 /** A cavity end's parent connector, if any — used by the connector filter. */
 function cavityConnectorShortId(project: ProjectData, cavityAssignmentId: number | null): string | null {
@@ -14,47 +14,6 @@ function cavityConnectorShortId(project: ProjectData, cavityAssignmentId: number
 
 function blankEnd(): WireEnd {
   return { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null };
-}
-
-export function EndEditor({ end, project, onChange }: { end: WireEnd; project: ProjectData; onChange: (e: WireEnd) => void }) {
-  function setKind(kind: WireEnd["kind"]) {
-    onChange({ kind, cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null });
-  }
-
-  return (
-    <span style={{ display: "flex", flexDirection: "column", width: "100%", gap: "2px" }}>
-      <select value={end.kind} onChange={(e) => setKind(e.currentTarget.value as WireEnd["kind"])}>
-        <option value="cavity">cavity</option>
-        <option value="splice">splice</option>
-        <option value="ground">ground</option>
-        <option value="component">component</option>
-      </select>
-      {end.kind === "cavity" && (
-        <select value={end.cavity_assignment_id ?? ""} onChange={(e) => onChange({ ...end, cavity_assignment_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-          <option value="">—</option>
-          {cavityOptions(project).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      )}
-      {end.kind === "splice" && (
-        <select value={end.splice_id ?? ""} onChange={(e) => onChange({ ...end, splice_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-          <option value="">—</option>
-          {spliceOptions(project).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      )}
-      {end.kind === "ground" && (
-        <select value={end.ground_point_id ?? ""} onChange={(e) => onChange({ ...end, ground_point_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-          <option value="">—</option>
-          {groundOptions(project).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      )}
-      {end.kind === "component" && (
-        <select value={end.component_instance_id ?? ""} onChange={(e) => onChange({ ...end, component_instance_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
-          <option value="">—</option>
-          {componentOptions(project).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      )}
-    </span>
-  );
 }
 
 function ColorSwatch({ color }: { color: string | null }) {
@@ -69,7 +28,7 @@ interface Props {
   onSelect: (s: Selection) => void;
 }
 
-export default function Cables({ project, setProject, library, selection, onSelect }: Props) {
+export default function Wires({ project, setProject, library, selection, onSelect }: Props) {
   const [search, setSearch] = useState("");
   const [connectorFilter, setConnectorFilter] = useState("");
   const [gaugeFilter, setGaugeFilter] = useState("");

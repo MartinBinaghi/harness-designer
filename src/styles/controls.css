@@ -1,0 +1,286 @@
+/* Controles comunes: botones, campos, selects, tablas, títulos de sección. */
+
+/* Botón "fantasma" con acento: una acción destacada que no compite con el
+   único botón relleno de la app (Compute). */
+.button-ghost-accent {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.button-ghost-accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.app > .tabs {
+  flex: 0 0 auto;
+  padding: 0 0.9rem;
+}
+
+/* Fila de controles suelta (rutas, botones de acción, campos de un conector) */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.status {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+/* Título de sección: mismo lenguaje tipográfico que ya usan los
+   encabezados de columna de tabla y los field-label (mayúsculas,
+   trackeado, muted) con una línea inferior — así el título queda atado
+   a la tabla/lista que sigue en vez de flotar como un h3 suelto. */
+h3 {
+  margin: 0 0 0.7rem;
+  padding-bottom: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+th {
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+td {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+th:not(:last-child),
+td:not(:last-child) {
+  border-right: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+
+.tree {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1em;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+}
+
+.query-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.75em 1em;
+}
+
+/* Controles sueltos (fuera de una tabla): look técnico, plano, con borde */
+input,
+select,
+button {
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  padding: 0.4em 0.7em;
+  font-size: 0.86rem;
+  font-family: var(--font-ui);
+  color: var(--text);
+  background-color: var(--surface-2);
+}
+
+button {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Botón primario (ej. "Compute"): la única acción con relleno de color en
+   toda la app, reservada para la acción principal de cada pantalla. */
+.button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, black);
+  border-color: color-mix(in srgb, var(--accent) 85%, black);
+  color: #fff;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Controles dentro de una tabla: se leen como celda, no como formulario web.
+   El <select> nativo sigue dibujando su flecha aunque se le saque el borde y
+   el fondo (no es CSS de appearance normal) — eso es lo que se veía como
+   "demasiadas flechas" en una fila con varios selects. Se la sacamos: el
+   fondo que aparece al pasar el mouse ya avisa que es editable, igual que
+   los inputs de al lado (ningún input de tabla tiene flecha ni borde). */
+table input,
+table select {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.1rem 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Flecha propia, chica y anclada al borde derecho de la celda (no al final
+   del texto) para que quede alineada entre filas sin importar el largo del
+   valor — a diferencia de la flecha nativa del sistema operativo que se
+   sacó arriba. */
+table select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6470' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 8px 8px;
+  padding-right: 14px;
+}
+
+table input:hover,
+table select:hover {
+  background-color: var(--surface-2);
+}
+
+table input:focus,
+table select:focus {
+  outline: none;
+  background-color: var(--surface-2);
+  box-shadow: inset 0 -1.5px 0 var(--accent);
+}
+
+/* Filas de tabla seleccionables (se conectan al panel de inspector) */
+.selectable-row {
+  cursor: pointer;
+}
+
+.selectable-row:hover {
+  background: var(--surface-2);
+}
+
+.selected-row,
+.selected-row:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+/* Botones de solo ícono (Open/Save en las barras de herramientas) */
+.icon-button {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.icon-button:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+/* Botón de alternar (paneles laterales): en azul mientras está activo. */
+.icon-button[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.tabs-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 0.3rem;
+  background: var(--border);
+}
+
+/* Tabla que ocupa solo lo que necesita (pocas columnas angostas). */
+table.compact-table {
+  width: auto;
+  min-width: 18rem;
+  margin: 0.5rem 0;
+}
+
+/* Acción secundaria con forma de enlace (no compite con los botones de la barra). */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.dg-block .dg-distance {
+  font-size: 0.72rem;
+}
+
+/* Nombre del archivo abierto (proyecto / biblioteca), en lugar de un campo para tipear la ruta. */
+.file-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  min-width: 10rem;
+  max-width: 22rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

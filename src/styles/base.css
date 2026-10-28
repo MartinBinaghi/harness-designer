@@ -1,0 +1,51 @@
+/* Fuentes, colores y tamaños base (tokens). */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/Inter-variable.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/JetBrainsMono-variable.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #eceef1;
+  --border: #d7dbe0;
+  --text: #1b1f24;
+  --text-muted: #5b6470;
+  --accent: #1868db;
+  --accent-ink: #ffffff;
+  --error: #c0392b;
+  --warning: #92400e;
+  --titlebar-bg: #1b2430;
+  --titlebar-text: #edeff2;
+
+  --font-ui: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+
+  color-scheme: light;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text);
+  background-color: var(--bg);
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
