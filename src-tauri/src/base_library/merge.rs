@@ -107,7 +107,7 @@ pub fn merge_base_library(library: &Library) -> Library {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::base_library::catalog::{OTHER_HOUSINGS, SUPERSEAL_10_SOCKETS};
+    use crate::base_library::catalog::SUPERSEAL_10_SOCKETS;
     use crate::base_library::test_fixtures::*;
 
     #[test]
@@ -151,11 +151,7 @@ mod tests {
         assert_eq!(def_by_pn(&once, "DTM04-6P").contact_part_id, Some(pin));
         assert_eq!(
             once.contact_defs.len(),
-            6 + SUPERSEAL_10_SOCKETS.len()
-                + OTHER_HOUSINGS
-                    .iter()
-                    .filter(|h| h.contact.is_some())
-                    .count()
+            6 + 2 + SUPERSEAL_10_SOCKETS.len() + housing_contacts().len()
         );
         // Ids únicos.
         let mut ids: Vec<i64> = once.parts.iter().map(|p| p.id).collect();

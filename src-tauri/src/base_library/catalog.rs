@@ -9,10 +9,18 @@ pub(super) struct Family {
     pub(super) members: &'static [(usize, &'static str, &'static str)],
     pub(super) male_kind: &'static str,
     pub(super) female_kind: &'static str,
-    /// Contacto sólido de la familia (pin, socket, calibre mín., calibre máx.) y tapón de
-    /// la familia; un solo contacto por familia (plan 4.1).
-    pub(super) contacts: Option<(&'static str, &'static str, &'static str, &'static str)>,
+    /// Contacto de la familia (pin y socket) y tapón; un solo contacto por familia (plan 4.1).
+    pub(super) contacts: Option<FamilyContacts>,
     pub(super) seal_plug: Option<&'static str>,
+}
+
+pub(super) struct FamilyContacts {
+    pub(super) pin: &'static str,
+    pub(super) socket: &'static str,
+    /// Cómo está hecho ("solid", "stamped"): Deutsch vende los dos con distinto número.
+    pub(super) kind: &'static str,
+    pub(super) gauge_min: &'static str,
+    pub(super) gauge_max: &'static str,
 }
 
 pub(super) const FAMILIES: &[Family] = &[
@@ -31,7 +39,13 @@ pub(super) const FAMILIES: &[Family] = &[
         ],
         male_kind: "receptacle, pin contacts",
         female_kind: "plug, socket contacts",
-        contacts: Some(("0460-202-16141", "0462-201-16141", "20 AWG", "16 AWG")),
+        contacts: Some(FamilyContacts {
+            pin: "0460-202-16141",
+            socket: "0462-201-16141",
+            kind: "solid",
+            gauge_min: "20 AWG",
+            gauge_max: "16 AWG",
+        }),
         seal_plug: Some("0413-217-1605"),
     },
     Family {
@@ -49,7 +63,13 @@ pub(super) const FAMILIES: &[Family] = &[
         ],
         male_kind: "receptacle, pin contacts",
         female_kind: "plug, socket contacts",
-        contacts: Some(("0460-202-20141", "0462-201-20141", "24 AWG", "20 AWG")),
+        contacts: Some(FamilyContacts {
+            pin: "0460-202-20141",
+            socket: "0462-201-20141",
+            kind: "solid",
+            gauge_min: "24 AWG",
+            gauge_max: "20 AWG",
+        }),
         seal_plug: Some("0413-204-2005"),
     },
     Family {
@@ -60,7 +80,13 @@ pub(super) const FAMILIES: &[Family] = &[
         members: &[(2, "DTP04-2P", "DTP06-2S"), (4, "DTP04-4P", "DTP06-4S")],
         male_kind: "receptacle, pin contacts",
         female_kind: "plug, socket contacts",
-        contacts: Some(("0460-204-12141", "0462-203-12141", "14 AWG", "12 AWG")),
+        contacts: Some(FamilyContacts {
+            pin: "0460-204-12141",
+            socket: "0462-203-12141",
+            kind: "solid",
+            gauge_min: "14 AWG",
+            gauge_max: "12 AWG",
+        }),
         seal_plug: Some("0413-003-1205"),
     },
     Family {
@@ -77,8 +103,14 @@ pub(super) const FAMILIES: &[Family] = &[
         ],
         male_kind: "tab housing",
         female_kind: "receptacle housing",
-        // Superseal: terminales y sellos individuales todavía sin cargar.
-        contacts: None,
+        // Terminales de 0,35–0,5 mm² (TE); los sellos de cable no están en el modelo.
+        contacts: Some(FamilyContacts {
+            pin: "282404-1",
+            socket: "282403-1",
+            kind: "stamped",
+            gauge_min: "22 AWG",
+            gauge_max: "20 AWG",
+        }),
         seal_plug: None,
     },
 ];
@@ -102,8 +134,8 @@ pub(super) const SUPERSEAL_10_SOCKETS: &[(&str, &str, &str)] = &[
 pub(super) const SUPERSEAL_10_CAVITY_PLUG: &str = "4-1437284-3";
 
 /// Otras carcasas sueltas del lado del arnés (pedidos de Martin, 2026-10-15
-/// y 2026-10-21), sin contraparte en la base. Las VAG del arnés son macho
-/// (Martin). Las que el taller nombra por su planilla (Mini Timer, "ORIGINAL")
+/// y 2026-10-21), sin contraparte en la base. Las VAG del arnés son hembra
+/// (con terminales hembra; el macho va en la bobina o la sonda). Las que el taller nombra por su planilla (Mini Timer, "ORIGINAL")
 /// van con ese nombre hasta tener el número de parte real.
 pub(super) struct Housing {
     pub(super) part_number: &'static str,
@@ -115,10 +147,66 @@ pub(super) struct Housing {
     pub(super) suggested_termination: Option<&'static str>,
     pub(super) cavities: &'static [&'static str],
     pub(super) description: &'static str,
-    /// Contacto (número de parte, calibre mín., calibre máx.) y tapón, si se conocen.
-    pub(super) contact: Option<(&'static str, &'static str, &'static str)>,
+    /// Contactos que lleva, si se conocen: el primero es el de la carcasa; los
+    /// otros, del mismo tamaño, los toma contacts.rs para los calibres que el
+    /// primero no admite. Del género de la carcasa.
+    pub(super) contacts: &'static [Contact],
     pub(super) seal_plug: Option<&'static str>,
 }
+
+pub(super) struct Contact {
+    pub(super) part_number: &'static str,
+    pub(super) manufacturer: &'static str,
+    pub(super) description: &'static str,
+    pub(super) gauge_min: &'static str,
+    pub(super) gauge_max: &'static str,
+}
+
+const MIL_20_PIN: &[Contact] = &[Contact {
+    part_number: "M39029/58-360",
+    manufacturer: "MIL-DTL-26482",
+    description: "Size 20 crimp pin contact, 24–20 AWG (MIL-DTL-26482 Series 2)",
+    gauge_min: "24 AWG",
+    gauge_max: "20 AWG",
+}];
+
+/// Junior Power Timer 2.8 hembra con sello de cable (catálogo TE 889759-3):
+/// el terminal de las fichas que el taller llama "Mini Timer" (EV1) y de la
+/// bobina VAG.
+const JPT_SEALED_SOCKETS: &[Contact] = &[
+    Contact {
+        part_number: "929931-1",
+        manufacturer: "TE",
+        description: "Junior Power Timer 2.8 receptacle contact, single wire seal, 0.22–0.5 mm²",
+        gauge_min: "0.22 mm²",
+        gauge_max: "0.5 mm²",
+    },
+    Contact {
+        part_number: "929930-1",
+        manufacturer: "TE",
+        description: "Junior Power Timer 2.8 receptacle contact, single wire seal, 0.5–1.0 mm²",
+        gauge_min: "0.5 mm²",
+        gauge_max: "1.0 mm²",
+    },
+];
+
+/// MCP 1.5K hembra con sello de cable, para pin de 0,6 mm (catálogo TE 1307998-2).
+const MCP_15K_SEALED_SOCKETS: &[Contact] = &[
+    Contact {
+        part_number: "1241379-1",
+        manufacturer: "TE",
+        description: "MCP 1.5K receptacle contact, single wire seal, 0.20–0.35 mm²",
+        gauge_min: "0.2 mm²",
+        gauge_max: "0.35 mm²",
+    },
+    Contact {
+        part_number: "1241381-1",
+        manufacturer: "TE",
+        description: "MCP 1.5K receptacle contact, single wire seal, 0.5–1.0 mm²",
+        gauge_min: "0.5 mm²",
+        gauge_max: "1.0 mm²",
+    },
+];
 
 /// Vías del inserto 24-61 de MIL-DTL-26482 Serie 2 (mismas letras que el 25-61
 /// de MIL-STD-1560, confirmado con fotos del MS3476L24-61P).
@@ -134,26 +222,39 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         part_number: "1J0 973 724",
         manufacturer: "VAG",
         series: "VAG",
-        gender: "male",
+        gender: "female",
         contact_size: "Mini Timer",
         shell_size: None,
         suggested_termination: None,
         cavities: &["1", "2", "3", "4"],
         description: "VAG 4-way ignition coil connector (Audi/VW coils)",
-        contact: None,
+        contacts: JPT_SEALED_SOCKETS,
         seal_plug: None,
     },
     Housing {
         part_number: "1J0 973 733",
         manufacturer: "VAG",
         series: "VAG",
-        gender: "male",
+        gender: "female",
         contact_size: "Micro Timer",
         shell_size: None,
         suggested_termination: None,
         cavities: &["1", "2", "3", "4", "5", "6"],
-        description: "VAG 6-way connector, mates Bosch LSU 4.9 lambda sensor",
-        contact: None,
+        description: "VAG 6-way connector, mates the Bosch LSU 4.2 lambda sensor (the LSU 4.9 takes Bosch 1 928 404 669)",
+        contacts: &[],
+        seal_plug: None,
+    },
+    Housing {
+        part_number: "1 928 404 669",
+        manufacturer: "Bosch",
+        series: "Bosch BAK",
+        gender: "female",
+        contact_size: "MCP 1.5K",
+        shell_size: None,
+        suggested_termination: None,
+        cavities: &["1", "2", "3", "4", "5", "6"],
+        description: "Bosch 6-way BAK connector, code 1: mates the Bosch LSU 4.9 lambda sensor (sensor connector 1 928 404 687)",
+        contacts: MCP_15K_SEALED_SOCKETS,
         seal_plug: None,
     },
     Housing {
@@ -166,7 +267,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         suggested_termination: None,
         cavities: &["+", "-"],
         description: "Miniature type K thermocouple socket (yellow); the wider blade is negative",
-        contact: None,
+        contacts: &[],
         seal_plug: None,
     },
     Housing {
@@ -179,7 +280,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         suggested_termination: Some("boot"),
         cavities: MIL_61,
         description: "MIL-DTL-26482 Series 2 bayonet plug, shell 24, 61 × size 20 pin contacts",
-        contact: Some(("M39029/58-360", "24 AWG", "20 AWG")),
+        contacts: MIL_20_PIN,
         seal_plug: Some("MS27488-20"),
     },
     Housing {
@@ -192,7 +293,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         suggested_termination: None,
         cavities: &["1", "2"],
         description: "Mini Timer 2-way female (name as in the workshop sheet; real part number to confirm)",
-        contact: None,
+        contacts: JPT_SEALED_SOCKETS,
         seal_plug: None,
     },
     Housing {
@@ -205,7 +306,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         suggested_termination: None,
         cavities: &["A", "B", "C"],
         description: "3-way female, the sensor's original connector with Mini Timer terminals, A on the left (name as in the workshop sheet; part to confirm)",
-        contact: None,
+        contacts: JPT_SEALED_SOCKETS,
         seal_plug: None,
     },
     Housing {
@@ -218,7 +319,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         suggested_termination: Some("none"),
         cavities: &["1"],
         description: "Ring terminal (ojal) for 16 mm² wire, 6 mm hole (M6)",
-        contact: None,
+        contacts: &[],
         seal_plug: None,
     },
 ];

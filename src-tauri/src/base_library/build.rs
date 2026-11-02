@@ -38,19 +38,20 @@ pub fn base_library() -> Library {
     let mut library = Library::default();
     for family in FAMILIES {
         let unverified = "base library, unverified: check datasheet";
-        let contact_ids = family.contacts.map(|(pin, socket, gauge_min, gauge_max)| {
+        let contact_ids = family.contacts.as_ref().map(|c| {
             let mut id_of = |pn: &str, gender: &str| {
                 let id = push_part(
                     &mut library,
                     pn.into(),
                     family.manufacturer,
                     format!(
-                        "{} size {} solid {} contact, {}–{} — {unverified}",
+                        "{} size {} {} {} contact, {}–{} — {unverified}",
                         family.series,
                         family.contact_size,
+                        c.kind,
                         if gender == "male" { "pin" } else { "socket" },
-                        gauge_min,
-                        gauge_max
+                        c.gauge_min,
+                        c.gauge_max
                     ),
                     "contact",
                     "unit",
@@ -59,12 +60,12 @@ pub fn base_library() -> Library {
                     part_id: id,
                     gender: gender.into(),
                     contact_size: family.contact_size.into(),
-                    gauge_min: Some(gauge_min.into()),
-                    gauge_max: Some(gauge_max.into()),
+                    gauge_min: Some(c.gauge_min.into()),
+                    gauge_max: Some(c.gauge_max.into()),
                 });
                 id
             };
-            (id_of(pin, "male"), id_of(socket, "female"))
+            (id_of(c.pin, "male"), id_of(c.socket, "female"))
         });
         let seal_plug_id = family.seal_plug.map(|pn| {
             let id = push_part(
@@ -201,29 +202,37 @@ pub fn base_library() -> Library {
         });
     }
     for h in OTHER_HOUSINGS {
-        let contact_part_id = h.contact.map(|(pn, gauge_min, gauge_max)| {
-            let id = push_part(
-                &mut library,
-                pn.into(),
-                h.manufacturer,
-                format!(
-                    "{} size {} {} contact, {gauge_min}–{gauge_max} — {unverified}",
-                    h.series,
-                    h.contact_size,
-                    if h.gender == "male" { "pin" } else { "socket" }
-                ),
-                "contact",
-                "unit",
-            );
-            library.contact_defs.push(ContactDef {
-                part_id: id,
-                gender: h.gender.into(),
-                contact_size: h.contact_size.into(),
-                gauge_min: Some(gauge_min.into()),
-                gauge_max: Some(gauge_max.into()),
-            });
-            id
-        });
+        // Un contacto que comparten varias carcasas se carga una sola vez.
+        let contact_ids: Vec<i64> = h
+            .contacts
+            .iter()
+            .map(|c| {
+                if let Some(p) = library
+                    .parts
+                    .iter()
+                    .find(|p| p.part_number == c.part_number)
+                {
+                    return p.id;
+                }
+                let id = push_part(
+                    &mut library,
+                    c.part_number.into(),
+                    c.manufacturer,
+                    format!("{} — {unverified}", c.description),
+                    "contact",
+                    "unit",
+                );
+                library.contact_defs.push(ContactDef {
+                    part_id: id,
+                    gender: h.gender.into(),
+                    contact_size: h.contact_size.into(),
+                    gauge_min: Some(c.gauge_min.into()),
+                    gauge_max: Some(c.gauge_max.into()),
+                });
+                id
+            })
+            .collect();
+        let contact_part_id = contact_ids.first().copied();
         let seal_plug_part_id = h.seal_plug.map(|pn| {
             let id = push_part(
                 &mut library,
@@ -344,17 +353,16 @@ mod tests {
     #[test]
     fn builds_paired_families_with_their_cavities() {
         let base = base_library();
-        // carcasas + (pin, socket, tapón) de DT/DTM/DTP + cables + termos
+        // carcasas + (pin, socket, tapón) de DT/DTM/DTP + (pin, socket) de Superseal 1.5
+        // + cables + termos; los contactos que comparten carcasas sueltas, una vez.
         assert_eq!(
             base.parts.len(),
             2 * (6 + 6 + 2 + 5)
                 + 3 * 3
+                + 2
                 + SUPERSEAL_10.len()
                 + OTHER_HOUSINGS.len()
-                + OTHER_HOUSINGS
-                    .iter()
-                    .filter(|h| h.contact.is_some())
-                    .count()
+                + housing_contacts().len()
                 + OTHER_HOUSINGS
                     .iter()
                     .filter(|h| h.seal_plug.is_some())
@@ -390,7 +398,8 @@ mod tests {
             "0460-202-20141"
         );
         assert_eq!(pn(dtm6s.seal_plug_part_id), "0413-204-2005");
-        assert!(def_by_pn(&base, "282080-1").contact_part_id.is_none());
+        assert_eq!(pn(def_by_pn(&base, "282080-1").contact_part_id), "282403-1");
+        assert_eq!(pn(def_by_pn(&base, "282104-1").contact_part_id), "282404-1");
         // Superseal 1.0 (PDM30): socket de 20 AWG y tapón de la familia.
         let ss34 = def_by_pn(&base, "4-1437290-0");
         assert_eq!(pn(ss34.contact_part_id), "3-1447221-4");
@@ -408,8 +417,60 @@ mod tests {
             .collect();
         assert_eq!(tc, ["+", "-"]);
         assert_eq!(def_by_pn(&base, "1J0 973 733").cavities.len(), 6);
-        assert_eq!(def_by_pn(&base, "1J0 973 724").gender, "male");
+        assert_eq!(def_by_pn(&base, "1J0 973 724").gender, "female");
+        assert_eq!(def_by_pn(&base, "1J0 973 733").gender, "female");
         assert_eq!(def_by_pn(&base, "SMPW-K-F").gender, "female");
+    }
+
+    #[test]
+    fn part_numbers_are_unique() {
+        let base = base_library();
+        let mut numbers: Vec<&str> = base.parts.iter().map(|p| p.part_number.as_str()).collect();
+        numbers.sort();
+        let total = numbers.len();
+        numbers.dedup();
+        assert_eq!(numbers.len(), total);
+    }
+
+    #[test]
+    fn housings_that_share_a_terminal_point_to_the_same_contact() {
+        let base = base_library();
+        let pn = |id: Option<i64>| {
+            base.parts
+                .iter()
+                .find(|p| Some(p.id) == id)
+                .map(|p| p.part_number.as_str())
+        };
+        let mini = def_by_pn(&base, "MINI TYMER 02W-F");
+        assert_eq!(pn(mini.contact_part_id), Some("929931-1"));
+        assert_eq!(
+            def_by_pn(&base, "ORIGINAL 03W_F").contact_part_id,
+            mini.contact_part_id
+        );
+        assert_eq!(
+            def_by_pn(&base, "1J0 973 724").contact_part_id,
+            mini.contact_part_id
+        );
+        // El de 0,5–1,0 mm² queda en la biblioteca, del mismo tamaño y género, para los 20 AWG.
+        let jpt_big = base
+            .parts
+            .iter()
+            .find(|p| p.part_number == "929930-1")
+            .unwrap()
+            .id;
+        let contact = base
+            .contact_defs
+            .iter()
+            .find(|c| c.part_id == jpt_big)
+            .unwrap();
+        assert_eq!(
+            (contact.gender.as_str(), contact.contact_size.as_str()),
+            ("female", "Mini Timer")
+        );
+        // La lambda LSU 4.9: ficha Bosch con terminales MCP 1.5K.
+        let lsu49 = def_by_pn(&base, "1 928 404 669");
+        assert_eq!(lsu49.cavities.len(), 6);
+        assert_eq!(pn(lsu49.contact_part_id), Some("1241379-1"));
     }
 
     #[test]

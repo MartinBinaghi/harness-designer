@@ -1,5 +1,5 @@
 //! Biblioteca base: carcasas de conectores estandarizados (Deutsch DT/DTM/DTP,
-//! TE Superseal 1.5) con el contacto y el tapón de cada familia Deutsch, cable
+//! TE Superseal 1.5) con el contacto de cada familia y el tapón de las Deutsch, cable
 //! M22759/32 y termocontraíble Raychem (DR-25 sin adhesivo, ATUM con adhesivo),
 //! para no cargar a mano lo que es igual en todos los proyectos. Ver
 //! docs/BITACORA.md, decisión "Biblioteca base".
