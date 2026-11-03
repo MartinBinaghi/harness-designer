@@ -3,8 +3,8 @@
 //! `%APPDATA%\com.martinbinaghi.arneses`): por ahora, qué biblioteca abrir.
 //!
 //! La biblioteca de la primera vez es una copia de la que viene con el
-//! instalador (`resources/default-library.db`), en la carpeta de datos de la
-//! app: así se puede editar sin tocar la instalación.
+//! instalador (`resources/default-library.db`, la del taller), en Documentos:
+//! así se puede editar sin tocar la instalación (ver `default_library_path`).
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -41,10 +41,17 @@ pub fn save(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     std::fs::rename(&tmp, &file).map_err(|e| e.to_string())
 }
 
-/// La biblioteca por defecto en la carpeta de datos; la primera vez se copia
-/// la que trae el instalador.
+/// La biblioteca por defecto, en `Documentos\Harness Designer\library.db`: a la
+/// vista para respaldarla, y fuera de la carpeta de datos de la app, que el
+/// desinstalador puede borrar ("Delete the application data") junto con este
+/// `settings.json`; así, sin configuración, se vuelve a abrir la misma. La
+/// primera vez se copia la que trae el instalador (la del taller).
 pub fn default_library_path(app: &AppHandle) -> Result<String, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = app
+        .path()
+        .document_dir()
+        .map_err(|e| e.to_string())?
+        .join("Harness Designer");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join("library.db");
     if !path.exists() {

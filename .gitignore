@@ -31,3 +31,6 @@ dist-ssr
 *.sln
 *.sw?
 
+
+# Claves de firma (la del updater vive en ~/.tauri; por las dudas)
+*.key

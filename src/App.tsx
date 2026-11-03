@@ -15,6 +15,7 @@ import Print from "./screens/Print";
 import Tree from "./panels/TreePanel";
 import Inspector from "./panels/Inspector";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./components/icons";
+import { UpdateStatus } from "./components/UpdateStatus";
 import { useBackedState } from "./platform/useBackedState";
 import type { CalcResults } from "./model/calc";
 import { reloadConnectorImages } from "./platform/connectorImages";
@@ -113,6 +114,13 @@ export default function App() {
     [libraryHistory, refreshLibraryStatus],
   );
   const cancelLibraryEdits = libraryHistory.cancel;
+
+  // Antes de instalar una actualización (la app se cierra): lo pendiente de la
+  // biblioteca se guarda, y si el proyecto tiene cambios sin guardar se pregunta.
+  const confirmBeforeUpdate = useCallback(async () => {
+    await libraryHistory.flush();
+    return confirmDiscardProject();
+  }, [libraryHistory, confirmDiscardProject]);
 
   const undoProject = useCallback(async () => {
     await projectHistory.flush();
@@ -396,6 +404,7 @@ export default function App() {
         ) : (
           <span>No project loaded</span>
         )}
+        <UpdateStatus beforeInstall={confirmBeforeUpdate} />
       </div>
     </main>
   );

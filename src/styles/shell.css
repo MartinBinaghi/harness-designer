@@ -210,6 +210,33 @@
   color: var(--accent);
 }
 
+/* Versión instalada (clic: buscar actualizaciones) y, si hay una nueva, el botón para instalarla. */
+.status-version {
+  padding: 0 0.4rem;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.status-version:hover {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.status-update {
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--surface);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .inspector-harness-button {
   margin: 0 0.9rem;
 }
