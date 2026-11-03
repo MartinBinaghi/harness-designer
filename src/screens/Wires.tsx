@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ProjectData, Selection, WireEnd, WireInstance } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { TrashIcon } from "../components/icons";
-import { deleteWire, endChoices, endLabel, nextId, parseEnd, wireCategoryPatch } from "../logic/projectEdit";
+import { deleteWire, endChoices, endLabel, nextId, parseEnd, setWireType, wireCategoryPatch } from "../logic/projectEdit";
 import { GoesToInput } from "../components/GoesToInput";
 
 /** A cavity end's parent connector, if any — used by the connector filter. */
@@ -65,6 +65,7 @@ export default function Wires({ project, setProject, library, selection, onSelec
       manual_cut_margin_pct: null,
       manual_length_mm: null,
       label: null,
+      cable_instance_id: null,
       end_a: blankEnd(),
       end_b: blankEnd(),
     };
@@ -144,7 +145,7 @@ export default function Wires({ project, setProject, library, selection, onSelec
 
       <table>
         <thead>
-          <tr><th>ID</th><th>Type</th><th>Color</th><th>Category</th><th>Name</th><th>From</th><th>To</th><th></th></tr>
+          <tr><th>ID</th><th>Type</th><th>Cable</th><th>Color</th><th>Category</th><th>Name</th><th>From</th><th>To</th><th></th></tr>
         </thead>
         <tbody>
           {visibleWires.map((wire) => (
@@ -155,10 +156,12 @@ export default function Wires({ project, setProject, library, selection, onSelec
             >
               <td><input value={wire.short_id} onChange={(e) => update(wire.id, { short_id: e.currentTarget.value })} style={{ width: "5em" }} /></td>
               <td>
-                <select value={wire.library_part_id} onChange={(e) => update(wire.id, { library_part_id: Number(e.currentTarget.value) })}>
+                <select value={wire.library_part_id} onChange={(e) => setProject(setWireType(project, wire.id, Number(e.currentTarget.value)))}>
                   {library.wire_defs.map((wd) => <option key={wd.part_id} value={wd.part_id}>{partLabel(library, wd.part_id)}</option>)}
                 </select>
               </td>
+              {/* Cable comprado del que es conductor (se elige en el Inspector). */}
+              <td>{project.cable_instances.find((c) => c.id === wire.cable_instance_id)?.short_id ?? ""}</td>
               <td>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
                   <ColorSwatch color={wire.color} />

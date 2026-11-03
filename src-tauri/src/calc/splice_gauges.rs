@@ -108,6 +108,7 @@ mod tests {
                 manual_cut_margin_pct: None,
                 manual_length_mm: None,
                 label: None,
+                cable_instance_id: None,
                 end_a: splice_end(1),
                 end_b: splice_end(1),
             })

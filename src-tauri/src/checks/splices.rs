@@ -129,6 +129,7 @@ mod tests {
                 manual_cut_margin_pct: None,
                 manual_length_mm: None,
                 label: None,
+                cable_instance_id: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
             })
@@ -183,6 +184,7 @@ mod tests {
                 manual_cut_margin_pct: None,
                 manual_length_mm: None,
                 label: None,
+                cable_instance_id: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
             })

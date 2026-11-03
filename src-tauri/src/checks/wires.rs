@@ -99,12 +99,69 @@ pub(super) fn check_cut_margin_below_twist_minimum(
         .collect()
 }
 
+/// Cables comprados: sus conductores llevan el tipo de cable del cable, no son
+/// más que los que trae, y el tipo de cable tiene que ser de varios conductores.
+pub(super) fn check_bought_cables(data: &ProjectData, library: &Library) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for cable in &data.cable_instances {
+        let members: Vec<_> = data
+            .wire_instances
+            .iter()
+            .filter(|w| w.cable_instance_id == Some(cable.id))
+            .collect();
+        let Some(first) = members.first() else {
+            continue;
+        };
+        let at = FindingTarget::Wire { id: first.id };
+        for w in members
+            .iter()
+            .filter(|w| w.library_part_id != cable.library_part_id)
+        {
+            findings.push(
+                error(format!(
+                    "{} is a conductor of {} but has another wire type",
+                    w.short_id, cable.short_id
+                ))
+                .at(FindingTarget::Wire { id: w.id }),
+            );
+        }
+        let Some(def) = library
+            .wire_defs
+            .iter()
+            .find(|d| d.part_id == cable.library_part_id)
+        else {
+            continue;
+        };
+        if def.conductors.len() < 2 {
+            findings.push(
+                warning(format!(
+                    "{}: its wire type isn't a multi-conductor cable (set its conductors in the library)",
+                    cable.short_id
+                ))
+                .at(at),
+            );
+        } else if members.len() > def.conductors.len() {
+            findings.push(
+                error(format!(
+                    "{} has {} conductors in use, but its wire type has {}",
+                    cable.short_id,
+                    members.len(),
+                    def.conductors.len()
+                ))
+                .at(at),
+            );
+        }
+    }
+    findings
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use crate::checks::test_fixtures::*;
-    use crate::model::project::{GroundPoint, SpliceInstance, WireInstance};
+    use crate::model::library::{WireDef, WireDefConductor};
+    use crate::model::project::{CableInstance, GroundPoint, SpliceInstance, WireInstance};
 
     #[test]
     fn flags_a_wire_end_pointing_at_nothing() {
@@ -119,6 +176,7 @@ mod tests {
             manual_cut_margin_pct: None,
             manual_length_mm: None,
             label: None,
+            cable_instance_id: None,
             end_a: end("cavity", None, None, None, None), // never picked in the UI
             end_b: end("ground", None, None, Some(1), None),
         }];
@@ -158,6 +216,7 @@ mod tests {
                 manual_cut_margin_pct: None,
                 manual_length_mm: None,
                 label: None,
+                cable_instance_id: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
             },
@@ -171,11 +230,71 @@ mod tests {
                 manual_cut_margin_pct: None,
                 manual_length_mm: None,
                 label: None,
+                cable_instance_id: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
             },
         ];
         let findings = check_same_net_different_function(&data);
         assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn bought_cable_conductors_take_its_type_and_fit_its_conductor_count() {
+        let mut data = segment_with_one_wire();
+        let mut library = empty_library();
+        let conductor = |id| WireDefConductor {
+            id,
+            label: None,
+            gauge: None,
+            color: None,
+            is_shield: false,
+        };
+        library.wire_defs.push(WireDef {
+            part_id: 200,
+            gauge: "24 AWG".into(),
+            spec: None,
+            color: None,
+            outer_diameter_mm: 2.0,
+            default_cut_margin_pct: None,
+            conductors: vec![conductor(1), conductor(2)],
+        });
+        data.cable_instances.push(CableInstance {
+            id: 1,
+            short_id: "WC1".into(),
+            library_part_id: 200,
+        });
+        let mut second = data.wire_instances[0].clone();
+        second.id = 2;
+        second.short_id = "W002".into();
+        data.wire_instances.push(second);
+        for w in &mut data.wire_instances {
+            w.cable_instance_id = Some(1);
+            w.library_part_id = 200;
+        }
+        assert!(check_bought_cables(&data, &library).is_empty());
+
+        // Un tercer conductor no entra en un par; uno con otro tipo de cable, tampoco.
+        let mut third = data.wire_instances[0].clone();
+        third.id = 3;
+        third.short_id = "W003".into();
+        third.library_part_id = 100;
+        data.wire_instances.push(third);
+        let messages: Vec<String> = check_bought_cables(&data, &library)
+            .into_iter()
+            .map(|f| f.message)
+            .collect();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("W003 is a conductor of WC1 but has another wire type")),
+            "{messages:?}"
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("WC1 has 3 conductors in use, but its wire type has 2")),
+            "{messages:?}"
+        );
     }
 }

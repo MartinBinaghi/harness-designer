@@ -203,6 +203,17 @@
   font-size: 8pt;
 }
 
+/* Conductores de un cable comprado: debajo del cable, corridos y más chicos (se cortan con él). */
+.sheet .cut-conductor td {
+  font-size: 7.5pt;
+  color: #333;
+  border-top: none;
+}
+
+.sheet .cut-conductor td:first-child {
+  padding-left: 5mm;
+}
+
 .sheet h4 {
   margin: 2mm 0 2mm;
   font-size: 9pt;

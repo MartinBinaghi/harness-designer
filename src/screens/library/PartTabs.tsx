@@ -102,6 +102,19 @@ export function SealPlugDefsTab({ library, setLibrary, partById }: TabProps) {
   );
 }
 
+/**
+ * Conductores de un tipo de cable: uno (cable simple) no lleva lista; más de
+ * uno, uno por conductor, con ids únicos en toda la biblioteca. Los que ya
+ * estaban se conservan.
+ */
+function withConductorCount(library: TabProps["library"], wd: WireDef, count: number): WireDef["conductors"] {
+  if (!Number.isFinite(count) || count < 2) return [];
+  let next = Math.max(0, ...library.wire_defs.flatMap((d) => d.conductors.map((c) => c.id))) + 1;
+  const kept = wd.conductors.slice(0, count);
+  const added = Array.from({ length: count - kept.length }, () => ({ id: next++, label: null, gauge: null, color: null, is_shield: false }));
+  return [...kept, ...added];
+}
+
 export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
   const [search, setSearch] = useState("");
   const [gaugeFilter, setGaugeFilter] = useState("");
@@ -123,7 +136,11 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
       </FilterBar>
       <table>
         <thead>
-          <tr><th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gauge</th><th>Spec</th><th>Color</th><th>OD (mm)</th><th>Cut margin %</th><th></th></tr>
+          <tr>
+            <th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gauge</th><th>Spec</th><th>Color</th><th>OD (mm)</th><th>Cut margin %</th>
+            <th title="More than 1: a bought multi-conductor cable (twisted pair, multicore). In the harness its conductors are the wires of one cable (WC), cut and bought once; OD is the whole cable's.">Conductors</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody>
           {visible.map((wd) => {
@@ -148,6 +165,15 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
                     value={wd.default_cut_margin_pct ?? ""}
                     placeholder="(project default)"
                     onChange={(e) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { default_cut_margin_pct: e.currentTarget.value === "" ? null : Number(e.currentTarget.value) }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min={1}
+                    value={Math.max(1, wd.conductors.length)}
+                    style={{ width: "4em" }}
+                    onChange={(e) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { conductors: withConductorCount(library, wd, Number(e.currentTarget.value)) }))}
                   />
                 </td>
                 <td>

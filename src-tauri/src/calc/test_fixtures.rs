@@ -169,9 +169,11 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
             manual_cut_margin_pct: None,
             manual_length_mm: None,
             label: None,
+            cable_instance_id: None,
             end_a: cavity_end(1),
             end_b: cavity_end(2),
         }],
+        cable_instances: vec![],
         twist_groups: vec![],
     }
 }

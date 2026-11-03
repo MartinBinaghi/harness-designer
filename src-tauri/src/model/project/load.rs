@@ -1,8 +1,8 @@
 //! Leer un proyecto del archivo SQLite.
 
 use super::{
-    CavityAssignment, ComponentInstance, ConnectorInstance, GroundPoint, Node, Project,
-    ProjectData, Segment, SpliceInstance, TwistGroup, WireEnd, WireInstance,
+    CableInstance, CavityAssignment, ComponentInstance, ConnectorInstance, GroundPoint, Node,
+    Project, ProjectData, Segment, SpliceInstance, TwistGroup, WireEnd, WireInstance,
 };
 use rusqlite::{params, Connection, Result};
 
@@ -168,7 +168,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut wire_instances_stmt = conn.prepare(
-        "SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label,
+        "SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
                 end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
                 end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id
          FROM wire_instances",
@@ -185,20 +185,33 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 manual_cut_margin_pct: row.get(6)?,
                 manual_length_mm: row.get(7)?,
                 label: row.get(8)?,
+                cable_instance_id: row.get(9)?,
                 end_a: wire_end(
-                    row.get(9)?,
                     row.get(10)?,
                     row.get(11)?,
                     row.get(12)?,
                     row.get(13)?,
+                    row.get(14)?,
                 ),
                 end_b: wire_end(
-                    row.get(14)?,
                     row.get(15)?,
                     row.get(16)?,
                     row.get(17)?,
                     row.get(18)?,
+                    row.get(19)?,
                 ),
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut cable_instances_stmt =
+        conn.prepare("SELECT id, short_id, library_part_id FROM cable_instances")?;
+    let cable_instances = cable_instances_stmt
+        .query_map([], |row| {
+            Ok(CableInstance {
+                id: row.get(0)?,
+                short_id: row.get(1)?,
+                library_part_id: row.get(2)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -233,6 +246,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         splice_instances,
         component_instances,
         wire_instances,
+        cable_instances,
         twist_groups,
     })
 }

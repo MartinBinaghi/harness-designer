@@ -120,8 +120,21 @@ export interface WireInstance {
   /** Largo de corte puesto a mano (mm): manda sobre el calculado por el recorrido. */
   manual_length_mm: number | null;
   label: string | null;
+  /** Conductor de un cable comprado (`CableInstance`): su tipo de cable es el del cable. */
+  cable_instance_id: number | null;
   end_a: WireEnd;
   end_b: WireEnd;
+}
+
+/**
+ * Cable comprado de varios conductores (ej. "WC1", un par trenzado): sus
+ * conductores son cables del arnés, pero se corta y se compra uno solo.
+ */
+export interface CableInstance {
+  id: number;
+  short_id: string;
+  /** WireDef con conductores. */
+  library_part_id: number;
 }
 
 export interface TwistGroup {
@@ -180,5 +193,6 @@ export interface ProjectData {
   splice_instances: SpliceInstance[];
   component_instances: ComponentInstance[];
   wire_instances: WireInstance[];
+  cable_instances: CableInstance[];
   twist_groups: TwistGroup[];
 }

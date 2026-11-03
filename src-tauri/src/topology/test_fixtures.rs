@@ -115,6 +115,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
         splice_instances: vec![],
         component_instances: vec![],
         wire_instances: vec![],
+        cable_instances: vec![],
         twist_groups: vec![],
     }
 }
@@ -211,6 +212,7 @@ pub(super) fn wire(id: i64, end_a: WireEnd, end_b: WireEnd) -> WireInstance {
         manual_cut_margin_pct: None,
         manual_length_mm: None,
         label: None,
+        cable_instance_id: None,
         end_a,
         end_b,
     }

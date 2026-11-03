@@ -115,6 +115,15 @@ CREATE TABLE IF NOT EXISTS component_instances (
 
 -- Cada extremo de cable apunta a UNA ubicación (cavidad, splice, masa o componente),
 -- según end_x_kind.
+-- Cable comprado de varios conductores (par trenzado, multipolar): sus
+-- conductores son cables del arnés (wire_instances.cable_instance_id), pero se
+-- corta y se compra una vez (plan 4.1, WireDef con conductores).
+CREATE TABLE IF NOT EXISTS cable_instances (
+    id                  INTEGER PRIMARY KEY,
+    short_id            TEXT NOT NULL UNIQUE,
+    library_part_id     INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS wire_instances (
     id                              INTEGER PRIMARY KEY,
     short_id                        TEXT NOT NULL UNIQUE,
@@ -125,6 +134,7 @@ CREATE TABLE IF NOT EXISTS wire_instances (
     manual_cut_margin_pct            REAL,
     manual_length_mm                 REAL,   -- largo de corte a mano: manda sobre el calculado
     label                            TEXT,
+    cable_instance_id                INTEGER REFERENCES cable_instances(id),   -- conductor de un cable comprado
 
     end_a_kind                       TEXT NOT NULL CHECK (end_a_kind IN ('cavity', 'splice', 'ground', 'component')),
     end_a_cavity_assignment_id       INTEGER REFERENCES cavity_assignments(id),

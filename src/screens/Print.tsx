@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProjectData } from "../model/project";
 import { partLabel, type Library } from "../model/library";
@@ -114,7 +114,7 @@ export default function Print({ project, setProject, library, report, destinatio
   if (!data) {
     sheets = <p className="hint">Computing cut lengths…</p>;
   } else if (doc === "cut") {
-    const rows = cutListRows(project, library, data.report.cut_list, sort);
+    const rows = cutListRows(project, library, data.report.cut_list, data.report.cable_cut_list, sort);
     sheets = (
       <section className="sheet" style={{ width: sheetWidth }}>
         <SheetHeader project={project} title="Cut list" />
@@ -140,11 +140,19 @@ export default function Print({ project, setProject, library, report, destinatio
                 </td>
               </tr>
               {g.rows.map((r) => (
-                <tr key={r.wireId}>
-                  <td className="strong">{r.id}</td><td>{r.fn}</td><td>{r.wireType}</td><td>{r.color}</td><td>{r.from}</td><td>{r.to}</td><td>{r.twist ?? ""}</td>
-                  <td className="num">{r.withTwistMm.toFixed(0)}</td><td className="num">{r.manual ? "by hand" : `${r.marginPct.toFixed(0)}%`}</td>
-                  <td className="num strong">{r.cutMm.toFixed(0)}</td><td className="check"><span className="tick-box" /></td>
-                </tr>
+                <Fragment key={r.wireId}>
+                  <tr>
+                    <td className="strong">{r.id}</td><td>{r.fn}</td><td>{r.wireType}</td><td>{r.color}</td><td>{r.from}</td><td>{r.to}</td><td>{r.twist ?? ""}</td>
+                    <td className="num">{r.withTwistMm.toFixed(0)}</td><td className="num">{r.manual ? "by hand" : `${r.marginPct.toFixed(0)}%`}</td>
+                    <td className="num strong">{r.cutMm.toFixed(0)}</td><td className="check"><span className="tick-box" /></td>
+                  </tr>
+                  {/* Conductores de un cable comprado: se cortan con él, sin largo propio. */}
+                  {r.conductors.map((c) => (
+                    <tr key={c.wireId} className="cut-conductor">
+                      <td>{c.id}</td><td>{c.fn}</td><td></td><td>{c.color}</td><td>{c.from}</td><td>{c.to}</td><td colSpan={5}></td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           ))}

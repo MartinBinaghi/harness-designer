@@ -46,6 +46,7 @@ pub(super) fn empty_project() -> ProjectData {
         splice_instances: vec![],
         component_instances: vec![],
         wire_instances: vec![],
+        cable_instances: vec![],
         twist_groups: vec![],
     }
 }
@@ -136,6 +137,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
         manual_cut_margin_pct: None,
         manual_length_mm: None,
         label: None,
+        cable_instance_id: None,
         end_a: end("cavity", Some(1), None, None, None),
         end_b: end("cavity", Some(2), None, None, None),
     }];

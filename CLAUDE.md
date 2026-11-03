@@ -111,7 +111,7 @@ Cada tipo de parte extiende `Part`:
 - calibre (mm² o AWG), norma/tipo (ej. M22759/32), color
 - **diámetro exterior** (indispensable para diámetros y trenzado)
 - margen de corte por defecto de este tipo de cable (opcional; ej. ethernet con más margen)
-- conductores: 1 para cable simple; para multiconductor comprado (par trenzado, apantallado), lista de conductores internos + malla/drenaje
+- conductores: 1 para cable simple; para multiconductor comprado (par trenzado, apantallado), lista de conductores internos + malla/drenaje. En la biblioteca se carga la cantidad de conductores; el diámetro exterior es el del cable entero
 
 **SpliceDef**
 - rango de calibre, cantidad máxima de cables
@@ -185,7 +185,13 @@ Cada tipo de parte extiende `Part`:
 **TwistGroup** — cables sueltos trenzados en el taller (ej. "twist I", "twist II")
 - lista de cables, blindaje (sí/no), drenaje
 - en el cálculo concéntrico cuenta como un solo elemento
-- distinto de un cable multiconductor comprado (que es un WireDef)
+- distinto de un cable multiconductor comprado (que es un CableInstance)
+
+**CableInstance** — cable comprado de varios conductores (ej. "WC1", el par trenzado de una termocupla)
+- WireDef con conductores; cada conductor es un WireInstance del arnés (con sus extremos, función y color) y lleva el tipo de cable del cable
+- se corta **una vez, del largo de su conductor más largo** (para que lleguen todos) y suma al BOM una vez
+- en el mazo es **un solo elemento**, con el diámetro del cable entero; solo en un tramo no se trenza (sus conductores se miden sobre el cable)
+- se elige desde el cable, en el Inspector ("Bought cable"); uno sin conductores se borra
 
 **Revision**
 - snapshot del proyecto, fecha, notas
@@ -233,7 +239,7 @@ Ejemplo: bundle de 10 mm, paso 120 mm, cable en capa exterior (D ≈ 9 mm) → f
 - Si se usa el módulo concéntrico, `D` sale de la capa real de cada cable.
 - Si no, se estima con el peor caso (capa exterior del diámetro estimado del bundle): resultado conservador.
 - Si el margen configurado es menor que el mínimo por trenzado, el programa avisa.
-- Un **cable solo** en un tramo no se trenza con nada: factor 1 (un par trenzado solo sí se trenza).
+- Un **cable solo** en un tramo no se trenza con nada: factor 1 (un par trenzado en el taller solo sí se trenza; un cable comprado solo, no: cuenta como un cable).
 
 **Paso de trenzado por defecto**: en el taller se trenza a ojo, sin un paso fijo. Por eso el paso por defecto se expresa como **múltiplo del diámetro del bundle** (configurable), con un valor conservador (paso corto = más largo de cable):
 - Referencia orientativa: paso entre 8 y 16 veces el diámetro del bundle.
@@ -288,6 +294,7 @@ Cada elemento tiene un **ID corto automático** + un **nombre descriptivo**. Pre
 | Splice | SP1… | SP2 |
 | Punto de masa / ojal | G1… | G1 · "Masa chasis" |
 | Componente | R1, D1… | R1 · "Terminación CAN 100Ω" |
+| Cable comprado (varios conductores) | WC1… | WC1 · par de la termocupla |
 | Segmento | S01… | (interno) |
 
 - Se usa X (norma IEC) y no C, para no confundir con nombres como "C185" ni con capacitores.
@@ -340,13 +347,13 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 ### 8.1 Lista de corte (para el taller)
 - Un renglón por cable: ID, función, WireDef (calibre, tipo, color), desde → hasta (ej. "X4:2 → X9:47"), largo de segmentos, margen aplicado, **largo de corte final**, grupo de trenzado.
 - Sin largo de pelado (es conocimiento del taller).
-- **Dividida por conector** (pedido de Martin: si no, es confusa a la vista). Cada cable aparece una sola vez, bajo el conector de su extremo que no es el principal (X1:1 → X2:1 va con X2); los que no tocan ningún conector, en "Other" al final. Dentro de cada bloque: por pin (defecto), por tipo de cable (cortar de corrido del mismo rollo) o por largo. Los grupos de trenzado aparecen juntos, en el bloque de su primer cable. Cada bloque indica el **termocontraíble del tramo que llega al conector** en medida nominal (1/8", 3/16", 1/4"…): el asignado al segmento o el sugerido por el cálculo (sección 9.2). El **color va en palabras** (la hoja se imprime en blanco y negro).
+- **Dividida por conector** (pedido de Martin: si no, es confusa a la vista). Cada cable aparece una sola vez, bajo el conector de su extremo que no es el principal (X1:1 → X2:1 va con X2); los que no tocan ningún conector, en "Other" al final. Dentro de cada bloque: por pin (defecto), por tipo de cable (cortar de corrido del mismo rollo) o por largo. Los grupos de trenzado aparecen juntos, en el bloque de su primer cable. Un **cable comprado** (WC) va en un solo renglón, con su largo de corte, y sus conductores debajo (función, color, desde → hasta), en el bloque de su primer conductor. Cada bloque indica el **termocontraíble del tramo que llega al conector** en medida nominal (1/8", 3/16", 1/4"…): el asignado al segmento o el sugerido por el cálculo (sección 9.2). El **color va en palabras** (la hoja se imprime en blanco y negro).
 - **Totales por tipo de cable**: metros necesarios de cada WireDef.
 - **Lista de corte de coberturas**: un tramo de termocontraíble por segmento con cables (el asignado, o el sugerido), largo = segmento − patas de boots/moldes en sus puntas + solape sobre cada pata (sección 9.2); y la lista de lo que va en cada punta (boots, moldes en T, piezas de termo con adhesivo). Va al final de la hoja de corte.
 - Los extremos de cable en el conector de un dispositivo llevan el nombre del pin ("X9:A6 OUT11").
 
 ### 8.2 BOM (lista de materiales)
-- Agrupado por categoría: conectores, contactos, tapones, splices, componentes, cables (m), coberturas (m, de la lista de corte de coberturas), accesorios (boots y moldes elegidos), etiquetas. Las piezas de termo con adhesivo suman su largo: el cargado en el ConnectorDef (conectores) o en el nodo (breakouts).
+- Agrupado por categoría: conectores, contactos, tapones, splices, componentes, cables (m; un cable comprado cuenta una vez, del largo de su conductor más largo), coberturas (m, de la lista de corte de coberturas), accesorios (boots y moldes elegidos), etiquetas. Las piezas de termo con adhesivo suman su largo: el cargado en el ConnectorDef (conectores) o en el nodo (breakouts).
 - Por parte: cantidad necesaria, repuesto (% configurable), **cantidad a comprar redondeada al pack** (sirve para el pedido aunque no se cobre así), precio unitario, subtotal, fecha del precio.
 - Sin umbral automático de desactualización: la fecha del precio se muestra siempre, y Martin decide cuándo recotizar una parte (ver sección 13).
 

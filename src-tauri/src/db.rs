@@ -45,7 +45,7 @@ pub const PROJECT: Format = Format {
     noun: "harness project",
     schema: PROJECT_SCHEMA,
     marker_table: "project",
-    migrations: &[project_v0_to_v1],
+    migrations: &[project_v0_to_v1, project_v1_to_v2],
 };
 
 pub const LIBRARY: Format = Format {
@@ -77,6 +77,18 @@ fn project_v0_to_v1(tx: &Transaction) -> rusqlite::Result<()> {
         tx.execute_batch("ALTER TABLE project DROP COLUMN format_version")?;
     }
     Ok(())
+}
+
+/// Cables comprados de varios conductores (2026-11-01): la tabla
+/// `cable_instances` la crea el esquema; acá, la columna que une cada cable
+/// del arnés con el cable comprado del que es conductor.
+fn project_v1_to_v2(tx: &Transaction) -> rusqlite::Result<()> {
+    add_column_if_missing(
+        tx,
+        "wire_instances",
+        "cable_instance_id",
+        "INTEGER REFERENCES cable_instances(id)",
+    )
 }
 
 /// Ver `project_v0_to_v1`. Los grupos de pines de dispositivos se sacaron el

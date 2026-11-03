@@ -21,7 +21,7 @@ use coverings::{
 use loops::check_topology_has_no_loops;
 use splices::{check_gauge_within_splice_range, check_splices_within_capacity};
 use wires::{
-    check_cut_margin_below_twist_minimum, check_same_net_different_function,
+    check_bought_cables, check_cut_margin_below_twist_minimum, check_same_net_different_function,
     check_wires_have_valid_endpoints,
 };
 
@@ -104,6 +104,7 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
         ("Broken references", broken),
         ("Topology loops", check_topology_has_no_loops(data)),
         ("Wire ends", check_wires_have_valid_endpoints(data)),
+        ("Bought cables", check_bought_cables(data, library)),
         (
             "Splice capacity",
             check_splices_within_capacity(data, library),

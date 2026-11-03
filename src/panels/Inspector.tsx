@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CostReport, WireCutLength } from "../model/calc";
-import { changeConnectorPart, nextId, patchItem, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
+import { changeConnectorPart, nextCableShortId, nextId, patchItem, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
 import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { EndEditor } from "../components/EndEditor";
@@ -518,8 +518,23 @@ export default function Inspector({ project, setProject, library, selection, onS
             <Select
               value={w.library_part_id}
               options={library.wire_defs.map((wd) => ({ value: wd.part_id, label: `${partLabel(library, wd.part_id)} · ${wd.gauge}` }))}
-              onChange={(v) => v !== null && set({ library_part_id: v })}
+              onChange={(v) => v !== null && setProject(setWireType(project, w.id, v))}
             />
+          </Field>
+          {/* Conductor de un cable comprado (par trenzado, multipolar): se corta y se compra una vez. */}
+          <Field label="Bought cable">
+            <Select<number | "new">
+              value={w.cable_instance_id}
+              empty="—"
+              options={[
+                ...project.cable_instances.map((c) => ({ value: c.id, label: `${c.short_id} · ${partLabel(library, c.library_part_id)}` })),
+                { value: "new", label: `+ New ${nextCableShortId(project.cable_instances)} of this wire type` },
+              ]}
+              onChange={(v) => setProject(setWireCable(project, w.id, v))}
+            />
+            {w.cable_instance_id !== null && (library.wire_defs.find((d) => d.part_id === w.library_part_id)?.conductors.length ?? 0) < 2 && (
+              <span className="hint">This wire type has no conductors: set them in Library → Wires.</span>
+            )}
           </Field>
           <Field label="From"><EndEditor end={w.end_a} project={project} onChange={(end_a) => set({ end_a })} /></Field>
           <Field label="To"><EndEditor end={w.end_b} project={project} onChange={(end_b) => set({ end_b })} /></Field>

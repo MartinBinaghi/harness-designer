@@ -154,8 +154,21 @@ pub struct WireInstance {
     /// recorrido (destino sin recorrido dibujado, o corrección del taller).
     pub manual_length_mm: Option<f64>,
     pub label: Option<String>,
+    /// Conductor de un cable comprado (`CableInstance`): su tipo de cable es el del cable.
+    pub cable_instance_id: Option<i64>,
     pub end_a: WireEnd,
     pub end_b: WireEnd,
+}
+
+/// Cable comprado de varios conductores (ej. "WC1", un par trenzado de
+/// termocupla): sus conductores son cables del arnés, pero se corta y se compra
+/// uno solo, del largo del conductor más largo, y en el mazo es un solo elemento.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CableInstance {
+    pub id: i64,
+    pub short_id: String,
+    /// `WireDef` con conductores.
+    pub library_part_id: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -177,6 +190,7 @@ pub struct ProjectData {
     pub splice_instances: Vec<SpliceInstance>,
     pub component_instances: Vec<ComponentInstance>,
     pub wire_instances: Vec<WireInstance>,
+    pub cable_instances: Vec<CableInstance>,
     pub twist_groups: Vec<TwistGroup>,
 }
 
@@ -208,6 +222,7 @@ impl ProjectData {
             splice_instances: vec![],
             component_instances: vec![],
             wire_instances: vec![],
+            cable_instances: vec![],
             twist_groups: vec![],
         }
     }

@@ -114,8 +114,14 @@ pub(super) fn sample() -> ProjectData {
             manual_cut_margin_pct: None,
             manual_length_mm: None,
             label: None,
+            cable_instance_id: Some(1),
             end_a: wire_end("cavity".into(), Some(1), None, None, None),
             end_b: wire_end("splice".into(), None, Some(1), None, None),
+        }],
+        cable_instances: vec![CableInstance {
+            id: 1,
+            short_id: "WC1".into(),
+            library_part_id: 3,
         }],
         twist_groups: vec![TwistGroup {
             id: 1,

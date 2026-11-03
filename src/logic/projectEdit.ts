@@ -4,7 +4,7 @@
  * nuevo, o un mensaje si la operación no es válida. Sin React, para poder
  * chequearlas con tests/projectEdit.test.ts.
  */
-import type { CavityAssignment, ConnectorInstance, Node, ProjectData, Segment, WireEnd, WireInstance } from "../model/project";
+import type { CableInstance, CavityAssignment, ConnectorInstance, Node, ProjectData, Segment, WireEnd, WireInstance } from "../model/project";
 import { devicePinName, type Library } from "../model/library.ts";
 import type { GaugeFacts } from "../model/calc";
 
@@ -228,6 +228,7 @@ export function addWire(project: ProjectData, library: Library, gauges: GaugeFac
     manual_cut_margin_pct: null,
     manual_length_mm: null,
     label: null,
+    cable_instance_id: null,
     end_a: endA,
     end_b: endB,
   };
@@ -478,11 +479,61 @@ export function deleteJunction(project: ProjectData, kind: JunctionKind, id: num
 }
 
 export function deleteWire(project: ProjectData, wireId: number): ProjectData {
+  const wires = project.wire_instances.filter((w) => w.id !== wireId);
   return {
     ...project,
-    wire_instances: project.wire_instances.filter((w) => w.id !== wireId),
+    wire_instances: wires,
+    cable_instances: withoutEmptyCables(project.cable_instances, wires),
     twist_groups: project.twist_groups.map((g) => ({ ...g, wire_instance_ids: g.wire_instance_ids.filter((id) => id !== wireId) })),
   };
+}
+
+/** Un cable comprado sin conductores no existe: se va con el último. */
+function withoutEmptyCables(cables: CableInstance[], wires: WireInstance[]): CableInstance[] {
+  return cables.filter((c) => wires.some((w) => w.cable_instance_id === c.id));
+}
+
+/** WC1, WC2…: el próximo número libre. */
+export function nextCableShortId(cables: CableInstance[]): string {
+  const numbers = cables.map((c) => Number(/^WC(\d+)$/.exec(c.short_id)?.[1] ?? 0)).filter((n) => n > 0);
+  return `WC${nextId(numbers)}`;
+}
+
+/**
+ * Tipo de cable de un cable del arnés. Si es conductor de un cable comprado,
+ * cambia el del cable y el de todos sus conductores, que llevan el mismo.
+ */
+export function setWireType(project: ProjectData, wireId: number, partId: number): ProjectData {
+  const cableId = project.wire_instances.find((w) => w.id === wireId)?.cable_instance_id ?? null;
+  const touched = (w: WireInstance) => (cableId === null ? w.id === wireId : w.cable_instance_id === cableId);
+  return {
+    ...project,
+    cable_instances: project.cable_instances.map((c) => (c.id === cableId ? { ...c, library_part_id: partId } : c)),
+    wire_instances: project.wire_instances.map((w) => (touched(w) ? { ...w, library_part_id: partId } : w)),
+  };
+}
+
+/**
+ * Hace a un cable conductor de un cable comprado: uno existente (toma su tipo
+ * de cable) o uno nuevo ("new", WCn, del tipo que ya tiene el cable); null lo
+ * saca. Un cable comprado que se queda sin conductores se borra.
+ */
+export function setWireCable(project: ProjectData, wireId: number, cable: number | "new" | null): ProjectData {
+  const wire = project.wire_instances.find((w) => w.id === wireId);
+  if (!wire) return project;
+  let cables = project.cable_instances;
+  let patch: Partial<WireInstance> = { cable_instance_id: null };
+  if (cable === "new") {
+    const id = nextId(cables.map((c) => c.id));
+    cables = [...cables, { id, short_id: nextCableShortId(cables), library_part_id: wire.library_part_id }];
+    patch = { cable_instance_id: id };
+  } else if (cable !== null) {
+    const target = cables.find((c) => c.id === cable);
+    if (!target) return project;
+    patch = { cable_instance_id: target.id, library_part_id: target.library_part_id };
+  }
+  const wires = project.wire_instances.map((w) => (w.id === wireId ? { ...w, ...patch } : w));
+  return { ...project, wire_instances: wires, cable_instances: withoutEmptyCables(cables, wires) };
 }
 
 /**
@@ -519,15 +570,45 @@ export function duplicateConnector(project: ProjectData, connectorId: number): {
     const mine = newCavity.get(end.cavity_assignment_id);
     return mine !== undefined ? { ...end, cavity_assignment_id: mine } : BLANK_END;
   };
+  // Un cable comprado del original se copia como otro cable comprado (el
+  // termopar de la copia es otro par, no el mismo).
+  const cables = [...project.cable_instances];
+  const cableCopy = new Map<number, number>();
+  const copiedCable = (sourceId: number | null): number | null => {
+    if (sourceId === null) return null;
+    const known = cableCopy.get(sourceId);
+    if (known !== undefined) return known;
+    const source = cables.find((c) => c.id === sourceId);
+    if (!source) return null;
+    const cable = { id: nextId(cables.map((c) => c.id)), short_id: nextCableShortId(cables), library_part_id: source.library_part_id };
+    cables.push(cable);
+    cableCopy.set(sourceId, cable.id);
+    return cable.id;
+  };
   let wireId = nextId(project.wire_instances.map((w) => w.id));
   const wires = project.wire_instances
     .filter((w) => [w.end_a, w.end_b].some((e) => e.kind === "cavity" && e.cavity_assignment_id != null && newCavity.has(e.cavity_assignment_id)))
     .map((w): WireInstance => {
       const wid = wireId++;
-      return { ...w, id: wid, short_id: `W${String(wid).padStart(3, "0")}`, end_a: remap(w.end_a), end_b: remap(w.end_b), manual_length_mm: null, label: null };
+      return {
+        ...w,
+        id: wid,
+        short_id: `W${String(wid).padStart(3, "0")}`,
+        end_a: remap(w.end_a),
+        end_b: remap(w.end_b),
+        manual_length_mm: null,
+        label: null,
+        cable_instance_id: copiedCable(w.cable_instance_id),
+      };
     });
   return {
-    project: { ...project, nodes, connector_instances: [...project.connector_instances, copy], wire_instances: [...project.wire_instances, ...wires] },
+    project: {
+      ...project,
+      nodes,
+      connector_instances: [...project.connector_instances, copy],
+      wire_instances: [...project.wire_instances, ...wires],
+      cable_instances: cables,
+    },
     id,
   };
 }

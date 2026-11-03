@@ -27,14 +27,14 @@ use crate::model::project::{ProjectData, WireInstance};
 use crate::topology::wire_route;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Lo que se repite muchas veces en una pasada (diámetro de cada tramo y
-/// cuántos cables pasan por él), recordado mientras dura (ver `with_cache`).
+/// cuántos elementos pasan por él), recordado mientras dura (ver `with_cache`).
 #[derive(Default)]
 struct PassCache {
     bundle: HashMap<i64, f64>,
-    wires_in_segment: Option<HashMap<i64, usize>>,
+    elements_in_segment: Option<HashMap<i64, usize>>,
 }
 
 thread_local! {
@@ -51,24 +51,42 @@ pub fn with_cache<T>(f: impl FnOnce() -> T) -> T {
     out
 }
 
-/// Cuántos cables pasan por cada tramo.
-fn wires_in_segment(data: &ProjectData, segment_id: i64) -> usize {
+/// Un elemento del mazo: un cable suelto, o un cable comprado entero (sus
+/// conductores van juntos adentro de la misma vaina o trenza).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Element {
+    Wire(i64),
+    Cable(i64),
+}
+
+fn element_of(wire: &WireInstance) -> Element {
+    match wire.cable_instance_id {
+        Some(cable_id) => Element::Cable(cable_id),
+        None => Element::Wire(wire.id),
+    }
+}
+
+/// Cuántos elementos del mazo pasan por cada tramo (un cable comprado cuenta uno).
+fn elements_in_segment(data: &ProjectData, segment_id: i64) -> usize {
     let count = |data: &ProjectData| {
-        let mut counts: HashMap<i64, usize> = HashMap::new();
+        let mut elements: HashMap<i64, HashSet<Element>> = HashMap::new();
         for w in &data.wire_instances {
             for s in wire_route(data, w.id).unwrap_or_default() {
-                *counts.entry(s).or_default() += 1;
+                elements.entry(s).or_default().insert(element_of(w));
             }
         }
-        counts
+        elements
+            .into_iter()
+            .map(|(s, set)| (s, set.len()))
+            .collect::<HashMap<i64, usize>>()
     };
     let cached = PASS.with(|c| {
         let mut c = c.borrow_mut();
         let pass = c.as_mut()?;
-        if pass.wires_in_segment.is_none() {
-            pass.wires_in_segment = Some(count(data));
+        if pass.elements_in_segment.is_none() {
+            pass.elements_in_segment = Some(count(data));
         }
-        pass.wires_in_segment
+        pass.elements_in_segment
             .as_ref()
             .map(|m| m.get(&segment_id).copied().unwrap_or(0))
     });
@@ -80,6 +98,19 @@ fn wire_def_of<'a>(library: &'a Library, wire: &WireInstance) -> Option<&'a Wire
         .wire_defs
         .iter()
         .find(|w| w.part_id == wire.library_part_id)
+}
+
+/// El `WireDef` de un cable comprado.
+fn cable_def_of<'a>(
+    data: &ProjectData,
+    library: &'a Library,
+    cable_id: i64,
+) -> Option<&'a WireDef> {
+    let cable = data.cable_instances.iter().find(|c| c.id == cable_id)?;
+    library
+        .wire_defs
+        .iter()
+        .find(|w| w.part_id == cable.library_part_id)
 }
 
 fn twist_group_of_wire(data: &ProjectData) -> HashMap<i64, i64> {
@@ -95,6 +126,7 @@ fn twist_group_of_wire(data: &ProjectData) -> HashMap<i64, i64> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CostReport {
     pub cut_list: Vec<WireCutLength>,
+    pub cable_cut_list: Vec<CableCutLength>,
     pub bom: Vec<BomRow>,
     pub cost_summary: CostSummary,
     pub segment_diameters: Vec<SegmentDiameterInfo>,
@@ -107,8 +139,10 @@ pub struct CostReport {
 pub fn compute_cost_report(data: &ProjectData, library: &Library) -> CostReport {
     let bom = bill_of_materials(data, library);
     let cost_summary = cost_summary(&data.project, &bom);
+    let cut_list = cut_list(data, library);
     CostReport {
-        cut_list: cut_list(data, library),
+        cable_cut_list: cable_cut_list(data, &cut_list),
+        cut_list,
         bom,
         cost_summary,
         segment_diameters: segment_diameters(data, library),

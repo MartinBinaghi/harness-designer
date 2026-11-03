@@ -1,6 +1,6 @@
 //! Largo de corte de cada cable: recorrido, trenzado, margen y redondeo (plan 5.1).
 
-use super::{bundle_diameter_mm, wire_def_of, wires_in_segment};
+use super::{bundle_diameter_mm, elements_in_segment, wire_def_of};
 use crate::model::library::Library;
 use crate::model::project::{Project, ProjectData};
 use crate::topology::wire_route;
@@ -47,8 +47,10 @@ fn route_length_with_twist(
         let d_bundle = bundle_diameter_mm(data, library, *segment_id);
         let pitch = effective_pitch_mm(&data.project, segment.twist_pitch_mm, d_bundle);
         // Un cable solo en el tramo no se trenza con nada: va derecho. (Un par
-        // trenzado solo sí: sus cables siguen la hélice.)
-        let alone = wires_in_segment(data, *segment_id) <= 1;
+        // trenzado en el taller solo sí: sus cables siguen la hélice. Un cable
+        // comprado solo, no: sus conductores ya vienen trenzados adentro y se
+        // miden sobre el cable.)
+        let alone = elements_in_segment(data, *segment_id) <= 1;
         let factor = if alone {
             1.0
         } else {
@@ -116,6 +118,37 @@ pub fn cut_list(data: &ProjectData, library: &Library) -> Vec<WireCutLength> {
     data.wire_instances
         .iter()
         .filter_map(|w| wire_cut_length(data, library, w.id))
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CableCutLength {
+    pub cable_id: i64,
+    /// El del conductor más largo: el cable se corta una vez, para que lleguen
+    /// todos; el resto se recorta en la punta.
+    pub cut_length_mm: f64,
+}
+
+/// Largo de corte de cada cable comprado, a partir de los de sus conductores
+/// (`cut_list`). Un cable sin ningún conductor con largo no figura.
+pub fn cable_cut_list(data: &ProjectData, wire_cuts: &[WireCutLength]) -> Vec<CableCutLength> {
+    data.cable_instances
+        .iter()
+        .filter_map(|cable| {
+            wire_cuts
+                .iter()
+                .filter(|cut| {
+                    data.wire_instances
+                        .iter()
+                        .any(|w| w.id == cut.wire_id && w.cable_instance_id == Some(cable.id))
+                })
+                .map(|cut| cut.cut_length_mm)
+                .reduce(f64::max)
+                .map(|cut_length_mm| CableCutLength {
+                    cable_id: cable.id,
+                    cut_length_mm,
+                })
+        })
         .collect()
 }
 

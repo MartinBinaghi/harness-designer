@@ -36,6 +36,7 @@ pub fn dangling_references(data: &ProjectData) -> Vec<Dangling> {
     let grounds: HashSet<i64> = data.ground_points.iter().map(|g| g.id).collect();
     let components: HashSet<i64> = data.component_instances.iter().map(|c| c.id).collect();
     let wires: HashSet<i64> = data.wire_instances.iter().map(|w| w.id).collect();
+    let cables: HashSet<i64> = data.cable_instances.iter().map(|c| c.id).collect();
     let missing = |set: &HashSet<i64>, id: Option<i64>| id.is_some_and(|id| !set.contains(&id));
 
     let mut out = Vec::new();
@@ -112,6 +113,15 @@ pub fn dangling_references(data: &ProjectData) -> Vec<Dangling> {
         if broken {
             push(
                 format!("{} ends at something that no longer exists", w.short_id),
+                DanglingItem::Wire(w.id),
+            );
+        }
+        if missing(&cables, w.cable_instance_id) {
+            push(
+                format!(
+                    "{} is a conductor of a cable that no longer exists",
+                    w.short_id
+                ),
                 DanglingItem::Wire(w.id),
             );
         }

@@ -1,19 +1,24 @@
 //! Diámetro del bundle de cada tramo (plan 5.2) y diámetro final con coberturas.
 
-use super::{coverings_for_segment, twist_group_of_wire, wire_def_of, CoveringFit, PASS};
+use super::{
+    cable_def_of, coverings_for_segment, element_of, twist_group_of_wire, wire_def_of, CoveringFit,
+    Element, PASS,
+};
 use crate::model::library::Library;
 use crate::model::project::ProjectData;
 use crate::topology::wire_route;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Diámetro de cada elemento del bundle en un segmento: cables sueltos por su
-/// propio `WireDef`, y cada grupo de trenzado colapsado a un solo elemento
-/// (mismo cálculo `sqrt(Σd²/f)` aplicado a sus miembros presentes en el tramo).
+/// propio `WireDef`, cada cable comprado una vez con el diámetro del cable
+/// entero, y cada grupo de trenzado colapsado a un solo elemento (mismo
+/// cálculo `sqrt(Σd²/f)` aplicado a sus miembros presentes en el tramo).
 fn segment_element_diameters(data: &ProjectData, library: &Library, segment_id: i64) -> Vec<f64> {
     let group_of = twist_group_of_wire(data);
     let mut loose = Vec::new();
     let mut group_members: HashMap<i64, Vec<f64>> = HashMap::new();
+    let mut seen = HashSet::new();
 
     for wire in &data.wire_instances {
         let Some(route) = wire_route(data, wire.id) else {
@@ -22,7 +27,15 @@ fn segment_element_diameters(data: &ProjectData, library: &Library, segment_id: 
         if !route.contains(&segment_id) {
             continue;
         }
-        let Some(def) = wire_def_of(library, wire) else {
+        let element = element_of(wire);
+        if !seen.insert(element) {
+            continue; // otro conductor del mismo cable comprado: ya está
+        }
+        let def = match element {
+            Element::Cable(cable_id) => cable_def_of(data, library, cable_id),
+            Element::Wire(_) => wire_def_of(library, wire),
+        };
+        let Some(def) = def else {
             continue;
         };
         match group_of.get(&wire.id) {
@@ -140,6 +153,7 @@ mod tests {
             manual_cut_margin_pct: None,
             manual_length_mm: None,
             label: None,
+            cable_instance_id: None,
             end_a: cavity_end(1),
             end_b: cavity_end(2),
         });

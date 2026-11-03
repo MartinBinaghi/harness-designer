@@ -22,6 +22,7 @@ const project = {
   segments: [],
   ground_points: [{ id: 1, short_id: "G1", name: "Chassis" }],
   component_instances: [],
+  cable_instances: [],
   twist_groups: [{ id: 1, name: "twist I", wire_instance_ids: [2, 4] }],
   wire_instances: [
     wire(1, 20, "5V", end("cavity", { cavity: 11 }), end("splice", { splice: 1 })),
@@ -52,19 +53,19 @@ const destinations = new Map([
 const destinationOf = (cavityId: number) => destinations.get(cavityId);
 
 // Por largo: 330, 220, 110, 55 — pero W004 sube junto a W002 (mismo trenzado).
-assert.deepEqual(cutListRows(project, library, cuts, "length").map((r) => r.id), ["W002", "W004", "W003", "W001"]);
+assert.deepEqual(cutListRows(project, library, cuts, [], "length").map((r) => r.id), ["W002", "W004", "W003", "W001"]);
 // Por tipo de cable: 20 AWG antes que 22 AWG; dentro, de más largo a más corto; el trenzado sigue junto.
-const byType = cutListRows(project, library, cuts, "type");
+const byType = cutListRows(project, library, cuts, [], "type");
 assert.deepEqual(byType.map((r) => r.id), ["W003", "W004", "W002", "W001"]);
 assert.equal(byType[2].wireType, "22 AWG M22759/32");
 assert.equal(byType[2].from, "SP1");
 // Dividida por conector, cada cable una sola vez: W001 (X1 → SP1) va con X1, el principal;
 // W002 (SP1 → X2) con X2; W003 (SP1 → X3) con X3. W004 (X1 → G1) va con X1, pero está
 // trenzado con W002 y el trenzado va entero al bloque de su primer cable (por largo: W002 → X2).
-const groups = cutListGroups(project, cutListRows(project, library, cuts, "length"));
+const groups = cutListGroups(project, cutListRows(project, library, cuts, [], "length"));
 assert.deepEqual(groups.map((g) => [g.title, g.rows.map((r) => r.id)]), [["X1 · ECU", ["W001"]], ["X2 · MAP", ["W002", "W004"]], ["X3 · TPS", ["W003"]]]);
 // Por pin del conector de cada bloque: X1 tiene W001 (pin 1) y W004 (pin 2).
-const byPin = cutListGroups({ ...project, twist_groups: [] }, cutListRows({ ...project, twist_groups: [] }, library, cuts, "pin"));
+const byPin = cutListGroups({ ...project, twist_groups: [] }, cutListRows({ ...project, twist_groups: [] }, library, cuts, [], "pin"));
 assert.deepEqual(byPin.find((g) => g.connectorId === 1)!.rows.map((r) => [r.id, r.pin]), [["W001", "1"], ["W004", "2"]]);
 // Totales por tipo, en metros.
 assert.deepEqual(wireTotals(byType), [{ wireType: "20 AWG", count: 2, meters: 0.275 }, { wireType: "22 AWG M22759/32", count: 2, meters: 0.44 }]);
@@ -91,7 +92,7 @@ assert.equal(toCsv(["a", "b"], [["x, y", 'say "hi"']]), 'a,b\r\n"x, y","say ""hi
 assert.equal(colorWord("violet"), "violet");
 assert.equal(colorWord("#7f00ff"), "violet");
 assert.equal(colorWord(null), "—");
-assert.equal(cutListRows(project, library, cuts, "pin").find((r) => r.id === "W001")!.color, "red");
+assert.equal(cutListRows(project, library, cuts, [], "pin").find((r) => r.id === "W001")!.color, "red");
 
 // Termocontraíble: medida nominal en pulgadas del suministrado.
 assert.equal(heatShrinkSize(3.2), '1/8"');
@@ -123,7 +124,7 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.equal(pinoutRows(pdm, devLib, 2, destinationOf)[0].fn, "OUT11");
   assert.equal(terminatesAt(pdm, devLib, destinationOf(11)), "PDM30 · OUT11 (X2:1), X3:1 · TPS (via SP1)");
   // En la lista de corte, el extremo lleva el nombre del pin.
-  assert.equal(cutListRows(pdm, devLib, cuts, "pin").find((r) => r.id === "W002")!.to, "X2:1 OUT11");
+  assert.equal(cutListRows(pdm, devLib, cuts, [], "pin").find((r) => r.id === "W002")!.to, "X2:1 OUT11");
 }
 
 // Coberturas: un tramo por segmento, entre sus puntas, con la medida nominal; y lo que va en cada punta.
@@ -172,6 +173,21 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual(b[0].outlets.map((o) => [o.branch, o.lengthMm]), [[1, 1000]]);
   assert.deepEqual(b[1].outlets.map((o) => [o.id, o.name, o.branch]), [["X2", "MAP", null], ["", "", 2]]);
   assert.deepEqual(b[2].outlets.map((o) => o.id), ["G1", "X3"]); // G1 (y 7) arriba de X3 (y 10)
+}
+
+// Cable comprado: W002 y W003 son los conductores de WC1, que va en un solo renglón con el
+// largo que da el núcleo (el del más largo) y sus conductores debajo; se cuenta una vez.
+{
+  const inCable = {
+    ...project,
+    twist_groups: [],
+    cable_instances: [{ id: 1, short_id: "WC1", library_part_id: 20 }],
+    wire_instances: project.wire_instances.map((w) => (w.id === 2 || w.id === 3 ? { ...w, library_part_id: 20, cable_instance_id: 1 } : { ...w, cable_instance_id: null })),
+  } as ProjectData;
+  const rows = cutListRows(inCable, library, cuts, [{ cable_id: 1, cut_length_mm: 330 }], "length");
+  assert.deepEqual(rows.map((r) => [r.id, r.cutMm, r.conductors.map((c) => c.id)]), [["WC1", 330, ["W002", "W003"]], ["W001", 110, []], ["W004", 55, []]]);
+  assert.equal(rows[0].fn, "5V");
+  assert.deepEqual(wireTotals(rows).find((t) => t.wireType === "22 AWG M22759/32"), { wireType: "22 AWG M22759/32", count: 2, meters: 0.44 });
 }
 
 console.log("sheets: ok");

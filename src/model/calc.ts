@@ -98,8 +98,15 @@ export interface CoveringCut {
   cut_length_mm: number;
 }
 
+/** Largo de corte de un cable comprado: el de su conductor más largo (se corta una vez). */
+export interface CableCutLength {
+  cable_id: number;
+  cut_length_mm: number;
+}
+
 export interface CostReport {
   cut_list: WireCutLength[];
+  cable_cut_list: CableCutLength[];
   bom: BomRow[];
   cost_summary: CostSummary;
   segment_diameters: SegmentDiameterInfo[];

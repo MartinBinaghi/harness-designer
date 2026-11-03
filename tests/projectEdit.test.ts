@@ -20,6 +20,7 @@ const base = {
   ],
   component_instances: [],
   wire_instances: [],
+  cable_instances: [],
   twist_groups: [],
 } as ProjectData;
 
@@ -152,6 +153,7 @@ console.log("project edit: ok");
     ground_points: [{ id: 1, short_id: "G1" }],
     splice_instances: [{ id: 7, short_id: "SP7", name: "Coils pin 2" }],
     wire_instances: [],
+    cable_instances: [],
     twist_groups: [],
   } as unknown as ProjectData;
 
@@ -217,7 +219,7 @@ console.log("project edit: ok");
   } as unknown as Library;
   // 26 AWG ≈ 0.13 mm², 20 AWG ≈ 0.52, 18 AWG ≈ 0.82; el contacto de la vía toma de 20 a 16 AWG (0.52–1.31).
   const gauges = { wire_mm2: { "26": 0.13, "20": 0.52, "18": 0.82 }, contact_ranges: { "1": { "20": [[0.52, 1.31]] as [number, number][] } } };
-  const proj = { ...base, connector_instances: [{ id: 1, short_id: "X1", library_part_id: 1, cavities: [{ id: 11, cavity_id: "1" }] }], wire_instances: [], twist_groups: [] } as unknown as ProjectData;
+  const proj = { ...base, connector_instances: [{ id: 1, short_id: "X1", library_part_id: 1, cavities: [{ id: 11, cavity_id: "1" }] }], wire_instances: [], cable_instances: [], twist_groups: [] } as unknown as ProjectData;
   const r = addWireAtCavity(proj, lib, gauges, 11);
   assert.ok(typeof r !== "string");
   assert.equal(r.project.wire_instances[0].library_part_id, 20);
@@ -237,6 +239,7 @@ console.log("project edit: ok");
     ...base,
     connector_instances: [{ id: 1, short_id: "X1", library_part_id: 5, cavities: [{ id: 11, cavity_id: "1" }, { id: 12, cavity_id: "2" }] }],
     wire_instances: [{ id: 1, short_id: "W001", end_a: end(11), end_b: end(null) }, { id: 2, short_id: "W002", end_a: end(12), end_b: end(null) }],
+    cable_instances: [],
     twist_groups: [],
   } as unknown as ProjectData;
   const changed = changeConnectorPart(proj, lib, 1, 7);
@@ -246,3 +249,34 @@ console.log("project edit: ok");
   console.log("project edit (change to a smaller part loosens wires): ok");
 }
 
+
+// Cable comprado (WC): sus conductores llevan su tipo de cable; sin conductores, se borra;
+// al duplicar un conector, la copia lleva otro cable comprado.
+{
+  const { deleteWire, duplicateConnector, setWireCable, setWireType } = await import("../src/logic/projectEdit.ts");
+  const end = (cavity: number | null) => ({ kind: "cavity", cavity_assignment_id: cavity, splice_id: null, ground_point_id: null, component_instance_id: null });
+  const w = (id: number, cavity: number, part: number) => ({ id, short_id: `W00${id}`, library_part_id: part, cable_instance_id: null, end_a: end(cavity), end_b: end(null) });
+  const proj = {
+    ...base,
+    nodes: [{ id: 1, kind: "connector_end" }, { id: 2, kind: "connector_end" }],
+    connector_instances: [{ id: 4, short_id: "X4", name: "TCK", node_id: 1, cavities: [{ id: 41, cavity_id: "+" }, { id: 42, cavity_id: "-" }] }],
+    wire_instances: [w(1, 41, 92), w(2, 42, 40)],
+  } as unknown as ProjectData;
+
+  const one = setWireCable(proj, 1, "new");
+  assert.deepEqual(one.cable_instances, [{ id: 1, short_id: "WC1", library_part_id: 92 }]);
+  const both = setWireCable(one, 2, 1);
+  assert.deepEqual(both.wire_instances.map((x) => [x.cable_instance_id, x.library_part_id]), [[1, 92], [1, 92]]); // toma el tipo del cable
+  // Cambiar el tipo de un conductor cambia el del cable y el de todos.
+  const retyped = setWireType(both, 2, 95);
+  assert.deepEqual([retyped.cable_instances[0].library_part_id, ...retyped.wire_instances.map((x) => x.library_part_id)], [95, 95, 95]);
+  // Duplicar X4: la copia es otro par (WC2), no el mismo.
+  const dup = duplicateConnector(both, 4)!;
+  assert.deepEqual(dup.project.cable_instances.map((c) => c.short_id), ["WC1", "WC2"]);
+  assert.deepEqual(dup.project.wire_instances.slice(2).map((x) => x.cable_instance_id), [2, 2]);
+  // Sin conductores, el cable comprado se va (sacándolos o borrándolos).
+  assert.deepEqual(setWireCable(setWireCable(both, 1, null), 2, null).cable_instances, []);
+  assert.deepEqual(deleteWire(deleteWire(both, 1), 2).cable_instances, []);
+  assert.equal(deleteWire(both, 1).cable_instances.length, 1);
+  console.log("project edit (bought cables): ok");
+}

@@ -4,7 +4,7 @@
  * proyecto, la biblioteca y los largos de corte ya calculados (`calc_results`),
  * sin React, para chequearlas con tests/sheets.test.ts.
  */
-import type { CoveringCut, PinDestinations, SegmentDiameterInfo, WireCutLength } from "../model/calc";
+import type { CableCutLength, CoveringCut, PinDestinations, SegmentDiameterInfo, WireCutLength } from "../model/calc";
 import { devicePinName, partLabel, type Library } from "../model/library.ts";
 import { endLabel } from "./projectEdit.ts";
 import type { ProjectData, WireEnd, WireInstance } from "../model/project";
@@ -29,6 +29,18 @@ export interface CutRow {
   connectorId: number | null;
   /** Vía del cable en ese conector ("" si no tiene), para ordenar por pin. */
   pin: string;
+  /** Si el renglón es un cable comprado (WC1): sus conductores, que van debajo; si no, vacío. */
+  conductors: CutConductor[];
+}
+
+/** Un conductor de un cable comprado en la lista de corte (se corta con el cable). */
+export interface CutConductor {
+  wireId: number;
+  id: string;
+  fn: string;
+  color: string;
+  from: string;
+  to: string;
 }
 
 export interface CutGroup {
@@ -92,14 +104,16 @@ function groupPin(project: ProjectData, wire: WireInstance): string {
  * Lista de corte (plan 8.1): un renglón por cable, ordenada por pin del
  * conector de su bloque, por tipo de cable (para cortar de corrido del mismo
  * rollo) o por largo. Los cables de un grupo
- * de trenzado quedan juntos, donde aparece el primero.
+ * de trenzado quedan juntos, donde aparece el primero. Un cable comprado (par
+ * trenzado, multipolar) va en un solo renglón, con el largo que calcula el
+ * núcleo (`cableCuts`) y sus conductores debajo: se corta una vez.
  */
-export function cutListRows(project: ProjectData, library: Library, cuts: WireCutLength[], sort: CutSort): CutRow[] {
+export function cutListRows(project: ProjectData, library: Library, cuts: WireCutLength[], cableCuts: CableCutLength[], sort: CutSort): CutRow[] {
   const twistOf = new Map(project.twist_groups.flatMap((g) => g.wire_instance_ids.map((id) => [id, g.name] as const)));
-  const rows = cuts.flatMap((cut): CutRow[] => {
+  const wireRows = cuts.flatMap((cut): { row: CutRow; cableId: number | null }[] => {
     const wire = project.wire_instances.find((w) => w.id === cut.wire_id);
     if (!wire) return [];
-    return [{
+    const row: CutRow = {
       wireId: wire.id,
       id: wire.short_id,
       fn: wireFunction(library, wire),
@@ -114,8 +128,40 @@ export function cutListRows(project: ProjectData, library: Library, cuts: WireCu
       twist: twistOf.get(wire.id) ?? null,
       connectorId: cutGroupConnector(project, wire),
       pin: groupPin(project, wire),
-    }];
+      conductors: [],
+    };
+    return [{ row, cableId: wire.cable_instance_id }];
   });
+  // Los conductores de cada cable comprado, en el lugar del primero.
+  const rows: CutRow[] = [];
+  const members = new Map<number, CutRow[]>();
+  for (const { row, cableId } of wireRows) {
+    if (cableId === null || !project.cable_instances.some((c) => c.id === cableId)) rows.push(row);
+    else if (members.has(cableId)) members.get(cableId)!.push(row);
+    else {
+      members.set(cableId, [row]);
+      rows.push(row);
+    }
+  }
+  for (const [cableId, list] of members) {
+    const cable = project.cable_instances.find((c) => c.id === cableId)!;
+    // Recorrido y margen del conductor más largo, que es el que da el largo del cable.
+    const longest = list.reduce((a, b) => (b.cutMm > a.cutMm ? b : a));
+    const merged: CutRow = {
+      ...longest,
+      wireId: list[0].wireId,
+      id: cable.short_id,
+      fn: [...new Set(list.map((r) => r.fn))].join(" / "),
+      color: list.map((r) => r.color).join(" / "),
+      from: "",
+      to: "",
+      cutMm: cableCuts.find((c) => c.cable_id === cableId)?.cut_length_mm ?? longest.cutMm,
+      connectorId: list[0].connectorId,
+      pin: list.map((r) => r.pin).sort(natural)[0] ?? "",
+      conductors: list.map((r) => ({ wireId: r.wireId, id: r.id, fn: r.fn, color: r.color, from: r.from, to: r.to })),
+    };
+    rows[rows.indexOf(list[0])] = merged;
+  }
   const byLength = (a: CutRow, b: CutRow) => b.cutMm - a.cutMm;
   rows.sort(
     sort === "pin"

@@ -11,6 +11,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
         "twist_group_wires",
         "twist_groups",
         "wire_instances",
+        "cable_instances",
         "component_instances",
         "splice_instances",
         "ground_points",
@@ -128,12 +129,19 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
         )?;
     }
 
+    for c in &data.cable_instances {
+        tx.execute(
+            "INSERT INTO cable_instances (id, short_id, library_part_id) VALUES (?1, ?2, ?3)",
+            params![c.id, c.short_id, c.library_part_id],
+        )?;
+    }
+
     for w in &data.wire_instances {
         tx.execute(
-            "INSERT INTO wire_instances (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label,
+            "INSERT INTO wire_instances (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
                                           end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
                                           end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 w.id,
                 w.short_id,
@@ -144,6 +152,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
                 w.manual_cut_margin_pct,
                 w.manual_length_mm,
                 w.label,
+                w.cable_instance_id,
                 w.end_a.kind,
                 w.end_a.cavity_assignment_id,
                 w.end_a.splice_id,
@@ -182,7 +191,7 @@ mod tests {
     use crate::model::project::test_fixtures::*;
 
     #[test]
-    fn round_trips_a_project_with_a_splice_on_a_segment_and_a_twist_group() {
+    fn round_trips_a_project_with_a_splice_on_a_segment_a_twist_group_and_a_bought_cable() {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(db::PROJECT_SCHEMA).unwrap();
 

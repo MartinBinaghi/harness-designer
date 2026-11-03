@@ -1,6 +1,6 @@
 //! Lista de materiales y costo (plan 8.2 y 8.3).
 
-use super::{covering_cut_list, cut_list};
+use super::{cable_cut_list, covering_cut_list, cut_list};
 use crate::model::library::Library;
 use crate::model::project::{Project, ProjectData};
 use serde::{Deserialize, Serialize};
@@ -140,11 +140,21 @@ pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
     for component in &data.component_instances {
         *quantities.entry(component.library_part_id).or_default() += 1.0;
     }
-    for cut in cut_list(data, library) {
+    // Cables sueltos por su largo; un cable comprado, una vez, del largo de su
+    // conductor más largo (no la suma de sus conductores).
+    let wire_cuts = cut_list(data, library);
+    for cut in &wire_cuts {
         let Some(wire) = data.wire_instances.iter().find(|w| w.id == cut.wire_id) else {
             continue;
         };
-        *quantities.entry(wire.library_part_id).or_default() += cut.cut_length_mm / 1000.0;
+        if wire.cable_instance_id.is_none() {
+            *quantities.entry(wire.library_part_id).or_default() += cut.cut_length_mm / 1000.0;
+        }
+    }
+    for cut in cable_cut_list(data, &wire_cuts) {
+        if let Some(cable) = data.cable_instances.iter().find(|c| c.id == cut.cable_id) {
+            *quantities.entry(cable.library_part_id).or_default() += cut.cut_length_mm / 1000.0;
+        }
     }
 
     let mut rows: Vec<BomRow> = quantities
@@ -325,5 +335,64 @@ mod tests {
         assert_eq!(summary.labor_usd, 50.0);
         assert_eq!(summary.markup_usd, 12.0); // 20% de (10 + 50)
         assert_eq!(summary.total_usd, 72.0);
+    }
+
+    #[test]
+    fn a_bought_cable_is_one_bundle_element_and_is_bought_once() {
+        use crate::calc::{bundle_diameter_mm, cable_cut_list};
+        use crate::model::library::{WireDef, WireDefConductor};
+        use crate::model::project::CableInstance;
+
+        // Un par trenzado comprado (WC1, Ø 2 mm) con sus dos conductores de X1 a X2.
+        let mut data = one_segment_project(1000.0, None);
+        data.wire_instances.push(second_wire(&data));
+        data.cable_instances.push(CableInstance {
+            id: 1,
+            short_id: "WC1".into(),
+            library_part_id: 300,
+        });
+        for w in &mut data.wire_instances {
+            w.library_part_id = 300;
+            w.cable_instance_id = Some(1);
+        }
+        let conductor = |id| WireDefConductor {
+            id,
+            label: None,
+            gauge: None,
+            color: None,
+            is_shield: false,
+        };
+        let library = Library {
+            parts: vec![part(300, "wire", 1.0, None)],
+            wire_defs: vec![WireDef {
+                conductors: vec![conductor(1), conductor(2)],
+                ..wire_def(300, 2.0, None)
+            }],
+            ..Library::default()
+        };
+
+        // Un solo elemento del mazo, con el diámetro del cable entero.
+        let d = bundle_diameter_mm(&data, &library, 1);
+        assert!((d - (2.0_f64 * 2.0 / 0.75).sqrt()).abs() < 1e-9, "got {d}");
+        // Va solo en el tramo: no se trenza con nada (1000 mm + 10%).
+        let cuts = cut_list(&data, &library);
+        assert!(
+            cuts.iter().all(|c| (c.cut_length_mm - 1100.0).abs() < 1e-6),
+            "{cuts:?}"
+        );
+        // Se compra una vez: 1,1 m, no 2,2.
+        let metres = |data: &ProjectData| {
+            bill_of_materials(data, &library)
+                .into_iter()
+                .find(|r| r.library_part_id == 300)
+                .unwrap()
+                .quantity_needed
+        };
+        assert!((metres(&data) - 1.1).abs() < 1e-9);
+        // Si un conductor tiene que llegar más lejos, el cable se corta para ese.
+        data.wire_instances[1].manual_length_mm = Some(1500.0);
+        let cable = cable_cut_list(&data, &cut_list(&data, &library));
+        assert_eq!(cable[0].cut_length_mm, 1500.0);
+        assert!((metres(&data) - 1.5).abs() < 1e-9);
     }
 }

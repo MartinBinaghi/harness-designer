@@ -10,6 +10,7 @@ import {
   changeConnectorPart,
   deleteWire,
   duplicateConnector,
+  setWireType,
   freeConnectorNode,
   endChoices,
   endLabel,
@@ -368,7 +369,7 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
                     </td>
                     <td className="cn-col-wire">
                       {w && (
-                        <select className="cn-cell" value={w.library_part_id} onChange={(e) => setWire(w, { library_part_id: Number(e.currentTarget.value) })} aria-label="Wire type">
+                        <select className="cn-cell" value={w.library_part_id} onChange={(e) => setProject(setWireType(project, w.id, Number(e.currentTarget.value)))} aria-label="Wire type">
                           {!library.wire_defs.some((d) => d.part_id === w.library_part_id) && <option value={w.library_part_id}>{partLabel(library, w.library_part_id)}</option>}
                           {library.wire_defs.map((d) => <option key={d.part_id} value={d.part_id}>{d.gauge}{d.spec ? ` · ${d.spec}` : ""}</option>)}
                         </select>
