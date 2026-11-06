@@ -229,6 +229,11 @@
 }
 
 /* Controles de zoom de React Flow: sin sombra (Flat Plane Rule). */
+/* Capa propia para el lienzo: sin esto, WebView2 deja rastros de los bordes al alejar. */
+.react-flow__viewport {
+  will-change: transform;
+}
+
 .react-flow__controls {
   box-shadow: none;
   border: 1px solid var(--border);
