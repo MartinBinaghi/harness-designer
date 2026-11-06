@@ -560,13 +560,29 @@ mod tests {
     fn engine_receptacle_mates_the_plug_and_shares_its_seal_plug() {
         let base = base_library();
         let plug = def_by_pn(&base, "MS3476L24-61P");
-        let receptacle = def_by_pn(&base, "MS3470L24-61S");
+        let receptacle = def_by_pn(&base, "MS3470A24-61S");
         assert_eq!(receptacle.gender, "female");
         assert_eq!(plug.counterpart_id, Some(receptacle.part_id));
         assert_eq!(receptacle.counterpart_id, Some(plug.part_id));
         assert_eq!(receptacle.seal_plug_part_id, plug.seal_plug_part_id);
         assert_ne!(receptacle.contact_part_id, plug.contact_part_id);
         assert_eq!(receptacle.cavities, plug.cavities);
+    }
+
+    #[test]
+    fn interco_plug_has_the_41_cavities_of_its_insert_and_the_size_20_pin() {
+        let base = base_library();
+        let plug = def_by_pn(&base, "MS3476A20-41P");
+        assert_eq!(
+            (plug.gender.as_str(), plug.shell_size.as_deref()),
+            ("male", Some("20"))
+        );
+        assert_eq!(plug.cavities.len(), 41);
+        let has = |id: &str| plug.cavities.iter().any(|c| c.cavity_id == id);
+        assert!(has("t") && has("N") && has("n") && !has("l") && !has("I"));
+        let engine = def_by_pn(&base, "MS3476L24-61P");
+        assert_eq!(plug.contact_part_id, engine.contact_part_id);
+        assert_eq!(plug.seal_plug_part_id, engine.seal_plug_part_id);
     }
 
     #[test]

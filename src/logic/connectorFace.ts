@@ -12,6 +12,8 @@
  * - MIL-DTL-26482 Serie 2: el mismo arreglo de MIL-STD-1560 con esas vías
  *   (el 24-61 del MS3476L24-61P coincide con el 25-61: comparado letra por
  *   letra con fotos de la pieza que pasó Martin).
+ * - MIL-DTL-26482 Serie 2 inserto 20-41 (no está en MIL-STD-1560): anillos leídos
+ *   de las fotos del MS3476A20-41P; cada vía coincide con el reparto parejo.
  * - AMP Superseal 1.0 (26 y 34 vías, los del MoTeC PDM30/M1): vista trasera de
  *   la hembra publicada por Corsa Technic (SS10-26S-X, SS10-34S-X); paso 3 mm,
  *   filas a 3,5 / 4 / 3,5 mm (TE 4-1437290-0).
@@ -98,6 +100,23 @@ function deutschRearGrid(ways: number, triangle: boolean): { grid: Grid; checked
 /** Paso entre vías (mm) por familia; el dibujo es proporcionado, no un plano. */
 const PITCH: Record<string, number> = { DT: 5.5, DTM: 4.2, DTP: 7.5, SUPERSEAL: 3.5 };
 
+/**
+ * Inserto 20-41 de MIL-DTL-26482, en el formato de MIL-STD-1560 (cara del inserto
+ * de pines): "t" al centro y tres anillos parejos que arrancan a las 12 y siguen
+ * en sentido horario. Radios en mm, proporcionados con la foto.
+ */
+const INSERT_20_41 = ([
+  [0, ["t"]],
+  [3.7, [..."kmnpqrs"]],
+  [6.95, [..."XYZabcdefghij"]],
+  [10.2, [..."ABCDEFGHJKLMNPRSTUVW"]],
+] as [number, string[]][]).flatMap(([radius, ids]) =>
+  ids.map((id, i) => {
+    const angle = (2 * Math.PI * i) / ids.length;
+    return [id, "20", (radius * Math.sin(angle)) / 25.4, (radius * Math.cos(angle)) / 25.4];
+  }),
+);
+
 /** Radio dibujado del contacto (pulgadas) por tamaño MIL. */
 const MIL_CONTACT_R: Record<string, number> = {
   "23-22": 0.02, "22D": 0.022, "22M": 0.022, "22": 0.022, "20": 0.03, "16": 0.045,
@@ -127,7 +146,7 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
   if (!fam || def.cavities.length === 0) return null;
   if (fam === "MIL") return milFace(def, mil);
   if (fam === "MIL26482") {
-    const face = milFace(def, mil);
+    const face = milFace(def, { ...mil, "20-41": INSERT_20_41 });
     return face && { ...face, numbering: "datasheet" };
   }
   if (fam === "SUPERSEAL10") return superseal10Face(def);

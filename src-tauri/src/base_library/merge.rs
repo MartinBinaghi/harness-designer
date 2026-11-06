@@ -227,7 +227,7 @@ mod tests {
         });
 
         let merged = merge_base_library(&old);
-        let receptacle = def_by_pn(&merged, "MS3470L24-61S");
+        let receptacle = def_by_pn(&merged, "MS3470A24-61S");
         assert_eq!(
             def_by_pn(&merged, "MS3476L24-61P").counterpart_id,
             Some(receptacle.part_id)

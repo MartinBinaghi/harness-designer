@@ -244,6 +244,14 @@ const MIL_61: &[&str] = &[
     "JJ", "KK", "LL", "MM", "NN", "PP",
 ];
 
+/// Vías del inserto 20-41 de MIL-DTL-26482 Serie 2 (leídas de las fotos del
+/// MS3476A20-41P; distingue mayúsculas: no hay I, O, Q, l ni o).
+const MIL_41: &[&str] = &[
+    "A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "P", "R", "S", "T", "U", "V",
+    "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "m", "n", "p", "q",
+    "r", "s", "t",
+];
+
 pub(super) const OTHER_HOUSINGS: &[Housing] = &[
     Housing {
         part_number: "1J0 973 724",
@@ -310,18 +318,33 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         contacts: MIL_20_PIN,
         seal_plug: Some("MS27488-20"),
     },
-    // Fotos de Martin (2026-11-06): receptáculo de brida cuadrada, sockets, el
-    // mismo inserto 24-61. El terminado (la L) no se ve en la pieza.
+    // El "interco" de Martin (2026-11-06): plug negro con dado rojo, sin contactos
+    // puestos. Marcado Corsair, J, 2616, c.
     Housing {
-        part_number: "MS3470L24-61S",
-        manufacturer: "MIL-DTL-26482",
+        part_number: "MS3476A20-41P",
+        manufacturer: "Corsair",
+        series: "MIL-DTL-26482 II",
+        gender: "male",
+        contact_size: "20",
+        shell_size: Some("20"),
+        suggested_termination: Some("boot"),
+        cavities: MIL_41,
+        description: "MIL-DTL-26482 Series 2 bayonet plug, shell 20, 41 × size 20 pin contacts",
+        contacts: MIL_20_PIN,
+        seal_plug: Some("MS27488-20"),
+    },
+    // Fotos y datos de Martin (2026-11-06): receptáculo de brida cuadrada, sockets,
+    // el mismo inserto 24-61. Motor interno; marcado "2607B", "aero jan".
+    Housing {
+        part_number: "MS3470A24-61S",
+        manufacturer: "Aero JAN",
         series: "MIL-DTL-26482 II",
         gender: "female",
         contact_size: "20",
         shell_size: Some("24"),
         suggested_termination: Some("boot"),
         cavities: MIL_61,
-        description: "MIL-DTL-26482 Series 2 bayonet wall-mount receptacle, square flange, shell 24, 61 × size 20 socket contacts (shell finish to confirm)",
+        description: "MIL-DTL-26482 Series 2 bayonet wall-mount receptacle, square flange, shell 24, 61 × size 20 socket contacts",
         contacts: MIL_20_SOCKET,
         seal_plug: Some("MS27488-20"),
     },
@@ -382,7 +405,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
 ];
 
 /// Carcasas sueltas que enchufan entre sí: (macho, hembra).
-pub(super) const MATED_HOUSINGS: &[(&str, &str)] = &[("MS3476L24-61P", "MS3470L24-61S")];
+pub(super) const MATED_HOUSINGS: &[(&str, &str)] = &[("MS3476L24-61P", "MS3470A24-61S")];
 
 /// Conectores del arnés para la ECU Marelli SRG 140/141, de la hoja "SRG14x
 /// connectors" y las fotos de Martin (2026-11-06). Van con el nombre de la hoja
@@ -445,7 +468,7 @@ pub(super) const BOOTS: &[Boot] = &[
         cable_max_mm: 25.4,
         length_mm: 66.8,
         description: "Raychem straight boot, size 42, fluid-resistant elastomer; connector end Ø 17.8–31.0 mm",
-        fits: &[],
+        fits: &[("MIL-DTL-26482 II", "20")],
     },
     Boot {
         part_number: "202A163-25-CS-2117-0",

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { cavitySpacing, connectorFace, hull, wireSide, type MilArrangements } from "../logic/connectorFace";
 import type { ConnectorDef } from "../model/library";
+import { CloseIcon, MaximizeIcon } from "./icons";
 import milStd1560 from "../data/mil-std-1560.json";
 
 const MIL = milStd1560.arrangements as MilArrangements;
@@ -13,9 +14,9 @@ const NUMBERING_NOTE = {
 
 /**
  * Cara del conector dibujada a partir de su serie y sus vías (ver
- * connectorFace.ts), con selector cara de acople / lado cables. `used` resalta
- * las vías que tienen cable. `fixedSide` muestra solo esa vista, sin selector
- * (hojas impresas). `names` escribe el nombre de cada pin debajo de su vía
+ * connectorFace.ts), con selector cara de acople / lado cables y botón para verla
+ * en grande. `used` resalta las vías que tienen cable. `fixedSide` muestra solo
+ * esa vista, sin selector ni botón (hojas impresas). `names` escribe el nombre de cada pin debajo de su vía
  * (dispositivos), `selected` la resalta y `onPick` avisa el clic en una vía.
  * No muestra nada si la familia no se reconoce.
  */
@@ -28,6 +29,7 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
   onPick?: (cavityId: string) => void;
 }) {
   const [chosenSide, setSide] = useState<"front" | "rear">("front");
+  const [enlarged, setEnlarged] = useState(false);
   const side = fixedSide ?? chosenSide;
   const front = useMemo(() => connectorFace(def, MIL), [def]);
   const spacing = useMemo(() => front && cavitySpacing(front), [front]);
@@ -39,7 +41,7 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
   let body;
   let box: [number, number, number, number]; // minX, minY, maxX, maxY
   if (face.shape === "circle") {
-    const key = o * 0.14;
+    const key = o * 0.1;
     body = (
       <>
         <circle r={o} className="cf-body" />
@@ -107,8 +109,13 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
   // Muchas vías en una carcasa apaisada (ECU): a tamaño normal no se leen los números.
   const wide = face.cavities.length > 40 && box[2] - box[0] > 2 * (box[3] - box[1]);
 
-  return (
-    <figure className={wide ? "connector-face cf-wide" : "connector-face"}>
+  const sideToggle = (
+    <span className="cf-toggle">
+      <button className={side === "front" ? "active" : ""} onClick={() => setSide("front")}>Mating face</button>
+      <button className={side === "rear" ? "active" : ""} onClick={() => setSide("rear")}>Wire side</button>
+    </span>
+  );
+  const drawing = (
       <svg viewBox={viewBox} role="img" aria-label={`${side === "front" ? "Mating face" : "Wire side"} with cavity numbers`}>
         {body}
         {face.slots?.map((s, i) => <rect key={i} x={s.x - s.w / 2} y={s.y - s.h / 2} width={s.w} height={s.h} className="cf-slot" />)}
@@ -134,17 +141,42 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
           );
         })}
       </svg>
+  );
+
+  return (
+    <figure className={wide ? "connector-face cf-wide" : "connector-face"}>
+      {drawing}
       <figcaption>
         {fixedSide ? (
           <span className="cf-fixed-side">{side === "front" ? "Mating face" : "Wire side"}</span>
         ) : (
-          <span className="cf-toggle">
-            <button className={side === "front" ? "active" : ""} onClick={() => setSide("front")}>Mating face</button>
-            <button className={side === "rear" ? "active" : ""} onClick={() => setSide("rear")}>Wire side</button>
+          <span className="cf-controls">
+            {sideToggle}
+            <button className="icon-button" onClick={() => setEnlarged(true)} title="Enlarge drawing" aria-label="Enlarge drawing">
+              <MaximizeIcon />
+            </button>
           </span>
         )}
         <span className="hint">Drawn by the program · {NUMBERING_NOTE[face.numbering]}</span>
       </figcaption>
+      {enlarged && (
+        <dialog
+          className="cf-dialog"
+          ref={(el) => { if (el && !el.open) el.showModal(); }}
+          onClose={() => setEnlarged(false)}
+          onClick={(e) => { if (e.target === e.currentTarget) setEnlarged(false); }}
+        >
+          <div className="cf-dialog-body">
+            <div className="cf-dialog-bar">
+              {sideToggle}
+              <button className="icon-button" onClick={() => setEnlarged(false)} title="Close" aria-label="Close">
+                <CloseIcon />
+              </button>
+            </div>
+            {drawing}
+          </div>
+        </dialog>
+      )}
     </figure>
   );
 }

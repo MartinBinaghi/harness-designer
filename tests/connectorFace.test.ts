@@ -117,10 +117,27 @@ assert.equal(connectorFace(def("DTM", "male", [["1", "20"], ["X", "20"]]), mil),
 
 console.log("connector face: ok");
 
-// Receptáculo MS3470L24-61S (fotos de la pieza): sockets, cara de acople con B y A a la izquierda y Z e Y a la derecha, arriba.
+// Receptáculo MS3470A24-61S (fotos de la pieza): sockets, cara de acople con B y A a la izquierda y Z e Y a la derecha, arriba.
 const ms61s = connectorFace(def("MIL-DTL-26482 II", "female", mil["25-61"].map(([id, size]): [string, string] => [String(id), String(size)]), "24"), mil)!;
 assert.ok(at(ms61s, "B").x < at(ms61s, "A").x && at(ms61s, "A").x < 0 && at(ms61s, "A").y < 0);
 assert.ok(at(ms61s, "Z").x > 0 && at(ms61s, "Z").x < at(ms61s, "Y").x);
+
+// Inserto 20-41 (fotos del MS3476A20-41P). Cara de los pines: A arriba y B a su derecha, L abajo, t al centro;
+// lado cables, al revés: W a la derecha de la A y B a la izquierda.
+const ids41 = [..."ABCDEFGHJKLMNPRSTUVWXYZabcdefghijkmnpqrst"];
+assert.equal(ids41.length, 41);
+const ms41p = connectorFace(def("MIL-DTL-26482 II", "male", ids41.map((id): [string, string] => [id, "20"]), "20"), mil)!;
+assert.equal(ms41p.numbering, "datasheet");
+assert.equal(ms41p.cavities.length, 41);
+assert.ok(Math.abs(at(ms41p, "A").x) < 1e-9 && at(ms41p, "A").y < 0 && at(ms41p, "B").x > 0);
+assert.ok(Math.abs(at(ms41p, "L").x) < 1e-9 && at(ms41p, "L").y > 0);
+assert.ok(at(ms41p, "F").x > 0 && Math.abs(at(ms41p, "F").y) < 1e-9); // a 90° de la A
+assert.ok(at(ms41p, "X").y < 0 && at(ms41p, "X").y > at(ms41p, "A").y && at(ms41p, "k").y > at(ms41p, "X").y);
+assert.equal(Math.hypot(at(ms41p, "t").x, at(ms41p, "t").y), 0);
+const rear41 = wireSide(ms41p);
+assert.ok(at(rear41, "B").x < 0 && at(rear41, "W").x > 0);
+// Hembra del mismo inserto: su cara es la vista trasera del macho.
+assert.deepEqual(connectorFace(def("MIL-DTL-26482 II", "female", ids41.map((id): [string, string] => [id, "20"]), "20"), mil)!.cavities, rear41.cavities);
 
 // Delphi GT 150 de 3 vías: en línea, ovalada, A a la derecha en la cara de acople de la hembra (dato de Martin).
 const gt3 = connectorFace(def("GT 150", "female", [["A", "GT 150"], ["B", "GT 150"], ["C", "GT 150"]]), mil)!;
