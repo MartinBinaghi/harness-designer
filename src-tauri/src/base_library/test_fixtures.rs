@@ -25,3 +25,8 @@ pub(super) fn housing_contacts() -> BTreeSet<&'static str> {
         .flat_map(|h| h.contacts.iter().map(|c| c.part_number))
         .collect()
 }
+
+/// Tapones distintos de las carcasas sueltas (varias comparten el mismo).
+pub(super) fn housing_seal_plugs() -> BTreeSet<&'static str> {
+    OTHER_HOUSINGS.iter().filter_map(|h| h.seal_plug).collect()
+}

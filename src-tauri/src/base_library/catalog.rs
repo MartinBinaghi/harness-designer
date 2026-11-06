@@ -163,12 +163,39 @@ pub(super) struct Contact {
 }
 
 const MIL_20_PIN: &[Contact] = &[Contact {
-    part_number: "M39029/58-360",
+    part_number: "M39029/4-110",
     manufacturer: "MIL-DTL-26482",
     description: "Size 20 crimp pin contact, 24–20 AWG (MIL-DTL-26482 Series 2)",
     gauge_min: "24 AWG",
     gauge_max: "20 AWG",
 }];
+
+const MIL_20_SOCKET: &[Contact] = &[Contact {
+    part_number: "M39029/5-115",
+    manufacturer: "MIL-DTL-26482",
+    description: "Size 20 crimp socket contact, 24–20 AWG (MIL-DTL-26482 Series 2)",
+    gauge_min: "24 AWG",
+    gauge_max: "20 AWG",
+}];
+
+/// Terminales hembra sellados de GT 150 (catálogo Delphi "GT Series", pág. 1.6).
+/// Los sellos de cable (blanco 1,20–1,90 mm, azul 1,86–2,40 mm) no están en el modelo.
+const GT150_SEALED_SOCKETS: &[Contact] = &[
+    Contact {
+        part_number: "12191818",
+        manufacturer: "Aptiv / Delphi",
+        description: "GT 150 sealed female terminal, 0.35–0.5 mm²",
+        gauge_min: "0.35 mm²",
+        gauge_max: "0.5 mm²",
+    },
+    Contact {
+        part_number: "12191819",
+        manufacturer: "Aptiv / Delphi",
+        description: "GT 150 sealed female terminal, 0.75–1.0 mm²",
+        gauge_min: "0.75 mm²",
+        gauge_max: "1.0 mm²",
+    },
+];
 
 /// Junior Power Timer 2.8 hembra con sello de cable (catálogo TE 889759-3):
 /// el terminal de las fichas que el taller llama "Mini Timer" (EV1) y de la
@@ -283,6 +310,36 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         contacts: MIL_20_PIN,
         seal_plug: Some("MS27488-20"),
     },
+    // Fotos de Martin (2026-11-06): receptáculo de brida cuadrada, sockets, el
+    // mismo inserto 24-61. El terminado (la L) no se ve en la pieza.
+    Housing {
+        part_number: "MS3470L24-61S",
+        manufacturer: "MIL-DTL-26482",
+        series: "MIL-DTL-26482 II",
+        gender: "female",
+        contact_size: "20",
+        shell_size: Some("24"),
+        suggested_termination: Some("boot"),
+        cavities: MIL_61,
+        description: "MIL-DTL-26482 Series 2 bayonet wall-mount receptacle, square flange, shell 24, 61 × size 20 socket contacts (shell finish to confirm)",
+        contacts: MIL_20_SOCKET,
+        seal_plug: Some("MS27488-20"),
+    },
+    // Foto de Martin (2026-11-06): marca Delphi, sello azul y traba lila; 13519047
+    // es la GT 150 sellada 3 vías hembra del catálogo, sin codificado USCAR.
+    Housing {
+        part_number: "13519047",
+        manufacturer: "Aptiv / Delphi",
+        series: "GT 150",
+        gender: "female",
+        contact_size: "GT 150",
+        shell_size: None,
+        suggested_termination: None,
+        cavities: &["A", "B", "C"],
+        description: "GT 150 sealed 3-way female connector assembly (part number to confirm on the part)",
+        contacts: GT150_SEALED_SOCKETS,
+        seal_plug: Some("15305171"),
+    },
     Housing {
         part_number: "MINI TYMER 02W-F",
         manufacturer: "—",
@@ -321,6 +378,92 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "Ring terminal (ojal) for 16 mm² wire, 6 mm hole (M6)",
         contacts: &[],
         seal_plug: None,
+    },
+];
+
+/// Carcasas sueltas que enchufan entre sí: (macho, hembra).
+pub(super) const MATED_HOUSINGS: &[(&str, &str)] = &[("MS3476L24-61P", "MS3470L24-61S")];
+
+/// Conectores del arnés para la ECU Marelli SRG 140/141, de la hoja "SRG14x
+/// connectors" y las fotos de Martin (2026-11-06). Van con el nombre de la hoja
+/// hasta tener el número de parte. Tres tamaños de vía (el paso se ve en la
+/// pieza; sus contactos todavía no se conocen): los que no se listan son "SRG signal".
+pub(super) struct SrgLoom {
+    pub(super) part_number: &'static str,
+    pub(super) description: &'static str,
+    pub(super) ways: usize,
+    /// (tamaño de contacto, vías de ese tamaño)
+    pub(super) sizes: &'static [(&'static str, &'static [usize])],
+}
+
+pub(super) const SRG_LOOM: &[SrgLoom] = &[
+    SrgLoom {
+        part_number: "SRG14x LOOM A",
+        description: "Marelli SRG 140/141 ECU loom connector A, 105-way (name as in the pinout sheet; part number to confirm)",
+        ways: 105,
+        sizes: &[(
+            "SRG medium",
+            &[
+                1, 2, 3, 4, 22, 23, 24, 25, 43, 44, 45, 46, 64, 65, 66, 67, 85, 86, 87, 88,
+            ],
+        )],
+    },
+    SrgLoom {
+        part_number: "SRG14x LOOM K",
+        description: "Marelli SRG 140/141 ECU loom connector K (B), 91-way: pins 1–6 power (name as in the pinout sheet; part number to confirm)",
+        ways: 91,
+        sizes: &[
+            ("SRG power", &[1, 2, 3, 4, 5, 6]),
+            ("SRG medium", &[22, 23, 39, 40, 56, 57, 73, 74, 90, 91]),
+        ],
+    },
+];
+
+/// Boots moldeados Raychem del taller (fotos de las bolsas, 2026-11-06). Los
+/// CS-2117 son una variante del 202A…-25-0 que no aparece en el catálogo: se
+/// usan los datos del 202A…-25-0. Rango del lado cable: página de TE de cada
+/// parte; largo: hoja del distribuidor (la del 222A163 no se encontró: 0 hasta
+/// medirla). El solape es provisorio (plan 9.2: mayor que el del termo).
+pub(super) struct Boot {
+    pub(super) part_number: &'static str,
+    pub(super) orientation: &'static str,
+    pub(super) cable_min_mm: f64,
+    pub(super) cable_max_mm: f64,
+    pub(super) length_mm: f64,
+    pub(super) description: &'static str,
+    /// (serie, tamaño de carcasa) de los conectores con los que calza.
+    pub(super) fits: &'static [(&'static str, &'static str)],
+}
+
+pub(super) const BOOT_OVERLAP_MM: f64 = 40.0;
+
+pub(super) const BOOTS: &[Boot] = &[
+    Boot {
+        part_number: "202A142-25-CS-2117-0",
+        orientation: "straight",
+        cable_min_mm: 7.4,
+        cable_max_mm: 25.4,
+        length_mm: 66.8,
+        description: "Raychem straight boot, size 42, fluid-resistant elastomer; connector end Ø 17.8–31.0 mm",
+        fits: &[],
+    },
+    Boot {
+        part_number: "202A163-25-CS-2117-0",
+        orientation: "straight",
+        cable_min_mm: 9.4,
+        cable_max_mm: 27.2,
+        length_mm: 99.1,
+        description: "Raychem straight boot, size 63, fluid-resistant elastomer; connector end Ø 27.4–42.7 mm",
+        fits: &[("MIL-DTL-26482 II", "24")],
+    },
+    Boot {
+        part_number: "222A163-25-0",
+        orientation: "right_angle",
+        cable_min_mm: 9.4,
+        cable_max_mm: 27.4,
+        length_mm: 0.0,
+        description: "Raychem right-angle boot, size 63, fluid-resistant elastomer (leg length to measure)",
+        fits: &[("MIL-DTL-26482 II", "24")],
     },
 ];
 

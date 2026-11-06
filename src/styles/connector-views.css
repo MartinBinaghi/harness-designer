@@ -87,6 +87,11 @@
   margin: 0 auto;
 }
 
+.connector-face.cf-wide svg {
+  max-width: 100%;
+  max-height: none;
+}
+
 .connector-face .cf-body,
 .connector-face .cf-body-fill {
   fill: var(--surface-2);
@@ -106,7 +111,12 @@
   fill: var(--text-muted);
 }
 
-.connector-face .cf-cavity circle {
+.connector-face .cf-slot {
+  fill: var(--text-muted);
+  opacity: 0.45;
+}
+
+.connector-face .cf-cavity :is(circle, rect) {
   fill: var(--surface);
   stroke: var(--text-muted);
   stroke-width: 0.15px;
@@ -118,7 +128,7 @@
   font-weight: 600;
 }
 
-.connector-face .cf-used circle {
+.connector-face .cf-used :is(circle, rect) {
   fill: var(--accent);
   stroke: var(--accent);
 }

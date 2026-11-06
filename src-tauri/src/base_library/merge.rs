@@ -2,7 +2,7 @@
 
 use super::build::base_library;
 use crate::model::library::{
-    ConnectorDef, ContactDef, CoveringDef, Library, Part, SealPlugDef, WireDef,
+    AccessoryDef, ConnectorDef, ContactDef, CoveringDef, Library, Part, SealPlugDef, WireDef,
 };
 use std::collections::HashMap;
 
@@ -49,8 +49,8 @@ pub fn merge_base_library(library: &Library) -> Library {
             ..def
         });
     }
-    // Carcasas que ya estaban (de una base anterior, sin contacto ni tapón):
-    // se completan esos dos campos si están vacíos; el resto no se toca.
+    // Carcasas que ya estaban (de una base anterior, sin contacto, tapón o
+    // contraparte): se completan esos campos si están vacíos; el resto no se toca.
     for def in &base.connector_defs {
         let Some(existing) = merged
             .connector_defs
@@ -64,6 +64,9 @@ pub fn merge_base_library(library: &Library) -> Library {
         }
         if existing.seal_plug_part_id.is_none() {
             existing.seal_plug_part_id = def.seal_plug_part_id.map(|c| id_map[&c]);
+        }
+        if existing.counterpart_id.is_none() {
+            existing.counterpart_id = def.counterpart_id.map(|c| id_map[&c]);
         }
     }
     let new_id = |part_id: i64| added.contains(&part_id).then(|| id_map[&part_id]);
@@ -86,6 +89,14 @@ pub fn merge_base_library(library: &Library) -> Library {
     for def in &base.covering_defs {
         if let Some(part_id) = new_id(def.part_id) {
             merged.covering_defs.push(CoveringDef {
+                part_id,
+                ..def.clone()
+            });
+        }
+    }
+    for def in &base.accessory_defs {
+        if let Some(part_id) = new_id(def.part_id) {
+            merged.accessory_defs.push(AccessoryDef {
                 part_id,
                 ..def.clone()
             });
@@ -193,6 +204,35 @@ mod tests {
             .id;
         assert_eq!(def_by_pn(&merged, "DT06-2S").contact_part_id, Some(socket));
         assert!(def_by_pn(&merged, "DT06-2S").seal_plug_part_id.is_some());
+    }
+
+    #[test]
+    fn merging_links_a_new_housing_to_a_counterpart_already_loaded() {
+        // La biblioteca de Martin ya tiene el MS3476L24-61P, sin contraparte.
+        let base = base_library();
+        let plug = def_by_pn(&base, "MS3476L24-61P").clone();
+        let mut old = Library::default();
+        old.parts.push(
+            base.parts
+                .iter()
+                .find(|p| p.id == plug.part_id)
+                .unwrap()
+                .clone(),
+        );
+        old.connector_defs.push(ConnectorDef {
+            contact_part_id: None,
+            seal_plug_part_id: None,
+            counterpart_id: None,
+            ..plug
+        });
+
+        let merged = merge_base_library(&old);
+        let receptacle = def_by_pn(&merged, "MS3470L24-61S");
+        assert_eq!(
+            def_by_pn(&merged, "MS3476L24-61P").counterpart_id,
+            Some(receptacle.part_id)
+        );
+        assert_eq!(merged.accessory_defs.len(), base.accessory_defs.len());
     }
 
     /// Mantenimiento, no un test: suma a la biblioteca que trae el instalador

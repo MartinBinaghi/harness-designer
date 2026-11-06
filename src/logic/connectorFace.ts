@@ -15,6 +15,8 @@
  * - AMP Superseal 1.0 (26 y 34 vías, los del MoTeC PDM30/M1): vista trasera de
  *   la hembra publicada por Corsa Technic (SS10-26S-X, SS10-34S-X); paso 3 mm,
  *   filas a 3,5 / 4 / 3,5 mm (TE 4-1437290-0).
+ * - Marelli SRG 140/141 (conectores A y K del arnés): hoja "SRG14x connectors"
+ *   (Loom connectors, front view), comparada con fotos de las piezas.
  *
  * Coordenadas en mm, x a la derecha, y hacia abajo, vista desde la cara de
  * acople (frontal). La vista del lado de los cables es la misma espejada.
@@ -26,6 +28,17 @@ export interface FaceCavity {
   x: number;
   y: number;
   r: number;
+  /** Vía rectangular (ancho y alto, centrada en x, y); sin esto, un círculo de radio r. */
+  w?: number;
+  h?: number;
+}
+
+/** Ranura de la carcasa (rectángulo centrado en x, y): solo dibujo, no es una vía. */
+export interface FaceSlot {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface ConnectorFace {
@@ -41,6 +54,12 @@ export interface ConnectorFace {
   /** Traba (Deutsch/Superseal/VAG) o chavetero principal (circular): marca la orientación. "none": sin traba (termocupla). */
   latch: "top" | "sides" | "none";
   cavities: FaceCavity[];
+  slots?: FaceSlot[];
+  /**
+   * Cómo se da vuelta para ver el lado cables: por defecto de izquierda a derecha;
+   * "vertical", de arriba abajo (la pieza se gira sobre su eje largo).
+   */
+  wireFlip?: "vertical";
   /** Origen de la numeración, para avisar cuando no se pudo confirmar. */
   numbering: "datasheet" | "inferred" | "standard";
 }
@@ -91,6 +110,8 @@ function family(series: string | null): string | null {
   if (/^SUPERSEAL\s*1\.0/.test(s)) return "SUPERSEAL10";
   if (/^VAG\b/.test(s)) return "VAG";
   if (/^MINI\s*TIMER/.test(s)) return "MINITIMER";
+  if (/^GT\s*150/.test(s)) return "GT150";
+  if (s.includes("SRG14")) return "SRG";
   if (s.includes("THERMOCOUPLE")) return "TC";
   if (s.startsWith("SUPERSEAL")) return "SUPERSEAL";
   if (/38999|27599|29600/.test(s)) return "MIL";
@@ -98,7 +119,7 @@ function family(series: string | null): string | null {
   return null;
 }
 
-const mirror = (cavities: FaceCavity[]) => cavities.map((c) => ({ ...c, x: -c.x }));
+const mirror = <T extends { x: number }>(items: T[]): T[] => items.map((c) => ({ ...c, x: -c.x }));
 
 /** Cara frontal del conector, o null si la familia o la lista de vías no se reconocen. */
 export function connectorFace(def: ConnectorDef, mil: MilArrangements): ConnectorFace | null {
@@ -111,7 +132,14 @@ export function connectorFace(def: ConnectorDef, mil: MilArrangements): Connecto
   }
   if (fam === "SUPERSEAL10") return superseal10Face(def);
   if (fam === "VAG") return vagFace(def);
-  if (fam === "MINITIMER") return miniTimerFace(def);
+  if (fam === "MINITIMER") return inlineFace(def, "rect");
+  if (fam === "GT150") {
+    // Al revés que la Mini Timer: en la cara de acople de la hembra la A va a la
+    // derecha (dato de Martin, 3 vías).
+    const face = inlineFace(def, "hull");
+    return face && { ...face, cavities: mirror(face.cavities), numbering: def.cavities.length === 3 ? "datasheet" : "inferred" };
+  }
+  if (fam === "SRG") return srgFace(def);
   if (fam === "TC") return thermocoupleFace(def);
 
   const ways = def.cavities.length;
@@ -201,17 +229,55 @@ function vagFace(def: ConnectorDef): ConnectorFace | null {
 }
 
 /**
- * Fichas Mini Timer en línea (2–4 vías, ej. la ficha original de un sensor de
- * 3 vías A-B-C): carcasa rectangular con la traba arriba. En la cara de acople
- * de la hembra las vías van de izquierda a derecha en su orden (A a la
- * izquierda, dato de Martin); el macho es su espejo.
+ * Fichas en línea de 2–4 vías con la traba arriba: Mini Timer (rectangular, ej.
+ * la ficha original de un sensor de 3 vías A-B-C) y Delphi GT 150 (ovalada). En
+ * la cara de acople de la hembra de la Mini Timer las vías van de izquierda a
+ * derecha en su orden (A a la izquierda, dato de Martin); el macho es su espejo.
  */
-function miniTimerFace(def: ConnectorDef): ConnectorFace | null {
+function inlineFace(def: ConnectorDef, shape: "rect" | "hull"): ConnectorFace | null {
   const ways = def.cavities.length;
   if (ways < 2 || ways > 4) return null;
   const pitch = 5;
   const femaleFace = def.cavities.map((c, i) => ({ id: c.cavity_id, x: (i - (ways - 1) / 2) * pitch, y: 0, r: pitch * 0.32 }));
-  return { shape: "rect", outline: pitch * 0.75, latch: "top", cavities: def.gender === "male" ? mirror(femaleFace) : femaleFace, numbering: "inferred" };
+  return { shape, outline: pitch * 0.75, latch: "top", cavities: def.gender === "male" ? mirror(femaleFace) : femaleFace, numbering: "inferred" };
+}
+
+/**
+ * Conectores del arnés de la ECU Marelli SRG 140/141, vista frontal como la hoja
+ * "SRG14x connectors": cinco filas de vías rectangulares con una ranura entre la
+ * segunda y la tercera. El A (105) tiene 21 vías por fila, las 4 de la izquierda de paso
+ * ancho; el K (91) tiene 17 por fila, las 2 de la derecha de paso ancho, y a la
+ * izquierda las de potencia 1–6, de a dos por fila (arriba, medio, abajo). El
+ * lado cables se da vuelta de arriba abajo, como "ECU front view" en la hoja.
+ */
+function srgFace(def: ConnectorDef): ConnectorFace | null {
+  const ways = def.cavities.length;
+  const ids = new Set(def.cavities.map((c) => c.cavity_id));
+  if (![91, 105].includes(ways) || !Array.from({ length: ways }, (_, i) => String(i + 1)).every((id) => ids.has(id))) return null;
+  // Las de paso angosto van pegadas (comparten la línea que las separa); las anchas, sueltas.
+  const narrow = 2.5, wide = 3.3, wideCell = 3, cellH = 3.4, rowY = [0, 4.4, 10.4, 14.8, 19.2];
+  const isA = ways === 105;
+  const steps: number[] = isA ? [...Array(4).fill(wide), ...Array(17).fill(narrow)] : [...Array(15).fill(narrow), ...Array(2).fill(wide)];
+  const xs = steps.reduce<number[]>((list, step, i) => [...list, i === 0 ? (isA ? 0 : 13.5) : list[i - 1] + (step + steps[i - 1]) / 2], []);
+  const signal = rowY.flatMap((y, row) =>
+    xs.map((x, i) => {
+      const w = steps[i] === wide ? wideCell : narrow;
+      return { id: String((isA ? 1 : 7) + row * xs.length + i), x, y, r: w / 2, w, h: cellH };
+    }),
+  );
+  const powerW = 6.4;
+  const power = [[0, 2.2], [powerW, 2.2], [0, 9.6], [powerW, 9.6], [0, 17], [powerW, 17]].map(([x, y], i) => ({ id: String(i + 1), x, y, r: cellH / 2, w: powerW, h: cellH }));
+  const all = isA ? signal : [...power, ...signal];
+  const cx = (Math.min(...all.map((c) => c.x)) + Math.max(...all.map((c) => c.x))) / 2;
+  const cy = rowY[4] / 2;
+  const front = all.map((c) => ({ ...c, x: c.x - cx, y: c.y - cy }));
+  // La ranura entre la segunda y la tercera fila, en tres tramos.
+  const left = xs[0] - cx - steps[0] / 2;
+  const span = xs[xs.length - 1] + steps[steps.length - 1] / 2 - xs[0] + steps[0] / 2;
+  const gap = 1.2, slotW = (span - 2 * gap) / 3;
+  const slots = [0, 1, 2].map((i) => ({ x: left + slotW / 2 + i * (slotW + gap), y: (rowY[1] + rowY[2]) / 2 - cy, w: slotW, h: 1.5 }));
+  const male = def.gender === "male";
+  return { shape: "rect", outline: Math.max(...all.map((c) => c.w)) / 2 + 1.2, latch: "none", cavities: male ? mirror(front) : front, slots: male ? mirror(slots) : slots, wireFlip: "vertical", numbering: "datasheet" };
 }
 
 /**
@@ -255,7 +321,8 @@ function milFace(def: ConnectorDef, mil: MilArrangements): ConnectorFace | null 
 
 /** Vista desde el lado de los cables (por donde se insertan los contactos). */
 export function wireSide(face: ConnectorFace): ConnectorFace {
-  return { ...face, cavities: mirror(face.cavities) };
+  const flip = <T extends { x: number; y: number }>(items: T[]) => (face.wireFlip === "vertical" ? items.map((c) => ({ ...c, y: -c.y })) : mirror(items));
+  return { ...face, cavities: flip(face.cavities), slots: face.slots && flip(face.slots) };
 }
 
 /** Envolvente convexa de los centros (cadena monótona); con trazo grueso y uniones redondeadas da el contorno. */
@@ -274,11 +341,15 @@ export function hull(face: ConnectorFace): [number, number][] {
   return [...half(pts), ...half([...pts].reverse())];
 }
 
-/** Distancia mínima entre centros de vías (para el tamaño de los números). */
-export function minSpacing(face: ConnectorFace): number {
-  let d = Infinity;
-  const cs = face.cavities;
-  for (let i = 0; i < cs.length; i++)
-    for (let j = i + 1; j < cs.length; j++) d = Math.min(d, Math.hypot(cs[i].x - cs[j].x, cs[i].y - cs[j].y));
-  return Number.isFinite(d) ? d : face.outline;
+/**
+ * Distancia de cada vía a su vecina más cercana (para el tamaño del círculo y
+ * del número): así una vía de potencia no queda del tamaño de las de señal.
+ */
+export function cavitySpacing(face: ConnectorFace): Map<string, number> {
+  return new Map(
+    face.cavities.map((c) => {
+      const others = face.cavities.filter((o) => o !== c).map((o) => Math.hypot(c.x - o.x, c.y - o.y));
+      return [c.id, others.length ? Math.min(...others) : face.outline];
+    }),
+  );
 }

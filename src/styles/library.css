@@ -338,7 +338,7 @@
 }
 
 /* Cara dibujada en Devices: vías con nombre y vía elegida; más grande que en la ficha del conector. */
-.connector-face .cf-named circle {
+.connector-face .cf-named :is(circle, rect) {
   fill: color-mix(in srgb, var(--accent) 16%, var(--surface));
   stroke: var(--accent);
 }

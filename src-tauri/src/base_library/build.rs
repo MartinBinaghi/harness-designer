@@ -1,11 +1,12 @@
 //! Arma la biblioteca base a partir del catálogo.
 
 use super::catalog::{
-    ATUM, DR_25, FAMILIES, M22759_32, OTHER_HOUSINGS, SUPERSEAL_10, SUPERSEAL_10_CAVITY_PLUG,
-    SUPERSEAL_10_SOCKETS,
+    ATUM, BOOTS, BOOT_OVERLAP_MM, DR_25, FAMILIES, M22759_32, MATED_HOUSINGS, OTHER_HOUSINGS,
+    SRG_LOOM, SUPERSEAL_10, SUPERSEAL_10_CAVITY_PLUG, SUPERSEAL_10_SOCKETS,
 };
 use crate::model::library::{
-    ConnectorDef, ConnectorDefCavity, ContactDef, CoveringDef, Library, Part, SealPlugDef, WireDef,
+    AccessoryDef, AccessoryDefConnectorMatch, ConnectorDef, ConnectorDefCavity, ContactDef,
+    CoveringDef, Library, Part, SealPlugDef, WireDef,
 };
 
 fn push_part(
@@ -234,6 +235,9 @@ pub fn base_library() -> Library {
             .collect();
         let contact_part_id = contact_ids.first().copied();
         let seal_plug_part_id = h.seal_plug.map(|pn| {
+            if let Some(p) = library.parts.iter().find(|p| p.part_number == pn) {
+                return p.id;
+            }
             let id = push_part(
                 &mut library,
                 pn.into(),
@@ -279,6 +283,86 @@ pub fn base_library() -> Library {
                 .map(|&cavity_id| ConnectorDefCavity {
                     cavity_id: cavity_id.into(),
                     contact_size: h.contact_size.into(),
+                })
+                .collect(),
+        });
+    }
+    for &(male, female) in MATED_HOUSINGS {
+        let id_of = |pn: &str| {
+            library
+                .parts
+                .iter()
+                .find(|p| p.part_number == pn)
+                .unwrap()
+                .id
+        };
+        let (male_id, female_id) = (id_of(male), id_of(female));
+        for def in &mut library.connector_defs {
+            if def.part_id == male_id {
+                def.counterpart_id = Some(female_id);
+            } else if def.part_id == female_id {
+                def.counterpart_id = Some(male_id);
+            }
+        }
+    }
+    for loom in SRG_LOOM {
+        let id = push_part(
+            &mut library,
+            loom.part_number.into(),
+            "Marelli",
+            format!("{} — {unverified}", loom.description),
+            "connector",
+            "unit",
+        );
+        library.connector_defs.push(ConnectorDef {
+            part_id: id,
+            gender: "female".into(),
+            series: Some("Marelli SRG14x".into()),
+            shell_size: None,
+            counterpart_id: None,
+            back_shape: None,
+            back_diameter_mm: None,
+            back_width_mm: None,
+            back_height_mm: None,
+            suggested_termination: None,
+            contact_part_id: None,
+            seal_plug_part_id: None,
+            adhesive_heatshrink_length_mm: None,
+            cavities: (1..=loom.ways)
+                .map(|n| ConnectorDefCavity {
+                    cavity_id: n.to_string(),
+                    contact_size: loom
+                        .sizes
+                        .iter()
+                        .find(|(_, ways)| ways.contains(&n))
+                        .map_or("SRG signal", |(size, _)| size)
+                        .into(),
+                })
+                .collect(),
+        });
+    }
+    for boot in BOOTS {
+        let id = push_part(
+            &mut library,
+            boot.part_number.into(),
+            "TE / Raychem",
+            format!("{} — {unverified}", boot.description),
+            "accessory",
+            "unit",
+        );
+        library.accessory_defs.push(AccessoryDef {
+            part_id: id,
+            orientation: boot.orientation.into(),
+            cable_side_min_diameter_mm: boot.cable_min_mm,
+            cable_side_max_diameter_mm: boot.cable_max_mm,
+            leg_length_mm: boot.length_mm,
+            overlap_mm: BOOT_OVERLAP_MM,
+            compatible_connectors: boot
+                .fits
+                .iter()
+                .map(|&(series, shell_size)| AccessoryDefConnectorMatch {
+                    series: series.into(),
+                    shell_size: shell_size.into(),
                 })
                 .collect(),
         });
@@ -363,10 +447,9 @@ mod tests {
                 + SUPERSEAL_10.len()
                 + OTHER_HOUSINGS.len()
                 + housing_contacts().len()
-                + OTHER_HOUSINGS
-                    .iter()
-                    .filter(|h| h.seal_plug.is_some())
-                    .count()
+                + housing_seal_plugs().len()
+                + SRG_LOOM.len()
+                + BOOTS.len()
                 + SUPERSEAL_10_SOCKETS.len()
                 + 1
                 + M22759_32.len()
@@ -474,6 +557,56 @@ mod tests {
     }
 
     #[test]
+    fn engine_receptacle_mates_the_plug_and_shares_its_seal_plug() {
+        let base = base_library();
+        let plug = def_by_pn(&base, "MS3476L24-61P");
+        let receptacle = def_by_pn(&base, "MS3470L24-61S");
+        assert_eq!(receptacle.gender, "female");
+        assert_eq!(plug.counterpart_id, Some(receptacle.part_id));
+        assert_eq!(receptacle.counterpart_id, Some(plug.part_id));
+        assert_eq!(receptacle.seal_plug_part_id, plug.seal_plug_part_id);
+        assert_ne!(receptacle.contact_part_id, plug.contact_part_id);
+        assert_eq!(receptacle.cavities, plug.cavities);
+    }
+
+    #[test]
+    fn srg_loom_connectors_carry_the_cavity_sizes_of_the_sheet() {
+        let base = base_library();
+        let count = |pn: &str, size: &str| {
+            def_by_pn(&base, pn)
+                .cavities
+                .iter()
+                .filter(|c| c.contact_size == size)
+                .count()
+        };
+        assert_eq!(def_by_pn(&base, "SRG14x LOOM A").cavities.len(), 105);
+        assert_eq!(count("SRG14x LOOM A", "SRG medium"), 20);
+        assert_eq!(count("SRG14x LOOM A", "SRG signal"), 85);
+        assert_eq!(def_by_pn(&base, "SRG14x LOOM K").cavities.len(), 91);
+        assert_eq!(count("SRG14x LOOM K", "SRG power"), 6);
+        assert_eq!(count("SRG14x LOOM K", "SRG medium"), 10);
+        assert_eq!(count("SRG14x LOOM K", "SRG signal"), 75);
+    }
+
+    #[test]
+    fn boots_are_loaded_and_size_63_fits_the_shell_24_engine_connector() {
+        let base = base_library();
+        assert_eq!(base.accessory_defs.len(), BOOTS.len());
+        let plug = def_by_pn(&base, "MS3476L24-61P");
+        let fitting = base
+            .accessory_defs
+            .iter()
+            .filter(|a| {
+                a.compatible_connectors.iter().any(|m| {
+                    Some(m.series.as_str()) == plug.series.as_deref()
+                        && Some(m.shell_size.as_str()) == plug.shell_size.as_deref()
+                })
+            })
+            .count();
+        assert_eq!(fitting, 2);
+    }
+
+    #[test]
     fn heat_shrink_sizes_read_as_their_nominal_inches() {
         let base = base_library();
         let id = base
@@ -541,7 +674,7 @@ mod tests {
         };
         assert_eq!(
             (pn(ms.contact_part_id), pn(ms.seal_plug_part_id)),
-            (Some("M39029/58-360"), Some("MS27488-20"))
+            (Some("M39029/4-110"), Some("MS27488-20"))
         );
         assert_eq!(
             def_by_pn(&base, "ORIGINAL 03W_F")

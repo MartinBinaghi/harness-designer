@@ -1,7 +1,7 @@
 // Chequeo de la cara dibujada de los conectores. Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { connectorFace, hull, wireSide, type MilArrangements } from "../src/logic/connectorFace.ts";
+import { cavitySpacing, connectorFace, hull, wireSide, type MilArrangements } from "../src/logic/connectorFace.ts";
 import type { ConnectorDef } from "../src/model/library.ts";
 
 const mil: MilArrangements = JSON.parse(readFileSync(new URL("../src/data/mil-std-1560.json", import.meta.url), "utf8")).arrangements;
@@ -116,3 +116,52 @@ assert.equal(connectorFace(def("DTM", "male", [["1", "20"], ["X", "20"]]), mil),
 }
 
 console.log("connector face: ok");
+
+// Receptáculo MS3470L24-61S (fotos de la pieza): sockets, cara de acople con B y A a la izquierda y Z e Y a la derecha, arriba.
+const ms61s = connectorFace(def("MIL-DTL-26482 II", "female", mil["25-61"].map(([id, size]): [string, string] => [String(id), String(size)]), "24"), mil)!;
+assert.ok(at(ms61s, "B").x < at(ms61s, "A").x && at(ms61s, "A").x < 0 && at(ms61s, "A").y < 0);
+assert.ok(at(ms61s, "Z").x > 0 && at(ms61s, "Z").x < at(ms61s, "Y").x);
+
+// Delphi GT 150 de 3 vías: en línea, ovalada, A a la derecha en la cara de acople de la hembra (dato de Martin).
+const gt3 = connectorFace(def("GT 150", "female", [["A", "GT 150"], ["B", "GT 150"], ["C", "GT 150"]]), mil)!;
+assert.equal(gt3.shape, "hull");
+assert.equal(gt3.numbering, "datasheet");
+assert.ok(at(gt3, "A").x > at(gt3, "B").x && at(gt3, "B").x > at(gt3, "C").x);
+assert.ok(at(wireSide(gt3), "A").x < 0);
+
+// Marelli SRG14x, hoja "Loom connectors front view".
+const srgA = connectorFace(def("Marelli SRG14x", "female", ways(105, "SRG signal")), mil)!;
+assert.equal(srgA.cavities.length, 105);
+assert.ok(at(srgA, "1").x < at(srgA, "21").x && at(srgA, "1").y === at(srgA, "21").y); // 1–21 en la fila de arriba
+assert.ok(at(srgA, "1").y < at(srgA, "22").y && at(srgA, "85").y > at(srgA, "64").y && at(srgA, "85").x === at(srgA, "1").x);
+assert.ok(at(srgA, "2").x - at(srgA, "1").x > at(srgA, "6").x - at(srgA, "5").x); // las 4 primeras, de paso ancho
+assert.ok(at(srgA, "43").y - at(srgA, "22").y > at(srgA, "22").y - at(srgA, "1").y); // ranura entre la 2.ª y la 3.ª fila
+const srgK = connectorFace(def("Marelli SRG14x", "female", ways(91, "SRG signal")), mil)!;
+assert.equal(srgK.cavities.length, 91);
+assert.equal(new Set(srgK.cavities.map((c) => c.id)).size, 91);
+assert.ok(at(srgK, "1").x < at(srgK, "2").x && at(srgK, "2").x < at(srgK, "7").x); // potencia a la izquierda
+assert.ok(at(srgK, "1").y < at(srgK, "3").y && at(srgK, "3").y < at(srgK, "5").y);
+assert.ok(at(srgK, "7").x < at(srgK, "23").x && at(srgK, "75").y > at(srgK, "58").y && at(srgK, "91").x === at(srgK, "23").x);
+assert.ok(at(srgK, "23").x - at(srgK, "22").x > at(srgK, "8").x - at(srgK, "7").x); // las 2 últimas, de paso ancho
+assert.equal(connectorFace(def("Marelli SRG14x", "female", ways(12)), mil), null);
+// Vías rectangulares: las de paso angosto pegadas, las anchas sueltas; tres tramos de ranura.
+assert.ok(at(srgA, "5").w && at(srgA, "5").h! > at(srgA, "5").w!);
+assert.ok(Math.abs(at(srgA, "6").x - at(srgA, "5").x - at(srgA, "5").w!) < 1e-9);
+assert.ok(at(srgA, "2").x - at(srgA, "1").x > at(srgA, "1").w!);
+assert.ok(Math.abs(at(srgK, "2").x - at(srgK, "1").x - at(srgK, "1").w!) < 1e-9 && at(srgK, "1").w! > 2 * at(srgK, "8").w!);
+assert.ok(srgK.outline > at(srgK, "1").w! / 2); // la carcasa contiene las vías de potencia
+assert.equal(srgA.slots!.length, 3);
+assert.ok(at(srgA, "22").y < srgA.slots![0].y && srgA.slots![0].y < at(srgA, "43").y);
+// Lado cables = "ECU front view" de la hoja: de arriba abajo, 85–105 arriba y 1–21 abajo, con el 1 siempre a la izquierda.
+const wireA = wireSide(srgA), wireK = wireSide(srgK);
+assert.ok(at(wireA, "85").y < at(wireA, "64").y && at(wireA, "64").y < at(wireA, "1").y);
+assert.equal(at(wireA, "1").x, at(srgA, "1").x);
+assert.equal(at(wireA, "85").y, -at(srgA, "85").y);
+assert.ok(at(wireK, "5").y < at(wireK, "3").y && at(wireK, "3").y < at(wireK, "1").y && at(wireK, "1").x < at(wireK, "7").x);
+assert.ok(at(wireK, "75").y < at(wireK, "7").y && at(wireK, "91").x === at(srgK, "91").x);
+assert.deepEqual(wireK.slots!.map((s) => [s.x, s.y]), srgK.slots!.map((s) => [s.x, -s.y]));
+assert.ok(at(wireK, "24").y > wireK.slots![0].y && wireK.slots![0].y > at(wireK, "41").y);
+// Cada vía se dibuja según su vecina más cercana: las de potencia, más grandes que las de señal.
+const near = cavitySpacing(srgK);
+assert.ok(near.get("1")! > 2 * near.get("8")!);
+assert.ok(at(srgK, "1").r < near.get("1")! * 0.46);

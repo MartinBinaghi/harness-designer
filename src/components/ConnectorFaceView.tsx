@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { connectorFace, hull, minSpacing, wireSide, type MilArrangements } from "../logic/connectorFace";
+import { cavitySpacing, connectorFace, hull, wireSide, type MilArrangements } from "../logic/connectorFace";
 import type { ConnectorDef } from "../model/library";
 import milStd1560 from "../data/mil-std-1560.json";
 
@@ -30,12 +30,11 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
   const [chosenSide, setSide] = useState<"front" | "rear">("front");
   const side = fixedSide ?? chosenSide;
   const front = useMemo(() => connectorFace(def, MIL), [def]);
-  if (!front) return null;
+  const spacing = useMemo(() => front && cavitySpacing(front), [front]);
+  if (!front || !spacing) return null;
   const face = side === "front" ? front : wireSide(front);
 
   const o = face.outline;
-  const spacing = minSpacing(face);
-  const font = Math.min(spacing * 0.34, o * 0.42);
   const latchH = o * 0.3;
   let body;
   let box: [number, number, number, number]; // minX, minY, maxX, maxY
@@ -105,19 +104,23 @@ export function ConnectorFaceView({ def, used, fixedSide, names, selected, onPic
   }
   const pad = o * 0.1;
   const viewBox = `${box[0] - pad} ${box[1] - pad} ${box[2] - box[0] + 2 * pad} ${box[3] - box[1] + 2 * pad}`;
+  // Muchas vías en una carcasa apaisada (ECU): a tamaño normal no se leen los números.
+  const wide = face.cavities.length > 40 && box[2] - box[0] > 2 * (box[3] - box[1]);
 
   return (
-    <figure className="connector-face">
+    <figure className={wide ? "connector-face cf-wide" : "connector-face"}>
       <svg viewBox={viewBox} role="img" aria-label={`${side === "front" ? "Mating face" : "Wire side"} with cavity numbers`}>
         {body}
+        {face.slots?.map((s, i) => <rect key={i} x={s.x - s.w / 2} y={s.y - s.h / 2} width={s.w} height={s.h} className="cf-slot" />)}
         {face.cavities.map((c) => {
-          const r = Math.min(c.r, spacing * 0.46);
+          const near = c.w ?? spacing.get(c.id) ?? o;
+          const r = Math.min(c.r, near * 0.46);
           const name = names?.[c.id];
-          const size = Math.min(font, r * 1.05);
+          const size = Math.min(near * 0.34, o * 0.42, r * 1.05);
           const cls = ["cf-cavity", used?.has(c.id) || selected === c.id ? "cf-used" : name ? "cf-named" : "", onPick ? "cf-pickable" : ""].filter(Boolean).join(" ");
           return (
             <g key={c.id} className={cls} onClick={onPick && (() => onPick(c.id))}>
-              <circle cx={c.x} cy={c.y} r={r} />
+              {c.w && c.h ? <rect x={c.x - c.w / 2} y={c.y - c.h / 2} width={c.w} height={c.h} /> : <circle cx={c.x} cy={c.y} r={r} />}
               <text x={c.x} y={name ? c.y - r * 0.28 : c.y} fontSize={name ? size * 0.8 : size} textAnchor="middle" dominantBaseline="central">
                 {c.id}
               </text>
