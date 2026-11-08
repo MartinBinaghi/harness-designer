@@ -278,8 +278,16 @@
   box-sizing: border-box;
 }
 
-.lib-fields .back-size input,
+/* Forma + medidas en un renglón: las medidas se reparten el ancho que deja la
+   forma y se pueden achicar (un campo numérico no baja de su ancho propio sin
+   min-width: 0, y se salía de la tarjeta). */
 .lib-fields .back-size select {
+  width: auto;
+}
+
+.lib-fields .back-size input {
+  flex: 1 1 0;
+  min-width: 0;
   width: auto;
 }
 
