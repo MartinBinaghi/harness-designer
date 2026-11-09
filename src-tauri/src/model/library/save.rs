@@ -160,8 +160,8 @@ fn write_parts(tx: &Transaction, library: &Library, only: Option<&HashSet<i64>>)
             continue;
         }
         tx.execute(
-            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO connector_defs (part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm, without_contacts)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 connector_def.part_id,
                 connector_def.gender,
@@ -176,6 +176,7 @@ fn write_parts(tx: &Transaction, library: &Library, only: Option<&HashSet<i64>>)
                 connector_def.contact_part_id,
                 connector_def.seal_plug_part_id,
                 connector_def.adhesive_heatshrink_length_mm,
+                connector_def.without_contacts,
             ],
         )?;
         for cavity in &connector_def.cavities {
@@ -439,6 +440,7 @@ mod tests {
                 },
             ],
             connector_defs: vec![ConnectorDef {
+                without_contacts: false,
                 part_id: 1,
                 gender: "female".into(),
                 series: Some("MS".into()),

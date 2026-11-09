@@ -10,6 +10,7 @@ export type Issue = "error" | "warning";
 const TERMINATION_SHORT: Record<string, string> = {
   t_mold: "T-mold",
   adhesive_heatshrink: "Adhesive HS",
+  boot_straight: "Boot",
 };
 
 /** El peor hallazgo de cada elemento del diagrama (un error gana sobre un warning). */

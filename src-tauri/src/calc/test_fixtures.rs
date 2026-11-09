@@ -46,6 +46,7 @@ pub(super) fn cavity_end(id: i64) -> WireEnd {
         splice_id: None,
         ground_point_id: None,
         component_instance_id: None,
+        node_id: None,
     }
 }
 
@@ -56,6 +57,7 @@ pub(super) fn splice_end(id: i64) -> WireEnd {
         splice_id: Some(id),
         ground_point_id: None,
         component_instance_id: None,
+        node_id: None,
     }
 }
 
@@ -97,6 +99,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 2,
@@ -106,6 +109,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
         ],
         segments: vec![Segment {
@@ -115,6 +119,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
             length_mm,
             twist_pitch_mm,
             covering_library_part_id: None,
+            leaves_backward: false,
         }],
         connector_instances: vec![
             ConnectorInstance {
@@ -194,6 +199,7 @@ pub(super) fn connector_def_with_series(
     shell_size: &str,
 ) -> crate::model::library::ConnectorDef {
     crate::model::library::ConnectorDef {
+        without_contacts: false,
         part_id,
         gender: "female".into(),
         series: Some(series.into()),

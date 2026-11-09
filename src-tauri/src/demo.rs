@@ -25,6 +25,7 @@ fn end(
         splice_id: splice,
         ground_point_id: ground,
         component_instance_id: component,
+        node_id: None,
     }
 }
 
@@ -62,6 +63,7 @@ pub fn sample_project() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 2,
@@ -71,6 +73,7 @@ pub fn sample_project() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 3,
@@ -80,6 +83,7 @@ pub fn sample_project() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 4,
@@ -89,6 +93,7 @@ pub fn sample_project() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 5,
@@ -98,6 +103,7 @@ pub fn sample_project() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
         ],
         segments: vec![
@@ -108,6 +114,7 @@ pub fn sample_project() -> ProjectData {
                 length_mm: 450.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: Some(30),
+                leaves_backward: false,
             },
             Segment {
                 id: 2,
@@ -116,6 +123,7 @@ pub fn sample_project() -> ProjectData {
                 length_mm: 300.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
             Segment {
                 id: 3,
@@ -124,6 +132,7 @@ pub fn sample_project() -> ProjectData {
                 length_mm: 200.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
             Segment {
                 id: 4,
@@ -132,6 +141,7 @@ pub fn sample_project() -> ProjectData {
                 length_mm: 80.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
         ],
         connector_instances: vec![
@@ -342,6 +352,7 @@ fn connector_def(
     contact: Option<i64>,
 ) -> ConnectorDef {
     ConnectorDef {
+        without_contacts: false,
         part_id,
         gender: gender.into(),
         series: Some(series.into()),

@@ -11,7 +11,7 @@ export const BLOCK_SIZE = { width: 170, height: 48 };
 export const POINT_SIZE = { width: 14, height: 14 };
 /** Grilla del layout automático: una columna por nivel del árbol, una fila por rama final. */
 const COLUMN_WIDTH = 300;
-const ROW_HEIGHT = 80;
+export const ROW_HEIGHT = 80;
 
 export function rootNodeId(project: ProjectData): number | undefined {
   const main = project.connector_instances.find((c) => c.id === project.project.main_connector_instance_id);
@@ -33,22 +33,29 @@ export function isBlock(project: ProjectData, nodeId: number): boolean {
  * Layout automático de árbol, de izquierda a derecha: el conector principal en
  * la primera columna, cada nivel en la columna siguiente; cada rama final ocupa
  * una fila y cada nodo queda centrado entre sus ramas. Así las ramas de un
- * breakout quedan juntas y no se cruzan con las de otro.
+ * breakout quedan juntas y no se cruzan con las de otro. Un tramo marcado
+ * "hacia atrás" sale del breakout en sentido contrario (una columna antes).
  */
 export function autoLayout(project: ProjectData): Map<number, XY> {
-  const neighbors = new Map<number, number[]>();
+  const neighbors = new Map<number, { node: number; backward: boolean }[]>();
   for (const s of project.segments) {
-    neighbors.set(s.node_a_id, [...(neighbors.get(s.node_a_id) ?? []), s.node_b_id]);
-    neighbors.set(s.node_b_id, [...(neighbors.get(s.node_b_id) ?? []), s.node_a_id]);
+    neighbors.set(s.node_a_id, [...(neighbors.get(s.node_a_id) ?? []), { node: s.node_b_id, backward: s.leaves_backward }]);
+    neighbors.set(s.node_b_id, [...(neighbors.get(s.node_b_id) ?? []), { node: s.node_a_id, backward: s.leaves_backward }]);
   }
   const positions = new Map<number, XY>();
   let nextRow = 0;
   // Devuelve la fila (centro) del nodo; las hojas toman filas consecutivas.
-  function place(id: number, depth: number, parent: number | null): number {
+  // `dir` = hacia dónde avanza la rama (1 derecha, -1 izquierda).
+  function place(id: number, depth: number, parent: number | null, dir: number): number {
     positions.set(id, { x: 0, y: 0 });
-    const children = (neighbors.get(id) ?? []).filter((n) => n !== parent && !positions.has(n));
-    const rows = children.map((child) => place(child, depth + 1, id));
-    const row = rows.length > 0 ? (rows[0] + rows[rows.length - 1]) / 2 : nextRow++;
+    // Primero las que siguen adelante: el nodo se centra entre ellas (o, si no
+    // hay, toma su propia fila). Las que vuelven hacia atrás van después, en
+    // filas propias debajo: así no pisan el tramo que llega ni al nodo de la
+    // columna anterior.
+    const children = (neighbors.get(id) ?? []).filter((n) => n.node !== parent && !positions.has(n.node));
+    const ahead = children.filter((c) => !c.backward).map((c) => place(c.node, depth + dir, id, dir));
+    const row = ahead.length > 0 ? (ahead[0] + ahead[ahead.length - 1]) / 2 : nextRow++;
+    for (const c of children.filter((c) => c.backward)) place(c.node, depth - dir, id, -dir);
     const size = isBlock(project, id) ? BLOCK_SIZE : POINT_SIZE;
     positions.set(id, {
       x: depth * COLUMN_WIDTH + (BLOCK_SIZE.width - size.width) / 2,
@@ -60,7 +67,7 @@ export function autoLayout(project: ProjectData): Map<number, XY> {
   // Ramas desconectadas (mientras se carga el árbol) van debajo, cada una con su raíz.
   for (const id of [root, ...project.nodes.map((n) => n.id)]) {
     if (id !== undefined && !positions.has(id)) {
-      place(id, 0, null);
+      place(id, 0, null, 1);
       nextRow++;
     }
   }

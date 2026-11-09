@@ -48,15 +48,15 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for n in &data.nodes {
         tx.execute(
-            "INSERT INTO nodes (id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![n.id, n.kind, n.termination, n.termination_library_part_id, n.diagram_x, n.diagram_y, n.adhesive_heatshrink_length_mm],
+            "INSERT INTO nodes (id, kind, termination, termination_library_part_id, termination_segment_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![n.id, n.kind, n.termination, n.termination_library_part_id, n.termination_segment_id, n.diagram_x, n.diagram_y, n.adhesive_heatshrink_length_mm],
         )?;
     }
 
     for s in &data.segments {
         tx.execute(
-            "INSERT INTO segments (id, node_a_id, node_b_id, length_mm, twist_pitch_mm, covering_library_part_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![s.id, s.node_a_id, s.node_b_id, s.length_mm, s.twist_pitch_mm, s.covering_library_part_id],
+            "INSERT INTO segments (id, node_a_id, node_b_id, length_mm, twist_pitch_mm, covering_library_part_id, leaves_backward) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![s.id, s.node_a_id, s.node_b_id, s.length_mm, s.twist_pitch_mm, s.covering_library_part_id, s.leaves_backward],
         )?;
     }
 
@@ -139,9 +139,9 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
     for w in &data.wire_instances {
         tx.execute(
             "INSERT INTO wire_instances (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
-                                          end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
-                                          end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                                          end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id, end_a_node_id,
+                                          end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id, end_b_node_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![
                 w.id,
                 w.short_id,
@@ -158,11 +158,13 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
                 w.end_a.splice_id,
                 w.end_a.ground_point_id,
                 w.end_a.component_instance_id,
+                w.end_a.node_id,
                 w.end_b.kind,
                 w.end_b.cavity_assignment_id,
                 w.end_b.splice_id,
                 w.end_b.ground_point_id,
                 w.end_b.component_instance_id,
+                w.end_b.node_id,
             ],
         )?;
     }

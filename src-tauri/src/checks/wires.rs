@@ -21,6 +21,9 @@ fn end_target_exists(data: &ProjectData, end: &WireEnd) -> bool {
         "component" => end
             .component_instance_id
             .is_some_and(|id| data.component_instances.iter().any(|c| c.id == id)),
+        "loose" => end
+            .node_id
+            .is_some_and(|id| data.nodes.iter().any(|n| n.id == id)),
         _ => false,
     }
 }

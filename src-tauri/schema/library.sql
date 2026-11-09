@@ -35,7 +35,10 @@ CREATE TABLE IF NOT EXISTS connector_defs (
     contact_part_id         INTEGER,
     seal_plug_part_id       INTEGER,
     -- largo de la pieza de termo con adhesivo detrás del conector (mm)
-    adhesive_heatshrink_length_mm REAL
+    adhesive_heatshrink_length_mm REAL,
+    -- sin contactos aparte: el cable va directo a la pieza, sin contacto ni
+    -- tapón (bornes a tornillo de la termocupla, ojal que se crimpea directo)
+    without_contacts    INTEGER NOT NULL DEFAULT 0 CHECK (without_contacts IN (0, 1))
 );
 
 -- Cavidades: identificador tal cual el fabricante (1, 2... / A, B... / a, b...),

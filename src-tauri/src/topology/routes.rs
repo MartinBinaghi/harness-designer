@@ -117,6 +117,8 @@ pub(super) fn wire_end_node(data: &ProjectData, end: &WireEnd) -> Option<i64> {
             let splice = data.splice_instances.iter().find(|s| s.id == splice_id)?;
             splice.node_id.or(splice.offset_from_node_id)
         }
+        // Suelto en un nodo: llega hasta ahí.
+        "loose" => end.node_id,
         "component" => {
             let component_id = end.component_instance_id?;
             let component = data

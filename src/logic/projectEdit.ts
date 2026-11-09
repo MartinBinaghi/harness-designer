@@ -7,6 +7,8 @@
 import type { CableInstance, CavityAssignment, ConnectorInstance, Node, ProjectData, Segment, WireEnd, WireInstance } from "../model/project";
 import { devicePinName, type Library } from "../model/library.ts";
 import type { GaugeFacts } from "../model/calc";
+import { nodeLabel } from "./nodeLabels.ts";
+import { BLOCK_SIZE, POINT_SIZE, ROW_HEIGHT, isBlock, rootNodeId } from "./diagramLayout.ts";
 
 export function nextId(ids: number[]): number {
   return ids.length === 0 ? 1 : Math.max(...ids) + 1;
@@ -26,8 +28,14 @@ export function cavitiesFromDef(project: ProjectData, connectorDefId: number, li
 
 const DEFAULT_SEGMENT_MM = 100;
 
-function newNode(id: number, kind: Node["kind"], x: number | null, y: number | null): Node {
-  return { id, kind, termination: null, termination_library_part_id: null, diagram_x: x, diagram_y: y, adhesive_heatshrink_length_mm: null };
+/** Nodo nuevo, sin terminación. Todo nodo nuevo sale de acá (diagrama, Topology, conectores). */
+export function newNode(id: number, kind: Node["kind"], x: number | null, y: number | null): Node {
+  return { id, kind, termination: null, termination_library_part_id: null, termination_segment_id: null, diagram_x: x, diagram_y: y, adhesive_heatshrink_length_mm: null };
+}
+
+/** Segmento nuevo entre dos nodos, sin paso ni cobertura propios, hacia adelante. */
+export function newSegment(id: number, a: number, b: number, lengthMm = DEFAULT_SEGMENT_MM): Segment {
+  return { id, node_a_id: a, node_b_id: b, length_mm: lengthMm, twist_pitch_mm: null, covering_library_part_id: null, leaves_backward: false };
 }
 
 /** ¿Están `a` y `b` en la misma rama del árbol (unidos por segmentos)? */
@@ -51,14 +59,7 @@ function connected(project: ProjectData, a: number, b: number): boolean {
 /** Rama nueva: un nodo de conector (sin conector asignado todavía) colgado de `fromNodeId`. */
 export function addBranch(project: ProjectData, fromNodeId: number, position: { x: number; y: number }): { project: ProjectData; nodeId: number } {
   const nodeId = nextId(project.nodes.map((n) => n.id));
-  const segment: Segment = {
-    id: nextId(project.segments.map((s) => s.id)),
-    node_a_id: fromNodeId,
-    node_b_id: nodeId,
-    length_mm: DEFAULT_SEGMENT_MM,
-    twist_pitch_mm: null,
-    covering_library_part_id: null,
-  };
+  const segment = newSegment(nextId(project.segments.map((s) => s.id)), fromNodeId, nodeId);
   return {
     project: {
       ...project,
@@ -73,15 +74,7 @@ export function addBranch(project: ProjectData, fromNodeId: number, position: { 
 export function connectNodes(project: ProjectData, a: number, b: number): ProjectData | string {
   if (a === b) return "A segment needs two different nodes.";
   if (connected(project, a, b)) return "Those nodes are already joined through the tree — a new segment would close a loop.";
-  const segment: Segment = {
-    id: nextId(project.segments.map((s) => s.id)),
-    node_a_id: a,
-    node_b_id: b,
-    length_mm: DEFAULT_SEGMENT_MM,
-    twist_pitch_mm: null,
-    covering_library_part_id: null,
-  };
-  return { ...project, segments: [...project.segments, segment] };
+  return { ...project, segments: [...project.segments, newSegment(nextId(project.segments.map((s) => s.id)), a, b)] };
 }
 
 export function setSegmentLength(project: ProjectData, segmentId: number, lengthMm: number): ProjectData {
@@ -92,14 +85,16 @@ export function setSegmentLength(project: ProjectData, segmentId: number, length
  * Parte un segmento en dos con un breakout en el medio (largos redondeados a
  * mm, la suma no cambia). Los splices/componentes que estaban sobre el
  * segmento quedan en el tramo que les toca, a la misma distancia real del
- * nodo A. El tramo nuevo copia paso de trenzado y cobertura.
+ * nodo A. El tramo nuevo copia paso de trenzado y cobertura, y sale del
+ * breakout nuevo hacia adelante. Un boot de breakout que iba sobre la mitad B
+ * pasa a ir sobre el tramo nuevo.
  */
 export function splitSegment(project: ProjectData, segmentId: number, position: { x: number; y: number } | null): { project: ProjectData; nodeId: number } | string {
   const seg = project.segments.find((s) => s.id === segmentId);
   if (!seg) return "Segment not found.";
   const half = Math.round(seg.length_mm / 2);
   const mid = nextId(project.nodes.map((n) => n.id));
-  const second: Segment = { ...seg, id: nextId(project.segments.map((s) => s.id)), node_a_id: mid, length_mm: seg.length_mm - half };
+  const second: Segment = { ...seg, id: nextId(project.segments.map((s) => s.id)), node_a_id: mid, length_mm: seg.length_mm - half, leaves_backward: false };
   const first: Segment = { ...seg, node_b_id: mid, length_mm: half };
 
   // Distancia desde el nodo A -> tramo y distancia nueva.
@@ -116,7 +111,7 @@ export function splitSegment(project: ProjectData, segmentId: number, position: 
   return {
     project: {
       ...project,
-      nodes: [...project.nodes, breakout],
+      nodes: [...project.nodes.map((n) => (n.id === seg.node_b_id && n.termination_segment_id === seg.id ? { ...n, termination_segment_id: second.id } : n)), breakout],
       segments: project.segments.flatMap((s) => (s.id === seg.id ? [first, second] : [s])),
       splice_instances: project.splice_instances.map(relocate),
       component_instances: project.component_instances.map(relocate),
@@ -128,7 +123,89 @@ export function splitSegment(project: ProjectData, segmentId: number, position: 
 export function deleteSegment(project: ProjectData, segmentId: number): ProjectData | string {
   const onIt = [...project.splice_instances, ...project.component_instances].filter((x) => x.segment_id === segmentId);
   if (onIt.length > 0) return `Segment has ${onIt.map((x) => x.short_id).join(", ")} on it — move or delete ${onIt.length === 1 ? "it" : "them"} first.`;
-  return { ...project, segments: project.segments.filter((s) => s.id !== segmentId) };
+  return {
+    ...project,
+    nodes: project.nodes.map((n) => (n.termination_segment_id === segmentId ? { ...n, termination_segment_id: null } : n)),
+    segments: project.segments.filter((s) => s.id !== segmentId),
+  };
+}
+
+/**
+ * Un tramo sale de su breakout hacia atrás (hacia el conector principal, al
+ * lado del tramo que llega) o hacia adelante. Si el diagrama ya está acomodado
+ * a mano, la rama que cuelga del tramo se refleja respecto del tramo que llega
+ * al breakout (lo que iba hacia adelante va hacia atrás, y al revés), sin
+ * cambiar sus largos. Si así quedaría encima del tramo que llega, se corre una
+ * fila hacia su lado (abajo si estaba alineada): las salidas hacia atrás van
+ * arriba y abajo de ese tramo, como en la hoja de armado.
+ */
+export function setLeavesBackward(project: ProjectData, segmentId: number, backward: boolean): ProjectData {
+  const seg = project.segments.find((s) => s.id === segmentId);
+  if (!seg || seg.leaves_backward === backward) return project;
+  const segments = project.segments.map((s) => (s.id === segmentId ? { ...s, leaves_backward: backward } : s));
+  const { parent, child } = segmentEnds(project, seg);
+  const placed = (id: number | undefined) => {
+    const n = project.nodes.find((x) => x.id === id);
+    return n && n.diagram_x !== null && n.diagram_y !== null ? n : undefined;
+  };
+  const pivot = placed(parent);
+  if (!pivot) return { ...project, segments };
+  const size = (id: number) => (isBlock(project, id) ? BLOCK_SIZE : POINT_SIZE);
+  const center = (n: Node) => ({ x: n.diagram_x! + size(n.id).width / 2, y: n.diagram_y! + size(n.id).height / 2 });
+  const p = center(pivot);
+  // Eje del tramo que llega al breakout (u, en el sentido de avance) y su perpendicular (v, "abajo" si u va a la derecha).
+  const incoming = project.segments.find((s) => s.id !== segmentId && (s.node_a_id === parent || s.node_b_id === parent) && segmentEnds(project, s).child === parent);
+  const from = incoming && placed(segmentEnds(project, incoming).parent);
+  const g = from ? center(from) : { x: p.x - 1, y: p.y };
+  const len = Math.hypot(p.x - g.x, p.y - g.y) || 1;
+  const u = { x: (p.x - g.x) / len, y: (p.y - g.y) / len };
+  const v = { x: -u.y, y: u.x };
+  const local = (n: Node) => {
+    const c = center(n);
+    return { a: (c.x - p.x) * u.x + (c.y - p.y) * u.y, b: (c.x - p.x) * v.x + (c.y - p.y) * v.y };
+  };
+  const first = placed(child);
+  const side = first ? local(first).b : 0;
+  const shift = Math.abs(side) < ROW_HEIGHT ? (side < 0 ? -ROW_HEIGHT : ROW_HEIGHT) - side : 0;
+  const branch = subtree(project, child, parent);
+  const nodes = project.nodes.map((n) => {
+    if (!branch.has(n.id) || n.diagram_x === null || n.diagram_y === null) return n;
+    const { a, b } = local(n);
+    const s = size(n.id);
+    return {
+      ...n,
+      diagram_x: Math.round(p.x - a * u.x + (b + shift) * v.x - s.width / 2),
+      diagram_y: Math.round(p.y - a * u.y + (b + shift) * v.y - s.height / 2),
+    };
+  });
+  return { ...project, segments, nodes };
+}
+
+/** Las puntas de un tramo vistas desde el conector principal: de cuál cuelga (`parent`) y cuál sigue (`child`). */
+export function segmentEnds(project: ProjectData, seg: Segment): { parent: number; child: number } {
+  const root = rootNodeId(project);
+  if (root === undefined) return { parent: seg.node_a_id, child: seg.node_b_id };
+  // Si el subárbol de B (sin pasar por el tramo) tiene a la raíz, B es el de arriba.
+  return subtree(project, seg.node_b_id, seg.node_a_id).has(root)
+    ? { parent: seg.node_b_id, child: seg.node_a_id }
+    : { parent: seg.node_a_id, child: seg.node_b_id };
+}
+
+/** Nodos a los que se llega desde `start` sin pasar por `blocked`. */
+function subtree(project: ProjectData, start: number, blocked: number): Set<number> {
+  const seen = new Set([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    for (const s of project.segments) {
+      const other = s.node_a_id === id ? s.node_b_id : s.node_b_id === id ? s.node_a_id : null;
+      if (other !== null && other !== blocked && !seen.has(other)) {
+        seen.add(other);
+        queue.push(other);
+      }
+    }
+  }
+  return seen;
 }
 
 /** Borra un nodo vacío (y sus segmentos). Si tiene algo ubicado, no lo borra: se pierde información. */
@@ -138,6 +215,7 @@ export function deleteNode(project: ProjectData, nodeId: number): ProjectData | 
     ...project.ground_points.filter((g) => g.node_id === nodeId).map((g) => g.short_id),
     ...project.splice_instances.filter((s) => s.node_id === nodeId).map((s) => s.short_id),
     ...project.component_instances.filter((c) => c.node_id === nodeId).map((c) => c.short_id),
+    ...project.wire_instances.filter((w) => [w.end_a, w.end_b].some((e) => e.kind === "loose" && e.node_id === nodeId)).map((w) => `${w.short_id} (loose end)`),
   ];
   if (there.length > 0) return `Node has ${there.join(", ")} — delete or move ${there.length === 1 ? "it" : "them"} first (Connectors / Splices).`;
   const segIds = new Set(project.segments.filter((s) => s.node_a_id === nodeId || s.node_b_id === nodeId).map((s) => s.id));
@@ -145,7 +223,9 @@ export function deleteNode(project: ProjectData, nodeId: number): ProjectData | 
   if (blocked.length > 0) return `A segment of this node has ${blocked.map((x) => x.short_id).join(", ")} on it — move ${blocked.length === 1 ? "it" : "them"} first.`;
   return {
     ...project,
-    nodes: project.nodes.filter((n) => n.id !== nodeId),
+    nodes: project.nodes
+      .filter((n) => n.id !== nodeId)
+      .map((n) => (n.termination_segment_id !== null && segIds.has(n.termination_segment_id) ? { ...n, termination_segment_id: null } : n)),
     segments: project.segments.filter((s) => !segIds.has(s.id)),
   };
 }
@@ -335,15 +415,24 @@ export function endLabel(project: ProjectData, end: WireEnd): string {
       const found = componentOptions(project).find((o) => o.value === end.component_instance_id);
       return found?.label ?? "—";
     }
+    case "loose": {
+      const node = project.nodes.find((n) => n.id === end.node_id);
+      return node ? looseLabel(project, node) : "—";
+    }
     default:
       return "—";
   }
 }
 
+/** "loose · node 7 · Connector end · X3 PEDAL 2": un cable que queda suelto en ese nodo. */
+function looseLabel(project: ProjectData, node: Node): string {
+  return `loose · ${nodeLabel(project, node)}`;
+}
+
 // --- Pinout por conector (pantalla Conectores) ---------------------------------
 
 /** Extremo sin destino todavía: el cable queda incompleto hasta que se completa (plan 7.1). */
-export const BLANK_END: WireEnd = { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null };
+export const BLANK_END: WireEnd = { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null, node_id: null };
 
 const cavityEnd = (id: number): WireEnd => ({ ...BLANK_END, cavity_assignment_id: id });
 
@@ -382,6 +471,8 @@ export function endChoices(project: ProjectData, library: Library): { label: str
     if (g.name) out.push({ label: `${g.short_id} · ${g.name}`, end });
   }
   for (const k of project.component_instances) out.push({ label: k.short_id, end: { ...BLANK_END, kind: "component", cavity_assignment_id: null, component_instance_id: k.id } });
+  // Suelto en un nodo (el cable llega hasta ahí y no se conecta): se busca escribiendo "loose".
+  for (const n of project.nodes) out.push({ label: looseLabel(project, n), end: { ...BLANK_END, kind: "loose", cavity_assignment_id: null, node_id: n.id } });
   return out;
 }
 
@@ -617,6 +708,35 @@ export function duplicateConnector(project: ProjectData, connectorId: number): {
     },
     id,
   };
+}
+
+/**
+ * Copia un cable a la próxima vía libre del mismo conector (Martin: INY Cil 1…4,
+ * todos iguales salvo el número). Lleva función, categoría, tipo de cable,
+ * color y margen; el último número de la función sube uno ("INY Cil 1" →
+ * "INY Cil 2"). El destino queda vacío: es de cada pin.
+ */
+export function duplicateWireToNextPin(project: ProjectData, wireId: number, cavityId: number): { project: ProjectData; wireId: number } | string {
+  const wire = project.wire_instances.find((w) => w.id === wireId);
+  const connector = project.connector_instances.find((c) => c.cavities.some((cav) => cav.id === cavityId));
+  if (!wire || !connector) return "That wire no longer exists.";
+  const from = connector.cavities.findIndex((cav) => cav.id === cavityId);
+  const used = new Set(project.wire_instances.flatMap((w) => [w.end_a, w.end_b]).filter((e) => e.kind === "cavity").map((e) => e.cavity_assignment_id));
+  const next = connector.cavities.slice(from + 1).find((cav) => !used.has(cav.id));
+  if (!next) return `No free pin after ${connector.cavities[from].cavity_id} in ${connector.short_id}.`;
+  const id = nextId(project.wire_instances.map((w) => w.id));
+  const copy: WireInstance = {
+    ...wire,
+    id,
+    short_id: `W${String(id).padStart(3, "0")}`,
+    specific_name: wire.specific_name?.replace(/(\d+)(?!.*\d)/, (n) => String(Number(n) + 1)) ?? null,
+    manual_length_mm: null,
+    label: null,
+    cable_instance_id: null,
+    end_a: cavityEnd(next.id),
+    end_b: BLANK_END,
+  };
+  return { project: { ...project, wire_instances: [...project.wire_instances, copy] }, wireId: id };
 }
 
 /** Vías del conector que tienen al menos un cable. */

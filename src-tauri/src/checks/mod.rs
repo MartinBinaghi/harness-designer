@@ -16,7 +16,8 @@ use connectors::{
     check_used_cavities_without_contact,
 };
 use coverings::{
-    check_boot_assigned_does_not_fit, check_covering_fit, check_t_mold_assigned_does_not_fit,
+    check_boot_assigned_does_not_fit, check_breakout_boot, check_covering_fit,
+    check_t_mold_assigned_does_not_fit,
 };
 use loops::check_topology_has_no_loops;
 use splices::{check_gauge_within_splice_range, check_splices_within_capacity};
@@ -92,6 +93,7 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
                 d.message
             ));
             match d.item {
+                DanglingItem::Node(id) => finding.at(FindingTarget::Node { id }),
                 DanglingItem::Segment(id) => finding.at(FindingTarget::Segment { id }),
                 DanglingItem::Connector(id) => finding.at(FindingTarget::Connector { id }),
                 DanglingItem::Ground(id) => finding.at(FindingTarget::Ground { id }),
@@ -140,6 +142,7 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
             "T-mold fit",
             check_t_mold_assigned_does_not_fit(data, library),
         ),
+        ("Breakout boot", check_breakout_boot(data, library)),
         (
             "Wire gauge vs contact",
             check_gauge_within_contact_range(data, library),

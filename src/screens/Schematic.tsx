@@ -21,7 +21,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { GaugeFacts } from "../model/calc";
 import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, type SchematicBlock, type SchematicPin } from "../logic/schematicLayout";
-import { addWire } from "../logic/projectEdit";
+import { BLANK_END, addWire } from "../logic/projectEdit";
 import { wireColors } from "../logic/sheets";
 import type { ProjectData, Selection, WireEnd } from "../model/project";
 import type { Library } from "../model/library";
@@ -41,7 +41,7 @@ const blockHandle = (key: string, side: "L" | "R") => `blk:${key}:${side}`;
 function handleToEnd(handle: string | null): WireEnd | null {
   if (!handle) return null;
   const [type, id] = handle.split(":");
-  const blank: WireEnd = { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null };
+  const blank = BLANK_END;
   if (type === "cav") return { ...blank, cavity_assignment_id: Number(id) };
   const n = Number(id.slice(1));
   if (id.startsWith("s")) return { ...blank, kind: "splice", splice_id: n };

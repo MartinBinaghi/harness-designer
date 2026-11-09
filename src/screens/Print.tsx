@@ -204,7 +204,7 @@ export default function Print({ project, setProject, library, report, destinatio
         {branchesWithSheet(branches).map((b) => (
           <section key={b.num} className="sheet" style={{ width: sheetWidth }}>
             <SheetHeader project={project} title={b.num === 0 ? "Assembly · main connector" : `Assembly · breakout ${b.num}`} />
-            <BranchFan project={project} branch={b} distances={distances} maxHeightMm={pageMm} />
+            <BranchFan project={project} library={library} branch={b} distances={distances} maxHeightMm={pageMm} />
           </section>
         ))}
       </>

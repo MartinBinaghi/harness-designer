@@ -88,6 +88,7 @@ Cada tipo de parte extiende `Part`:
 - **imágenes**: vista lateral, frontal y trasera, con numeración de pines. Cada ConnectorDef guarda su propia vista frontal (la numeración de macho y hembra está espejada; no se deriva de la contraparte). Se guardan **dentro del archivo de la biblioteca** (achicadas a 800 px, WebP), no como ruta a un archivo externo, para que la biblioteca se pueda copiar a otra máquina; van en una tabla aparte de las fichas, así no viajan ni se reescriben con cada edición: la pantalla trae cada foto recién cuando la muestra. Cargar o sacar una foto se escribe directo, como un adjunto (no entra en deshacer). Se ven en el Inspector al seleccionar un conector y (la frontal) en la hoja de pinout del doble click en el diagrama. Además, para las familias conocidas (Deutsch DT/DTM/DTP, Superseal 1.5, Superseal 1.0 de 26 y 34 vías — los del MoTeC PDM30/M1 —, VAG de bobina y de lambda — rectos del lado del pin 1 y redondeados del otro —, termocupla miniatura tipo K, fichas Mini Timer y Delphi GT 150 en línea de 2 a 4 vías, conectores A y K de la Marelli SRG 140/141, MIL-DTL-38999 por MIL-STD-1560, MIL-DTL-26482 Serie 2 con el mismo arreglo — confirmado con fotos del MS3476L24-61P —, y su inserto 20-41, leído de fotos del MS3476A20-41P) el programa **dibuja la cara** a partir de la serie y las vías: contorno, traba y número de cada vía, vista de acople o lado cables, con las vías usadas resaltadas; avisa cuando la numeración no está confirmada con el fabricante; un botón la abre en grande sobre la ventana (Esc o clic afuera la cierra)
 - contraparte (opcional): el ConnectorDef con el que enchufa
 - **contacto y tapón por defecto**: el contacto que lleva cada vía con cable y el tapón de las vías sin usar, **uno por conector** (en el taller cada familia usa un solo contacto). El proyecto no los carga vía por vía: el programa los asigna; si el calibre de un cable no entra en el contacto del conector, usa otro de la biblioteca del mismo tamaño y género que sí sirva, y si no hay, avisa
+- **sin contactos aparte** (sí/no): el cable va directo a la pieza, sin contacto ni tapón (la termocupla miniatura, de bornes a tornillo; un ojal, que se crimpea directo sobre el cable); no se le asignan ni se avisa que falten
 - **parte trasera**, redonda (Ø) o rectangular (ancho × alto; se usa la diagonal): necesaria para dimensionar termo con adhesivo que pasa por encima del conector
 - **terminación sugerida**: boot / termo con adhesivo / nada (ej. Amphenol de interconexión → boot; DTM → termo con adhesivo)
 - **largo de la pieza de termo con adhesivo** que se corta para ese conector (varía según el conector): va en la hoja de corte y suma metros al BOM
@@ -144,10 +145,11 @@ Cada tipo de parte extiende `Part`:
 
 **Node** — punto de la topología
 - tipo: extremo de conector / breakout / punto de splice / punto de masa
-- en breakouts, **terminación**: molde en T / termo con adhesivo / nada; con termo con adhesivo, el **largo de la pieza** (va encima de los termos que llegan al breakout: solo cuenta para el BOM y el costo)
+- en breakouts, **terminación**: molde en T / termo con adhesivo / **boot recto** / nada; con termo con adhesivo, el **largo de la pieza** (va encima de los termos que llegan al breakout: solo cuenta para el BOM y el costo); con boot recto (el mismo de los conectores de motor), **el tramo sobre el que va**: su lado cable aprieta ese tramo y la boca grande, más rígida, queda en el breakout, del lado con más cables
 
 **Segment** — tramo físico entre dos nodos
 - nodo A, nodo B, **largo**
+- **sale hacia atrás** (opcional): en vez de seguir hacia adelante, vuelve desde su breakout hacia el conector principal, al lado del tramo que llega. Solo cambia el dibujo: diagrama de armado y hoja de armado
 - paso de trenzado (opcional; si no, usa el del proyecto)
 - coberturas aplicadas (qué termocontraíble/sleeving y en qué largo)
 
@@ -175,7 +177,7 @@ Cada tipo de parte extiende `Part`:
 
 **WireInstance**
 - ID, WireDef, color (sugerido por el tipo de señal, modificable)
-- extremo A y extremo B: cavidad de conector, splice, punto de masa o componente
+- extremo A y extremo B: cavidad de conector, splice, punto de masa, componente o **suelto en un nodo** (el cable llega hasta ahí y queda sin conectar, ej. el del pedal 2: tiene recorrido y largo, va en la lista de corte y no es un error en Checks; "Termina en" lo muestra como "loose · node N")
 - **función**, en dos partes:
   - **tipo de señal** (SignalType): define el color sugerido
   - **nombre específico** (ej. "Damper FL", "Brake Press Rear")
@@ -324,7 +326,7 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 ### 7.3 Pantallas
 - **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Dispositivos: lista + ficha; cada conector del dispositivo (A, B…) con su carcasa del arnés y **todas sus vías listadas** para escribir nombre y función, la cara dibujada con el nombre de cada pin (clic en una vía va a su fila) y **pegado de la tabla del cliente** con elección de columnas y aviso de las filas que no corresponden a ninguna vía.
 - **Topología**: tabla de segmentos (segmento, nodo desde, nodo hasta, largo, paso de trenzado, coberturas) + vista de árbol en texto (ramas indentadas). Rechaza lazos.
-- **Conectores** (carga principal del arnés, conector por conector): lista de conectores a la izquierda (pines usados, pendientes) y, del elegido, sus datos (ID, nombre, pieza o conector de dispositivo, nodo, estado, terminación, interconexión) y su **pinout editable**: una fila por vía — Función · Categoría (color sugerido) · Goes to · Tipo de cable · Color · Largo. Escribir en un pin vacío crea el cable; "Goes to" acepta `X4:2`, `SP1`, `G1` o el nombre de pin de un dispositivo (`PDM30 OUT11`), con autocompletado; los splices y masas también por su nombre (`SP1 · Bobinas pin 2`: se busca escribiendo parte del nombre). **Un pin puede tener varios cables** (sub-filas). **Duplicate** copia el conector elegido con su pinout (bobinas, inyectores iguales): los cables a splices, masas y componentes siguen ahí; los que van a un pin de otro conector quedan sin destino, para completarlos. Un cable es uno solo: aparece en el pinout de sus dos puntas. El largo sale del recorrido ("auto") o se pone a mano desde el Inspector ("manual"). Por vía también se carga la referencia externa (en conectores de interconexión) y se ve el nombre de pin si es el conector de un dispositivo. **Hoja de pinout con el mismo formato que las hojas actuales del taller** (pestaña Print): hoja apaisada, una tabla con un bloque por conector — Nombre · Pin · Función · Termina en (calculado) · Conector · Vista delantera (la vista lateral queda para más adelante) —, "n/c" en las vías sin cable, y "falta pinout y conector" en los pendientes (debajo del dibujo, si la pieza ya está elegida). Un conector que no entra en una hoja (el de motor, 61 vías) se parte en tramos de una hoja cada uno, y cada tramo repite nombre ("X1 (cont.)"), conector y vista, centrados. Calibre, color y largo van en la lista de corte.
+- **Conectores** (carga principal del arnés, conector por conector): lista de conectores a la izquierda (pines usados, pendientes) y, del elegido, sus datos (ID, nombre, pieza o conector de dispositivo, nodo, estado, terminación, interconexión) y su **pinout editable**: una fila por vía — Función · Categoría (color sugerido) · Goes to · Tipo de cable · Color · Largo. Escribir en un pin vacío crea el cable; "Goes to" acepta `X4:2`, `SP1`, `G1` o el nombre de pin de un dispositivo (`PDM30 OUT11`), con autocompletado; los splices y masas también por su nombre (`SP1 · Bobinas pin 2`: se busca escribiendo parte del nombre). **Un pin puede tener varios cables** (sub-filas). **Duplicate** copia el conector elegido con su pinout (bobinas, inyectores iguales): los cables a splices, masas y componentes siguen ahí; los que van a un pin de otro conector quedan sin destino, para completarlos. **"↓ next"** en un cable lo copia a la próxima vía libre del mismo conector (función con el último número + 1 — "INY Cil 1" → "INY Cil 2" —, categoría, tipo de cable y color; sin destino), para cargar rápido cables iguales. Un cable es uno solo: aparece en el pinout de sus dos puntas. El largo sale del recorrido ("auto") o se pone a mano desde el Inspector ("manual"). Por vía también se carga la referencia externa (en conectores de interconexión) y se ve el nombre de pin si es el conector de un dispositivo. **Hoja de pinout con el mismo formato que las hojas actuales del taller** (pestaña Print): hoja apaisada, una tabla con un bloque por conector — Nombre · Pin · Función · Termina en (calculado) · Conector · Vista delantera (la vista lateral queda para más adelante) —, "n/c" en las vías sin cable, y "falta pinout y conector" en los pendientes (debajo del dibujo, si la pieza ya está elegida). Un conector que no entra en una hoja (el de motor, 61 vías) se parte en tramos de una hoja cada uno, y cada tramo repite nombre ("X1 (cont.)"), conector y vista, centrados. Calibre, color y largo van en la lista de corte.
 - **Cables (wire list / TO-FROM)**: lista global (la carga principal es por conector, ver Conectores); tabla editable estilo planilla (ID, desde, hasta, tipo de señal, nombre, WireDef, color, recorrido calculado, largo con trenzado, margen, largo de corte). Extremos por texto con autocompletado: `X1:12`, `SP3`, `G1`, o por nombre de pin de dispositivo (`PDM OUT11`).
 - **Splices**: lista con tipo, ubicación y cables que une. Incluye masas y componentes. Acá se crean (con el próximo ID y la primera parte de la biblioteca de su tipo) y se borran (sus cables quedan con ese extremo vacío); el resto se edita en el Inspector.
 - **Inspector**: muestra **y edita** lo seleccionado (el arnés, nodo, segmento, conector, masa, splice, componente, cable) con los mismos campos que las tablas; como edita el mismo proyecto, el resto de las vistas se actualiza solo. Las referencias externas de las vías se editan en la pantalla de Conectores.
@@ -390,6 +392,7 @@ El programa sugiere el tamaño más chico que cumple, muestra alternativas y avi
 
 ### 9.4 Terminación en breakouts
 - **Molde en T**: cada pata se chequea contra el diámetro del segmento que sale por ella.
+- **Boot recto** sobre uno de los tramos (se elige cuál): la boca grande en el breakout, el lado cable contra el diámetro de ese tramo (mismo criterio que el termo); su pata se descuenta del termo de ese tramo.
 - **Termo con adhesivo** sobre la unión: dimensionado según la rama más gruesa que cubre.
 - **Nada**.
 
@@ -418,7 +421,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Conectores pendientes y elementos con errores, resaltados.
 - Imprimible (hoja de armado, etapa 6). En una sola A4 el dibujo entero no se lee, así que por defecto se imprime **como la hoja a mano del taller**:
   - **Vista general**: el esqueleto del arnés — conector principal y breakouts numerados (1, 2, 3…; en cada breakout la rama más grande se numera última, así el tronco queda en línea y las laterales bajan), con el largo y el termo de cada tramo y la distancia desde el principal — y, debajo, **una lista por breakout** con cada salida: nombre, ID, largo, número de parte del conector y termo.
-  - **Una hoja por breakout**: el tramo que llega ("from 1 · 290 mm") y sus salidas en abanico, con letra de mesa: largo y termo de cada tramo, y en cada conector nombre, ID, pieza, terminación y distancia desde el principal. Las salidas a otro breakout remiten a su hoja.
+  - **Una hoja por breakout**: el tramo que llega ("from 1 · 290 mm") y sus salidas en abanico, con letra de mesa: largo y termo de cada tramo, y en cada conector nombre, ID, pieza, terminación y distancia desde el principal. Las salidas a otro breakout remiten a su hoja. Las que salen **hacia atrás** van a la izquierda del breakout, arriba y abajo del tramo que llega (en la lista, con "←"); la terminación del breakout va sobre su número.
   - Opción "Whole harness on one sheet": el dibujo entero en una hoja (A3 o más grande), con la opción a escala.
 
 ### 10.3 Vista esquemática pin a pin
@@ -433,7 +436,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Clic en un pin → **se resalta en el dibujo el recorrido del cable y toda la net**; el inspector muestra el detalle.
 - Clic en un segmento → cables que pasan y diámetro.
 - Doble clic en un conector → vista frontal (imagen de la biblioteca) + tabla de pinout. La vista frontal no se muestra en el dibujo general.
-- **Layout automático** del árbol cuando el arnés se cargó por tablas; después se acomoda a mano.
+- **Layout automático** del árbol cuando el arnés se cargó por tablas; después se acomoda a mano. Un tramo que sale hacia atrás va una columna antes, debajo; marcarlo así con el diagrama ya acomodado refleja su rama hacia atrás respecto del tramo que llega al breakout y, si quedaría encima de ese tramo, la corre una fila arriba o abajo.
 - La posición de cada elemento se guarda en su `Node` (`diagram_x`/`diagram_y`); sin posición, se ubica con el layout automático. Al primer arrastre se fijan todas.
 
 ### 10.5 Tecnología
@@ -461,12 +464,12 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 
 **Advertencias**
 - Cavidades sin usar sin tapón (un aviso por conector).
-- Vías con cable sin contacto (el ConnectorDef no tiene contacto cargado).
+- Vías con cable sin contacto (el ConnectorDef no tiene contacto cargado; no aplica a los marcados sin contactos aparte).
 - Cables de una misma net con distinta función.
 - Margen de corte menor al mínimo por trenzado.
 - Pin con varios destinos → **sugerir splice** (o validar que entren en el contacto).
 - Conectores o dispositivos en estado **pendiente**.
-- Ningún termo, boot o molde de la biblioteca sirve para un segmento, conector o breakout.
+- Ningún termo, boot o molde de la biblioteca sirve para un segmento, conector o breakout; boot recto de breakout sin el tramo sobre el que va.
 - Conector con termo con adhesivo sin diámetro trasero cargado en el ConnectorDef.
 
 ---
@@ -495,7 +498,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 | Inventario/stock | Fuera de alcance por ahora; a futuro. |
 | Coberturas | Termocontraíble Raychem, con o sin adhesivo. |
 | Terminación en conectores | Boot (recto/90°), termo con adhesivo o nada; elegible por conector, con sugerencia desde la biblioteca. |
-| Terminación en breakouts | Molde en T, termo con adhesivo o nada; elegible por nodo. |
+| Terminación en breakouts | Molde en T, termo con adhesivo, boot recto (sobre un tramo elegido, boca grande del lado con más cables) o nada; elegible por nodo. |
 | Colocación del termo | Tramo por tramo; el suministrado solo contempla el diámetro de su propio segmento. |
 | Factor de llenado | 0,75 inicial, a calibrar. |
 | Diagrama de armado | No escalado, con medidas; reemplaza el diagrama a mano. Distancia acumulada opcional. |

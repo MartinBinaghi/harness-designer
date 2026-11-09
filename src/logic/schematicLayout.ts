@@ -74,19 +74,25 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
   };
 
   const links: SchematicLink[] = [];
+  // Un cable suelto en un nodo no tiene a dónde ir en el esquema: su pin se
+  // muestra igual, con la nota "loose".
+  const looseNotes: { cavityId: number; label: string }[] = [];
   for (const w of project.wire_instances) {
     const from = endBlock(w.end_a);
     const to = endBlock(w.end_b);
-    if (from && to) links.push({ wireId: w.id, from, to, color: w.color, label: w.specific_name ?? w.short_id });
+    const label = w.specific_name ?? w.short_id;
+    if (from && to) links.push({ wireId: w.id, from, to, color: w.color, label });
+    const pinned = from?.cavityId ?? to?.cavityId ?? null;
+    if (pinned !== null && (w.end_a.kind === "loose" || w.end_b.kind === "loose")) looseNotes.push({ cavityId: pinned, label: `${label} (loose)` });
   }
 
-  const wiredCavities = new Set(links.flatMap((l) => [l.from.cavityId, l.to.cavityId]).filter((x): x is number => x !== null));
+  const notes = [
+    ...links.flatMap((l) => [l.from, l.to].filter((e) => e.cavityId !== null).map((e) => ({ cavityId: e.cavityId!, label: l.label }))),
+    ...looseNotes,
+  ];
+  const wiredCavities = new Set(notes.map((n) => n.cavityId));
   const notesByCavity = new Map<number, string[]>();
-  for (const l of links) {
-    for (const end of [l.from, l.to]) {
-      if (end.cavityId !== null) notesByCavity.set(end.cavityId, [...(notesByCavity.get(end.cavityId) ?? []), l.label]);
-    }
-  }
+  for (const n of notes) notesByCavity.set(n.cavityId, [...(notesByCavity.get(n.cavityId) ?? []), n.label]);
 
   // Conector principal: el marcado en el proyecto, o el que más cables tiene.
   const wiresPerConnector = (id: number) => links.filter((l) => l.from.block === `c${id}` || l.to.block === `c${id}`).length;

@@ -23,9 +23,11 @@ export interface Project {
 export interface Node {
   id: number;
   kind: "connector_end" | "breakout" | "splice_point" | "ground_point";
-  termination: "t_mold" | "adhesive_heatshrink" | "none" | null;
-  /** TMoldDef si termination = "t_mold", CoveringDef si "adhesive_heatshrink". */
+  termination: "t_mold" | "adhesive_heatshrink" | "boot_straight" | "none" | null;
+  /** TMoldDef si termination = "t_mold", CoveringDef si "adhesive_heatshrink", AccessoryDef (boot) si "boot_straight". */
   termination_library_part_id: number | null;
+  /** Con boot recto: el tramo sobre el que va (su lado cable aprieta ese tramo; la boca grande queda en el breakout). */
+  termination_segment_id: number | null;
   /** Posición en el diagrama de armado; null hasta acomodarlo (a mano o con el layout automático). */
   diagram_x: number | null;
   diagram_y: number | null;
@@ -40,6 +42,8 @@ export interface Segment {
   length_mm: number;
   twist_pitch_mm: number | null;
   covering_library_part_id: number | null;
+  /** Sale de su breakout hacia atrás (hacia el conector principal) en vez de hacia adelante: diagrama y hoja de armado. */
+  leaves_backward: boolean;
 }
 
 /** Una vía del conector. El contacto y el tapón no se cargan acá: salen del ConnectorDef (contacts.rs). */
@@ -101,12 +105,14 @@ export interface ComponentInstance {
   offset_from_node_id: number | null;
 }
 
+/** Un extremo de cable; "loose" = queda suelto en el nodo `node_id` (llega hasta ahí, no se conecta). */
 export interface WireEnd {
-  kind: "cavity" | "splice" | "ground" | "component";
+  kind: "cavity" | "splice" | "ground" | "component" | "loose";
   cavity_assignment_id: number | null;
   splice_id: number | null;
   ground_point_id: number | null;
   component_instance_id: number | null;
+  node_id: number | null;
 }
 
 export interface WireInstance {

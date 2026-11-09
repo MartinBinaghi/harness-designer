@@ -9,7 +9,8 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// "Termina en" de una vía con cable (plan 4.3): los extremos finales de su net
-/// — pines de conector, masas, componentes — y los splices por los que pasa.
+/// — pines de conector, masas, componentes, puntas sueltas — y los splices por
+/// los que pasa.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PinDestinations {
     pub cavity_assignment_id: i64,
@@ -158,7 +159,8 @@ pub fn pin_destinations(data: &ProjectData) -> Vec<PinDestinations> {
                 .filter(|w| members.contains(&w.id))
             {
                 for end in [&wire.end_a, &wire.end_b] {
-                    if is_here(end) || connection_point(end).is_none() {
+                    // Un extremo suelto no une nada, pero es donde termina el cable.
+                    if is_here(end) || (connection_point(end).is_none() && end.kind != "loose") {
                         continue;
                     }
                     if let Some(splice) = end.splice_id.filter(|_| end.kind == "splice") {
@@ -216,6 +218,27 @@ mod tests {
         ];
         assert_eq!(net_of_wire(&data, 1), vec![1]);
         assert_eq!(destinations_of(&data, 100), (vec![g1], vec![]));
+    }
+
+    #[test]
+    fn a_loose_end_has_a_route_and_is_where_the_pin_ends() {
+        // El cable del pedal 2 de Martin: sale de X1:100 y queda suelto en el nodo 4.
+        let mut data = topology_with_connectors_and_a_splice();
+        let loose = WireEnd {
+            node_id: Some(4),
+            ..wire_end("loose", None, None, None, None)
+        };
+        data.wire_instances = vec![wire(1, cavity(100), loose.clone())];
+        assert_eq!(destinations_of(&data, 100), (vec![loose], vec![]));
+        assert_eq!(crate::topology::wire_route(&data, 1), Some(vec![1, 3]));
+        assert!(crate::checks::run_checks(&data, &Default::default())
+            .iter()
+            .all(|f| f.group != "Wire ends"));
+        // Suelto en un nodo que no existe: error, como cualquier extremo roto.
+        data.wire_instances[0].end_b.node_id = Some(99);
+        assert!(crate::checks::run_checks(&data, &Default::default())
+            .iter()
+            .any(|f| f.group == "Wire ends"));
     }
 
     #[test]

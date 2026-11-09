@@ -28,7 +28,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut connector_defs_stmt = conn.prepare(
-        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm FROM connector_defs",
+        "SELECT part_id, gender, series, shell_size, counterpart_id, back_shape, back_diameter_mm, back_width_mm, back_height_mm, suggested_termination, contact_part_id, seal_plug_part_id, adhesive_heatshrink_length_mm, without_contacts FROM connector_defs",
     )?;
     let mut connector_defs = connector_defs_stmt
         .query_map([], |row| {
@@ -46,6 +46,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 contact_part_id: row.get(10)?,
                 seal_plug_part_id: row.get(11)?,
                 adhesive_heatshrink_length_mm: row.get(12)?,
+                without_contacts: row.get(13)?,
                 cavities: Vec::new(),
             })
         })?

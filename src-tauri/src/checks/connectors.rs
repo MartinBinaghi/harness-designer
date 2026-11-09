@@ -23,6 +23,7 @@ pub(super) fn check_unused_cavities_without_seal_plug(
 ) -> Vec<Finding> {
     data.connector_instances
         .iter()
+        .filter(|connector| crate::contacts::takes_contacts(library, connector))
         .filter_map(|connector| {
             let missing = connector
                 .cavities
@@ -52,6 +53,7 @@ pub(super) fn check_used_cavities_without_contact(
 ) -> Vec<Finding> {
     data.connector_instances
         .iter()
+        .filter(|connector| crate::contacts::takes_contacts(library, connector))
         .filter_map(|connector| {
             let missing = connector
                 .cavities
@@ -178,6 +180,7 @@ mod tests {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
+            termination_segment_id: None,
         }];
         data.connector_instances = vec![ConnectorInstance {
             id: 1,

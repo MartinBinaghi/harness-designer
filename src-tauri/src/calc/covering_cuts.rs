@@ -22,7 +22,8 @@ pub struct CoveringCut {
 }
 
 /// Pata (largo, solape) del boot o molde en T que ocupa la punta `node_id` del
-/// segmento, si hay uno elegido ahí.
+/// segmento, si hay uno elegido ahí. Un boot recto de breakout ocupa solo la
+/// punta del tramo sobre el que va.
 fn leg_at_end(
     data: &ProjectData,
     library: &Library,
@@ -47,6 +48,16 @@ fn leg_at_end(
         return Some((boot.leg_length_mm, boot.overlap_mm));
     }
     let node = data.nodes.iter().find(|n| n.id == node_id)?;
+    if node.termination.as_deref() == Some("boot_straight") {
+        if node.termination_segment_id != Some(segment_id) {
+            return None;
+        }
+        let boot = library
+            .accessory_defs
+            .iter()
+            .find(|a| Some(a.part_id) == node.termination_library_part_id)?;
+        return Some((boot.leg_length_mm, boot.overlap_mm));
+    }
     if node.termination.as_deref() != Some("t_mold") {
         return None;
     }
@@ -95,6 +106,54 @@ mod tests {
     use super::*;
 
     use crate::calc::test_fixtures::*;
+
+    /// X1 —S1— breakout (nodo 2) —S2— X2: un boot recto en el breakout, sobre S2.
+    #[test]
+    fn a_breakout_boot_takes_its_leg_from_its_segment_only_and_is_bought_once() {
+        let mut data = one_segment_project(1000.0, Some(1_000_000.0));
+        let mut far = data.nodes[1].clone();
+        far.id = 3;
+        data.nodes.push(far);
+        data.nodes[1].kind = "breakout".into();
+        data.connector_instances[1].node_id = 3;
+        let mut s2 = data.segments[0].clone();
+        s2.id = 2;
+        (s2.node_a_id, s2.node_b_id, s2.length_mm) = (2, 3, 400.0);
+        data.segments.push(s2);
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 6.0, None));
+        let d_bundle = (36.0f64 / 0.75).sqrt();
+        library.covering_defs = vec![covering(7, d_bundle * 1.2, d_bundle * 0.8, 0.4)];
+        library.accessory_defs = vec![accessory(50, d_bundle - 1.0, d_bundle + 1.0, "AMP", "CE")];
+        data.nodes[1].termination = Some("boot_straight".into());
+        data.nodes[1].termination_library_part_id = Some(50);
+
+        // Sin tramo elegido: no ocupa ninguno, y no calza.
+        let cuts = covering_cut_list(&data, &library);
+        assert_eq!(
+            cuts.iter().map(|c| c.legs_mm).collect::<Vec<_>>(),
+            [0.0, 0.0]
+        );
+        assert!(!crate::calc::boots_for_breakout(&data, &library, 2)[0].fits);
+
+        data.nodes[1].termination_segment_id = Some(2);
+        let cuts = covering_cut_list(&data, &library);
+        assert_eq!(
+            cuts.iter()
+                .map(|c| (c.legs_mm, c.cut_length_mm))
+                .collect::<Vec<_>>(),
+            [(0.0, 1000.0), (30.0, 400.0 - 30.0 + 15.0)]
+        );
+        assert!(crate::calc::boots_for_breakout(&data, &library, 2)[0].fits);
+        library.parts.push(part(50, "accessory", 1.0, None));
+        let bom = crate::calc::bill_of_materials(&data, &library);
+        assert_eq!(
+            bom.iter()
+                .find(|l| l.library_part_id == 50)
+                .map(|l| l.quantity_needed),
+            Some(1.0)
+        );
+    }
 
     #[test]
     fn covering_cut_is_segment_minus_boot_leg_plus_overlap() {

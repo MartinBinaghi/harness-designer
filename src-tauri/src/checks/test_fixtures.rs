@@ -18,6 +18,7 @@ pub(super) fn end(
         splice_id: splice,
         ground_point_id: ground,
         component_instance_id: component,
+        node_id: None,
     }
 }
 
@@ -68,6 +69,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
+            termination_segment_id: None,
         },
         Node {
             id: 2,
@@ -77,6 +79,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
+            termination_segment_id: None,
         },
     ];
     data.segments = vec![Segment {
@@ -86,6 +89,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
         length_mm: 500.0,
         twist_pitch_mm: Some(1_000_000.0),
         covering_library_part_id: None,
+        leaves_backward: false,
     }];
     data.connector_instances = vec![
         ConnectorInstance {
@@ -150,6 +154,7 @@ pub(super) fn connector_def_with_contact(
     contact_part_id: i64,
 ) -> crate::model::library::ConnectorDef {
     crate::model::library::ConnectorDef {
+        without_contacts: false,
         part_id,
         gender: "female".into(),
         series: None,

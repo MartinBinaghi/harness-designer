@@ -45,14 +45,14 @@ pub const PROJECT: Format = Format {
     noun: "harness project",
     schema: PROJECT_SCHEMA,
     marker_table: "project",
-    migrations: &[project_v0_to_v1, project_v1_to_v2],
+    migrations: &[project_v0_to_v1, project_v1_to_v2, project_v2_to_v3],
 };
 
 pub const LIBRARY: Format = Format {
     noun: "parts library",
     schema: LIBRARY_SCHEMA,
     marker_table: "parts",
-    migrations: &[library_v0_to_v1, library_v1_to_v2],
+    migrations: &[library_v0_to_v1, library_v1_to_v2, library_v2_to_v3],
 };
 
 // --- Migraciones -------------------------------------------------------------
@@ -91,6 +91,72 @@ fn project_v1_to_v2(tx: &Transaction) -> rusqlite::Result<()> {
     )
 }
 
+/// Pedidos de Martin del 2026-11-09:
+/// - un cable puede quedar **suelto en un nodo** (`end_x_kind = 'loose'`,
+///   `end_x_node_id`): llega hasta ahí pero no se conecta;
+/// - un breakout puede llevar un **boot recto** (`termination = 'boot_straight'`)
+///   sobre uno de sus tramos (`termination_segment_id`);
+/// - un tramo puede salir del breakout **hacia atrás** (`segments.leaves_backward`).
+///
+/// SQLite no deja cambiar un CHECK: `nodes` y `wire_instances` se rehacen con
+/// la definición nueva y se copian sus filas (corre con las claves foráneas
+/// apagadas, ver `upgrade`). Las definiciones van escritas acá, no tomadas de
+/// `schema/project.sql`, para que esta migración no cambie si el esquema cambia.
+fn project_v2_to_v3(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE nodes_v3 (
+             id                          INTEGER PRIMARY KEY,
+             kind                        TEXT NOT NULL CHECK (kind IN ('connector_end', 'breakout', 'splice_point', 'ground_point')),
+             termination                 TEXT CHECK (termination IN ('t_mold', 'adhesive_heatshrink', 'boot_straight', 'none')),
+             termination_library_part_id INTEGER,
+             termination_segment_id      INTEGER,
+             diagram_x                   REAL,
+             diagram_y                   REAL,
+             adhesive_heatshrink_length_mm REAL
+         );
+         INSERT INTO nodes_v3 (id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm)
+             SELECT id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm FROM nodes;
+         DROP TABLE nodes;
+         ALTER TABLE nodes_v3 RENAME TO nodes;
+
+         CREATE TABLE wire_instances_v3 (
+             id                              INTEGER PRIMARY KEY,
+             short_id                        TEXT NOT NULL UNIQUE,
+             library_part_id                 INTEGER NOT NULL,
+             color                           TEXT,
+             signal_type_id                  INTEGER,
+             specific_name                   TEXT,
+             manual_cut_margin_pct           REAL,
+             manual_length_mm                REAL,
+             label                           TEXT,
+             cable_instance_id               INTEGER REFERENCES cable_instances(id),
+             end_a_kind                      TEXT NOT NULL CHECK (end_a_kind IN ('cavity', 'splice', 'ground', 'component', 'loose')),
+             end_a_cavity_assignment_id      INTEGER REFERENCES cavity_assignments(id),
+             end_a_splice_id                 INTEGER REFERENCES splice_instances(id),
+             end_a_ground_point_id           INTEGER REFERENCES ground_points(id),
+             end_a_component_instance_id     INTEGER REFERENCES component_instances(id),
+             end_a_node_id                   INTEGER REFERENCES nodes(id),
+             end_b_kind                      TEXT NOT NULL CHECK (end_b_kind IN ('cavity', 'splice', 'ground', 'component', 'loose')),
+             end_b_cavity_assignment_id      INTEGER REFERENCES cavity_assignments(id),
+             end_b_splice_id                 INTEGER REFERENCES splice_instances(id),
+             end_b_ground_point_id           INTEGER REFERENCES ground_points(id),
+             end_b_component_instance_id     INTEGER REFERENCES component_instances(id),
+             end_b_node_id                   INTEGER REFERENCES nodes(id)
+         );
+         INSERT INTO wire_instances_v3 (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
+                                        end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
+                                        end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id)
+             SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
+                    end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
+                    end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id
+             FROM wire_instances;
+         DROP TABLE wire_instances;
+         ALTER TABLE wire_instances_v3 RENAME TO wire_instances;
+
+         ALTER TABLE segments ADD COLUMN leaves_backward INTEGER NOT NULL DEFAULT 0 CHECK (leaves_backward IN (0, 1));",
+    )
+}
+
 /// Ver `project_v0_to_v1`. Los grupos de pines de dispositivos se sacaron el
 /// 8/10 (el mismo nombre en dos vías ya indica pines en paralelo).
 fn library_v0_to_v1(tx: &Transaction) -> rusqlite::Result<()> {
@@ -125,6 +191,15 @@ fn library_v1_to_v2(tx: &Transaction) -> rusqlite::Result<()> {
          ALTER TABLE connector_defs DROP COLUMN image_side;
          ALTER TABLE connector_defs DROP COLUMN image_front;
          ALTER TABLE connector_defs DROP COLUMN image_back;",
+    )
+}
+
+/// Conectores **sin contactos aparte** (pedido de Martin del 2026-11-09): el
+/// cable va directo a la pieza (bornes a tornillo de la termocupla, un ojal que
+/// se crimpea directo), sin contacto ni tapón, y Checks no avisa que falten.
+fn library_v2_to_v3(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "ALTER TABLE connector_defs ADD COLUMN without_contacts INTEGER NOT NULL DEFAULT 0 CHECK (without_contacts IN (0, 1));",
     )
 }
 
@@ -297,27 +372,58 @@ fn upgrade(conn: &mut Connection, path: &str, format: &Format) -> Result<(), Str
                 file_name(path)
             )
         })?;
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-        let migrate = || -> rusqlite::Result<()> {
-            for step in &format.migrations[found as usize..] {
-                step(&tx)?;
-            }
-            // Las tablas nuevas del esquema (las existentes no se tocan: IF NOT EXISTS).
-            tx.execute_batch(format.schema)
-        };
-        migrate().map_err(|e| {
-            format!(
-                "Couldn't update the format of {}: {e} (the file wasn't changed)",
-                file_name(path)
-            )
-        })?;
-        verify_schema(&tx, path, format)?;
-        tx.pragma_update(None, "user_version", current)
+        // Las migraciones que rehacen una tabla (para cambiarle un CHECK) la
+        // borran y la renombran: con las claves foráneas activas, borrarla
+        // borraría en cascada las filas que la referencian. Se apagan durante
+        // la migración (fuera de una transacción: adentro no tienen efecto) y
+        // antes de confirmar se verifica que no quede ninguna referencia rota.
+        conn.pragma_update(None, "foreign_keys", false)
             .map_err(|e| e.to_string())?;
-        tx.commit().map_err(|e| e.to_string())?;
-        return Ok(());
+        let migrated = migrate_in_transaction(conn, path, format, found, current);
+        conn.pragma_update(None, "foreign_keys", true)
+            .map_err(|e| e.to_string())?;
+        return migrated;
     }
     verify_schema(conn, path, format)
+}
+
+/// Las migraciones de `found` a `current`, todas o ninguna.
+fn migrate_in_transaction(
+    conn: &mut Connection,
+    path: &str,
+    format: &Format,
+    found: i64,
+    current: i64,
+) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let migrate = || -> rusqlite::Result<()> {
+        for step in &format.migrations[found as usize..] {
+            step(&tx)?;
+        }
+        // Las tablas nuevas del esquema (las existentes no se tocan: IF NOT EXISTS).
+        tx.execute_batch(format.schema)
+    };
+    migrate().map_err(|e| {
+        format!(
+            "Couldn't update the format of {}: {e} (the file wasn't changed)",
+            file_name(path)
+        )
+    })?;
+    verify_schema(&tx, path, format)?;
+    let broken: i64 = tx
+        .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+            row.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    if broken > 0 {
+        return Err(format!(
+            "Couldn't update the format of {}: {broken} broken references (the file wasn't changed)",
+            file_name(path)
+        ));
+    }
+    tx.pragma_update(None, "user_version", current)
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Tablas y columnas del archivo == las del esquema actual. Una columna de más
@@ -401,11 +507,17 @@ mod tests {
         tables(&Connection::open(path).unwrap()).unwrap()
     }
 
+    /// Esquema de los proyectos en el formato 2, tal cual salió (hasta la 0.1.5).
+    const PROJECT_SCHEMA_V2: &str = include_str!("../schema/history/project.v2.sql");
+    const LIBRARY_SCHEMA_V2: &str = include_str!("../schema/history/library.v2.sql");
+
     /// Un proyecto como los que había antes del versionado: el esquema de
     /// octubre (con `format_version`, sin nombre de splice ni redondeo) y versión 0.
     fn old_project_file(path: &str) {
         let conn = Connection::open(path).unwrap();
-        conn.execute_batch(PROJECT_SCHEMA).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V2).unwrap();
+        conn.execute_batch("ALTER TABLE wire_instances DROP COLUMN cable_instance_id")
+            .unwrap();
         conn.execute_batch(
             "ALTER TABLE splice_instances DROP COLUMN name;
              ALTER TABLE project DROP COLUMN cut_round_mm;
@@ -498,6 +610,73 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    /// Formato 2 → 3 rehace `nodes` y `wire_instances` (cambian sus CHECK): no
+    /// se pierde nada, tampoco lo que las referencia (con las claves foráneas
+    /// activas, borrar la tabla vieja vaciaba los grupos de trenzado en cascada).
+    #[test]
+    fn a_v2_project_keeps_its_wires_and_twist_groups_when_tables_are_rebuilt() {
+        let path = temp_path("v2.harness.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V2).unwrap();
+        conn.execute_batch(
+            "INSERT INTO project (id, name, harness_code) VALUES (1, 'Motor', 'MOT-01');
+             INSERT INTO nodes (id, kind, termination, diagram_x) VALUES (1, 'connector_end', NULL, 10.5), (2, 'breakout', 't_mold', NULL);
+             INSERT INTO segments (id, node_a_id, node_b_id, length_mm) VALUES (1, 1, 2, 300);
+             INSERT INTO connector_instances (id, short_id, name, library_part_id, node_id) VALUES (1, 'X1', 'ECU', 5, 1);
+             INSERT INTO cavity_assignments (id, connector_instance_id, cavity_id) VALUES (1, 1, '1'), (2, 1, '2');
+             INSERT INTO cable_instances (id, short_id, library_part_id) VALUES (1, 'WC1', 7);
+             INSERT INTO wire_instances (id, short_id, library_part_id, specific_name, cable_instance_id, end_a_kind, end_a_cavity_assignment_id, end_b_kind, end_b_cavity_assignment_id)
+                 VALUES (1, 'W001', 7, 'TC+', 1, 'cavity', 1, 'cavity', 2), (2, 'W002', 7, 'TC-', 1, 'cavity', 2, 'cavity', 1);
+             INSERT INTO twist_groups (id, name) VALUES (1, 'twist I');
+             INSERT INTO twist_group_wires (twist_group_id, wire_instance_id) VALUES (1, 1), (1, 2);",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 2).unwrap();
+        drop(conn);
+
+        let mut conn = open_project(&path).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), PROJECT.version());
+        let mut data = project::load(&conn).unwrap();
+        assert_eq!(data.twist_groups[0].wire_instance_ids, [1, 2]);
+        assert_eq!(
+            data.wire_instances
+                .iter()
+                .map(|w| (
+                    w.short_id.as_str(),
+                    w.cable_instance_id,
+                    w.end_b.cavity_assignment_id
+                ))
+                .collect::<Vec<_>>(),
+            [("W001", Some(1), Some(2)), ("W002", Some(1), Some(1))]
+        );
+        assert_eq!(
+            (
+                data.nodes[0].diagram_x,
+                data.nodes[1].termination.as_deref()
+            ),
+            (Some(10.5), Some("t_mold"))
+        );
+        assert!(!data.segments[0].leaves_backward);
+        // Lo nuevo entra: un cable suelto en el nodo 2 y un boot recto en el breakout.
+        data.wire_instances[1].end_b.kind = "loose".into();
+        data.wire_instances[1].end_b.cavity_assignment_id = None;
+        data.wire_instances[1].end_b.node_id = Some(2);
+        data.nodes[1].termination = Some("boot_straight".into());
+        data.nodes[1].termination_segment_id = Some(1);
+        project::save(&mut conn, &data).unwrap();
+        assert_eq!(project::load(&conn).unwrap(), data);
+        // Las claves foráneas vuelven a estar activas después de migrar.
+        assert!(conn
+            .execute(
+                "INSERT INTO segments (id, node_a_id, node_b_id, length_mm) VALUES (9, 1, 99, 5)",
+                []
+            )
+            .is_err());
+        drop(conn);
+        let _ = std::fs::remove_file(format!("{path}.v2.bak"));
+        let _ = std::fs::remove_file(path);
+    }
+
     #[test]
     fn a_file_from_a_newer_program_is_left_untouched() {
         let path = temp_path("newer.harness.db");
@@ -554,7 +733,7 @@ mod tests {
         // sin el largo del termo con adhesivo y con los grupos de pines.
         let path = temp_path("old-library.db");
         let conn = Connection::open(&path).unwrap();
-        conn.execute_batch(LIBRARY_SCHEMA).unwrap();
+        conn.execute_batch(LIBRARY_SCHEMA_V2).unwrap();
         conn.execute_batch(
             "DROP TABLE connector_def_images;
              ALTER TABLE connector_defs ADD COLUMN image_side TEXT;
@@ -579,7 +758,7 @@ mod tests {
         // Una biblioteca de la versión 1: las fotos en columnas de connector_defs.
         let path = temp_path("v1-library.db");
         let conn = Connection::open(&path).unwrap();
-        conn.execute_batch(LIBRARY_SCHEMA).unwrap();
+        conn.execute_batch(LIBRARY_SCHEMA_V2).unwrap();
         conn.execute_batch(
             "DROP TABLE connector_def_images;
              ALTER TABLE connector_defs ADD COLUMN image_side TEXT;

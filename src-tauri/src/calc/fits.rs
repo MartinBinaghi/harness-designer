@@ -131,6 +131,42 @@ pub fn boots_for_connector(
         .collect()
 }
 
+/// Boots rectos contra un breakout (pedido de Martin, 2026-11-09): el boot va
+/// sobre uno de sus tramos (`Node::termination_segment_id`), con la boca grande
+/// en el breakout, del lado con más cables; su lado cable tiene que apretar
+/// ese tramo. No hay conector, así que la serie/carcasa no se pide
+/// (`connector_compatible` = true). Sin tramo elegido, ninguno calza.
+pub fn boots_for_breakout(data: &ProjectData, library: &Library, node_id: i64) -> Vec<BootFit> {
+    let segment = data
+        .nodes
+        .iter()
+        .find(|n| n.id == node_id)
+        .and_then(|n| n.termination_segment_id)
+        .filter(|&id| {
+            data.segments
+                .iter()
+                .any(|s| s.id == id && (s.node_a_id == node_id || s.node_b_id == node_id))
+        });
+    let diameter = segment.map(|id| bundle_diameter_mm(data, library, id));
+    library
+        .accessory_defs
+        .iter()
+        .filter(|a| a.orientation == "straight")
+        .map(|accessory| {
+            let cable_side_ok = diameter.is_some_and(|d| {
+                d >= accessory.cable_side_min_diameter_mm
+                    && d <= accessory.cable_side_max_diameter_mm
+            });
+            BootFit {
+                library_part_id: accessory.part_id,
+                connector_compatible: true,
+                cable_side_ok,
+                fits: cable_side_ok,
+            }
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TMoldLegFit {
     pub segment_id: i64,
@@ -230,20 +266,31 @@ pub fn connector_terminations(
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BreakoutTerminationInfo {
     pub node_id: i64,
+    /// Con molde en T; vacío con boot recto.
     pub t_mold_options: Vec<TMoldFit>,
+    /// Con boot recto; vacío con molde en T.
+    pub boot_options: Vec<BootFit>,
 }
 
-/// Moldes en T sugeridos por breakout (plan 9.5), para los nodos con terminación t_mold.
+/// Moldes en T o boots rectos sugeridos por breakout (plan 9.5), para los nodos con esa terminación.
 pub fn breakout_terminations(
     data: &ProjectData,
     library: &Library,
 ) -> Vec<BreakoutTerminationInfo> {
     data.nodes
         .iter()
-        .filter(|n| n.termination.as_deref() == Some("t_mold"))
-        .map(|n| BreakoutTerminationInfo {
-            node_id: n.id,
-            t_mold_options: t_mold_fits_for_node(data, library, n.id),
+        .filter_map(|n| match n.termination.as_deref() {
+            Some("t_mold") => Some(BreakoutTerminationInfo {
+                node_id: n.id,
+                t_mold_options: t_mold_fits_for_node(data, library, n.id),
+                boot_options: Vec::new(),
+            }),
+            Some("boot_straight") => Some(BreakoutTerminationInfo {
+                node_id: n.id,
+                t_mold_options: Vec::new(),
+                boot_options: boots_for_breakout(data, library, n.id),
+            }),
+            _ => None,
         })
         .collect()
 }
@@ -317,6 +364,7 @@ mod tests {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
+            termination_segment_id: None,
         });
         data.nodes.push(Node {
             id: 4,
@@ -326,6 +374,7 @@ mod tests {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
+            termination_segment_id: None,
         });
         data.segments.push(Segment {
             id: 2,
@@ -334,6 +383,7 @@ mod tests {
             length_mm: 500.0,
             twist_pitch_mm: Some(1_000_000.0),
             covering_library_part_id: None,
+            leaves_backward: false,
         });
         data.segments.push(Segment {
             id: 3,
@@ -342,6 +392,7 @@ mod tests {
             length_mm: 500.0,
             twist_pitch_mm: Some(1_000_000.0),
             covering_library_part_id: None,
+            leaves_backward: false,
         });
 
         let mut library = Library::default();

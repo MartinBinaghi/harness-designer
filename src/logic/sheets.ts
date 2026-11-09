@@ -365,6 +365,8 @@ export interface AssemblyOutlet {
   hs: string | null;
   /** Número del breakout al que lleva, si no termina en un conector. */
   branch: number | null;
+  /** Sale hacia atrás (hacia el conector principal, al lado del tramo que llega). */
+  backward: boolean;
 }
 
 export interface AssemblyBranch {
@@ -425,6 +427,7 @@ export function assemblyBranches(project: ProjectData, library: Library, diamete
           lengthMm: l.seg.length_mm,
           hs: segmentHeatShrink(project, library, l.seg.id, diameters),
           branch: nums.get(l.to) ?? null,
+          backward: l.seg.leaves_backward,
         };
       });
   };

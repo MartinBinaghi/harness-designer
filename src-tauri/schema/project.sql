@@ -28,9 +28,14 @@ CREATE TABLE IF NOT EXISTS nodes (
     id                          INTEGER PRIMARY KEY,
     kind                        TEXT NOT NULL CHECK (kind IN ('connector_end', 'breakout', 'splice_point', 'ground_point')),
     -- terminación solo aplica a breakouts
-    termination                 TEXT CHECK (termination IN ('t_mold', 'adhesive_heatshrink', 'none')),
-    -- t_mold_defs si termination = 't_mold', covering_defs si 'adhesive_heatshrink'
+    termination                 TEXT CHECK (termination IN ('t_mold', 'adhesive_heatshrink', 'boot_straight', 'none')),
+    -- t_mold_defs si termination = 't_mold', covering_defs si 'adhesive_heatshrink',
+    -- accessory_defs si 'boot_straight'
     termination_library_part_id INTEGER,
+    -- con boot recto: el segmento sobre el que va (su lado cable aprieta ese
+    -- tramo; la boca grande queda en el breakout). Sin REFERENCES: segments
+    -- referencia a nodes y se guardan antes; lo controla la capa de aplicación.
+    termination_segment_id      INTEGER,
     -- posición en el diagrama de armado (no escalado); NULL hasta acomodarlo
     diagram_x                   REAL,
     diagram_y                   REAL,
@@ -44,7 +49,10 @@ CREATE TABLE IF NOT EXISTS segments (
     node_b_id                   INTEGER NOT NULL REFERENCES nodes(id),
     length_mm                   REAL NOT NULL,
     twist_pitch_mm              REAL,
-    covering_library_part_id    INTEGER
+    covering_library_part_id    INTEGER,
+    -- sale del breakout hacia atrás (hacia el conector principal, al lado del
+    -- tramo que llega) en vez de hacia adelante: diagrama y hoja de armado
+    leaves_backward             INTEGER NOT NULL DEFAULT 0 CHECK (leaves_backward IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS connector_instances (
@@ -113,8 +121,6 @@ CREATE TABLE IF NOT EXISTS component_instances (
     )
 );
 
--- Cada extremo de cable apunta a UNA ubicación (cavidad, splice, masa o componente),
--- según end_x_kind.
 -- Cable comprado de varios conductores (par trenzado, multipolar): sus
 -- conductores son cables del arnés (wire_instances.cable_instance_id), pero se
 -- corta y se compra una vez (plan 4.1, WireDef con conductores).
@@ -124,6 +130,9 @@ CREATE TABLE IF NOT EXISTS cable_instances (
     library_part_id     INTEGER NOT NULL
 );
 
+-- Cada extremo de cable apunta a UNA ubicación (cavidad, splice, masa o
+-- componente), según end_x_kind; 'loose' = queda suelto en un nodo (no se
+-- conecta, pero llega hasta ahí: tiene recorrido y largo).
 CREATE TABLE IF NOT EXISTS wire_instances (
     id                              INTEGER PRIMARY KEY,
     short_id                        TEXT NOT NULL UNIQUE,
@@ -136,17 +145,19 @@ CREATE TABLE IF NOT EXISTS wire_instances (
     label                            TEXT,
     cable_instance_id                INTEGER REFERENCES cable_instances(id),   -- conductor de un cable comprado
 
-    end_a_kind                       TEXT NOT NULL CHECK (end_a_kind IN ('cavity', 'splice', 'ground', 'component')),
+    end_a_kind                       TEXT NOT NULL CHECK (end_a_kind IN ('cavity', 'splice', 'ground', 'component', 'loose')),
     end_a_cavity_assignment_id       INTEGER REFERENCES cavity_assignments(id),
     end_a_splice_id                  INTEGER REFERENCES splice_instances(id),
     end_a_ground_point_id            INTEGER REFERENCES ground_points(id),
     end_a_component_instance_id      INTEGER REFERENCES component_instances(id),
+    end_a_node_id                    INTEGER REFERENCES nodes(id),
 
-    end_b_kind                       TEXT NOT NULL CHECK (end_b_kind IN ('cavity', 'splice', 'ground', 'component')),
+    end_b_kind                       TEXT NOT NULL CHECK (end_b_kind IN ('cavity', 'splice', 'ground', 'component', 'loose')),
     end_b_cavity_assignment_id       INTEGER REFERENCES cavity_assignments(id),
     end_b_splice_id                  INTEGER REFERENCES splice_instances(id),
     end_b_ground_point_id            INTEGER REFERENCES ground_points(id),
-    end_b_component_instance_id      INTEGER REFERENCES component_instances(id)
+    end_b_component_instance_id      INTEGER REFERENCES component_instances(id),
+    end_b_node_id                    INTEGER REFERENCES nodes(id)
 );
 
 CREATE TABLE IF NOT EXISTS twist_groups (

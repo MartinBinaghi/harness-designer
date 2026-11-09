@@ -12,6 +12,7 @@ pub(super) fn wire_end(
     b: Option<i64>,
     c: Option<i64>,
     d: Option<i64>,
+    node: Option<i64>,
 ) -> WireEnd {
     WireEnd {
         kind,
@@ -19,6 +20,7 @@ pub(super) fn wire_end(
         splice_id: b,
         ground_point_id: c,
         component_instance_id: d,
+        node_id: node,
     }
 }
 
@@ -50,7 +52,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
     )?;
 
     let mut nodes_stmt =
-        conn.prepare("SELECT id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm FROM nodes")?;
+        conn.prepare("SELECT id, kind, termination, termination_library_part_id, termination_segment_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm FROM nodes")?;
     let nodes = nodes_stmt
         .query_map([], |row| {
             Ok(Node {
@@ -58,15 +60,16 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 kind: row.get(1)?,
                 termination: row.get(2)?,
                 termination_library_part_id: row.get(3)?,
-                diagram_x: row.get(4)?,
-                diagram_y: row.get(5)?,
-                adhesive_heatshrink_length_mm: row.get(6)?,
+                termination_segment_id: row.get(4)?,
+                diagram_x: row.get(5)?,
+                diagram_y: row.get(6)?,
+                adhesive_heatshrink_length_mm: row.get(7)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
 
     let mut segments_stmt = conn.prepare(
-        "SELECT id, node_a_id, node_b_id, length_mm, twist_pitch_mm, covering_library_part_id FROM segments",
+        "SELECT id, node_a_id, node_b_id, length_mm, twist_pitch_mm, covering_library_part_id, leaves_backward FROM segments",
     )?;
     let segments = segments_stmt
         .query_map([], |row| {
@@ -77,6 +80,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 length_mm: row.get(3)?,
                 twist_pitch_mm: row.get(4)?,
                 covering_library_part_id: row.get(5)?,
+                leaves_backward: row.get(6)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -169,8 +173,8 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
 
     let mut wire_instances_stmt = conn.prepare(
         "SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
-                end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id,
-                end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id
+                end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id, end_a_node_id,
+                end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id, end_b_node_id
          FROM wire_instances",
     )?;
     let wire_instances = wire_instances_stmt
@@ -192,13 +196,15 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                     row.get(12)?,
                     row.get(13)?,
                     row.get(14)?,
+                    row.get(15)?,
                 ),
                 end_b: wire_end(
-                    row.get(15)?,
                     row.get(16)?,
                     row.get(17)?,
                     row.get(18)?,
                     row.get(19)?,
+                    row.get(20)?,
+                    row.get(21)?,
                 ),
             })
         })?

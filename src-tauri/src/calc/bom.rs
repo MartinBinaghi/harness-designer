@@ -123,7 +123,7 @@ pub fn bill_of_materials(data: &ProjectData, library: &Library) -> Vec<BomRow> {
             continue;
         };
         match node.termination.as_deref() {
-            Some("t_mold") => *quantities.entry(id).or_default() += 1.0,
+            Some("t_mold") | Some("boot_straight") => *quantities.entry(id).or_default() += 1.0,
             Some("adhesive_heatshrink") => {
                 if let Some(mm) = node.adhesive_heatshrink_length_mm {
                     *quantities.entry(id).or_default() += mm / 1000.0;

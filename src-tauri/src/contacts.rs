@@ -78,6 +78,12 @@ fn takes(contact: &ContactDef, mm2: Option<f64>) -> bool {
     }
 }
 
+/// Si el conector lleva contactos y tapones: no los lleva uno marcado "sin
+/// contactos" (bornes a tornillo, ojal), donde el cable va directo a la pieza.
+pub fn takes_contacts(library: &Library, connector: &ConnectorInstance) -> bool {
+    connector_def(library, connector).is_none_or(|d| !d.without_contacts)
+}
+
 /// Contacto de una vía con cable: el del conector si es de ese tamaño y le
 /// entra el calibre; si no, otro de la biblioteca del mismo tamaño y género
 /// que sí sirva; si ninguno sirve, el del conector igual (Checks avisa del
@@ -91,7 +97,7 @@ pub fn cavity_contact(
     if wires_in_cavity(data, cavity).is_empty() {
         return None;
     }
-    let def = connector_def(library, connector)?;
+    let def = connector_def(library, connector).filter(|d| !d.without_contacts)?;
     let mm2 = cavity_wire_mm2(data, library, cavity);
     let usable = usable_contacts(library, def, cavity_size(def, cavity));
     let default = def
@@ -151,6 +157,7 @@ pub fn gauge_facts(library: &Library) -> GaugeFacts {
     let contact_ranges = library
         .connector_defs
         .iter()
+        .filter(|def| !def.without_contacts)
         .map(|def| {
             let sizes: BTreeMap<String, Vec<Option<(f64, f64)>>> = def
                 .cavities
@@ -188,7 +195,7 @@ pub fn cavity_seal_plug(
     if !wires_in_cavity(data, cavity).is_empty() {
         return None;
     }
-    let def = connector_def(library, connector)?;
+    let def = connector_def(library, connector).filter(|d| !d.without_contacts)?;
     let size = cavity_size(def, cavity);
     let plugs = || {
         library
@@ -224,6 +231,7 @@ mod tests {
         let mut data = crate::demo::sample_project();
         let mut library = crate::demo::sample_library();
         library.connector_defs = vec![ConnectorDef {
+            without_contacts: false,
             part_id: 1,
             gender: "female".into(),
             series: Some("DTM".into()),
@@ -292,6 +300,7 @@ mod tests {
                 splice_id: None,
                 ground_point_id: None,
                 component_instance_id: None,
+                node_id: None,
             },
             end_b: WireEnd {
                 kind: "splice".into(),
@@ -299,6 +308,7 @@ mod tests {
                 splice_id: Some(1),
                 ground_point_id: None,
                 component_instance_id: None,
+                node_id: None,
             },
         }];
         (data, library)
@@ -317,6 +327,22 @@ mod tests {
         assert_eq!(
             cavity_seal_plug(&data, &library, x1, &x1.cavities[1]),
             Some(600)
+        );
+    }
+
+    #[test]
+    fn a_connector_without_contacts_takes_no_contact_or_seal_plug() {
+        // Como la termocupla (bornes a tornillo) o un ojal: ni contacto ni tapón, y Checks no avisa.
+        let (data, mut library) = setup("18 AWG");
+        library.connector_defs[0].without_contacts = true;
+        let x1 = &data.connector_instances[0];
+        assert!(!takes_contacts(&library, x1));
+        assert_eq!(cavity_contact(&data, &library, x1, &x1.cavities[0]), None);
+        assert_eq!(cavity_seal_plug(&data, &library, x1, &x1.cavities[1]), None);
+        let findings = crate::checks::run_checks(&data, &library);
+        assert!(
+            !findings.iter().any(|f| f.message.starts_with("X1:")),
+            "{findings:?}"
         );
     }
 

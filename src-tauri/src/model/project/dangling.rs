@@ -5,6 +5,7 @@ use super::ProjectData;
 /// Qué elemento tiene una referencia colgada (para que Checks lleve a él).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DanglingItem {
+    Node(i64),
     Segment(i64),
     Connector(i64),
     Ground(i64),
@@ -103,12 +104,24 @@ pub fn dangling_references(data: &ProjectData) -> Vec<Dangling> {
             );
         }
     }
+    for n in &data.nodes {
+        if missing(&segments, n.termination_segment_id) {
+            push(
+                format!(
+                    "The boot at node {} is on a segment that no longer exists",
+                    n.id
+                ),
+                DanglingItem::Node(n.id),
+            );
+        }
+    }
     for w in &data.wire_instances {
         let broken = [&w.end_a, &w.end_b].iter().any(|end| {
             missing(&cavities, end.cavity_assignment_id)
                 || missing(&splices, end.splice_id)
                 || missing(&grounds, end.ground_point_id)
                 || missing(&components, end.component_instance_id)
+                || missing(&nodes, end.node_id)
         });
         if broken {
             push(

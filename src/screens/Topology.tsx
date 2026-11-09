@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Node, ProjectData, Segment, Selection } from "../model/project";
 import { NODE_KINDS, NODE_KIND_LABELS, NODE_TERMINATIONS, NODE_TERMINATION_LABELS } from "../logic/nodeLabels";
-import type { Library } from "../model/library";
+import { partLabel, type Library } from "../model/library";
 import { buildTreeText } from "../logic/tree";
 import { FolderIcon, SaveIcon, TrashIcon } from "../components/icons";
 import { fileName, isChosenPath, pickFileToOpen, pickFileToSave } from "../platform/fileDialogs";
-import { deleteNode, deleteSegment, nextId } from "../logic/projectEdit";
+import { deleteNode, deleteSegment, newNode, newSegment, nextId } from "../logic/projectEdit";
 
 interface Props {
   project: ProjectData | null;
@@ -123,7 +123,7 @@ export default function Topology({ project, setProject, loadProject, cancelProje
   function addNode() {
     if (!project) return;
     const id = nextId(project.nodes.map((n) => n.id));
-    setProject({ ...project, nodes: [...project.nodes, { id, kind: "connector_end", termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null }] });
+    setProject({ ...project, nodes: [...project.nodes, newNode(id, "connector_end", null, null)] });
   }
 
   // Igual que en el diagrama: no se borra un nodo con algo ubicado ni un tramo
@@ -151,14 +151,14 @@ export default function Topology({ project, setProject, loadProject, cancelProje
     const connected = new Set(project.segments.flatMap((s) => [s.node_a_id, s.node_b_id]));
     const mainNode = project.connector_instances.find((c) => c.id === project.project.main_connector_instance_id)?.node_id;
     const free = [...project.nodes].reverse().find((n) => !connected.has(n.id) && n.id !== mainNode && n.id !== project.nodes[0].id);
-    const nodes = free ? project.nodes : [...project.nodes, { id: nextId(project.nodes.map((n) => n.id)), kind: "connector_end" as const, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null }];
+    const nodes = free ? project.nodes : [...project.nodes, newNode(nextId(project.nodes.map((n) => n.id)), "connector_end", null, null)];
     const to = free ?? nodes[nodes.length - 1];
     const from = mainNode ?? project.nodes[0].id;
     const id = nextId(project.segments.map((s) => s.id));
     setProject({
       ...project,
       nodes,
-      segments: [...project.segments, { id, node_a_id: from, node_b_id: to.id, length_mm: 100, twist_pitch_mm: null, covering_library_part_id: null }],
+      segments: [...project.segments, newSegment(id, from, to.id)],
     });
   }
 
@@ -204,7 +204,7 @@ export default function Topology({ project, setProject, loadProject, cancelProje
             <h3>Nodes</h3>
             <table>
               <thead>
-                <tr><th>ID</th><th>Kind</th><th>Termination</th><th>T-mold</th><th></th></tr>
+                <tr><th>ID</th><th>Kind</th><th>Termination</th><th title="T-mold or straight boot">Part</th><th></th></tr>
               </thead>
               <tbody>
                 {project.nodes.map((node) => (
@@ -226,6 +226,7 @@ export default function Topology({ project, setProject, loadProject, cancelProje
                           updateNode(node.id, {
                             termination: (e.currentTarget.value || null) as Node["termination"],
                             termination_library_part_id: null,
+                            termination_segment_id: null,
                           })
                         }
                       >
@@ -244,6 +245,18 @@ export default function Topology({ project, setProject, loadProject, cancelProje
                             const part = library.parts.find((p) => p.id === td.part_id);
                             return <option key={td.part_id} value={td.part_id}>{part?.part_number ?? `#${td.part_id}`}</option>;
                           })}
+                        </select>
+                      )}
+                      {/* El tramo sobre el que va el boot se elige en el Inspector. */}
+                      {node.termination === "boot_straight" && (
+                        <select
+                          value={node.termination_library_part_id ?? ""}
+                          onChange={(e) => updateNode(node.id, { termination_library_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}
+                        >
+                          <option value="">—</option>
+                          {library.accessory_defs.filter((a) => a.orientation === "straight").map((a) => (
+                            <option key={a.part_id} value={a.part_id}>{partLabel(library, a.part_id)}</option>
+                          ))}
                         </select>
                       )}
                     </td>

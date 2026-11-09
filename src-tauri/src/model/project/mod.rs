@@ -44,8 +44,12 @@ pub struct Node {
     pub id: i64,
     pub kind: String,
     pub termination: Option<String>,
-    /// `TMoldDef` si `termination = "t_mold"`, `CoveringDef` si es "adhesive_heatshrink".
+    /// `TMoldDef` si `termination = "t_mold"`, `CoveringDef` si es
+    /// "adhesive_heatshrink", `AccessoryDef` (un boot) si es "boot_straight".
     pub termination_library_part_id: Option<i64>,
+    /// Con boot recto: el tramo sobre el que va. Su lado cable aprieta ese
+    /// tramo y la boca grande queda en el breakout, del lado con más cables.
+    pub termination_segment_id: Option<i64>,
     /// Posición en el diagrama de armado (no escalado, plan 10.2). `None` hasta
     /// que se acomoda a mano o con el layout automático.
     pub diagram_x: Option<f64>,
@@ -63,6 +67,10 @@ pub struct Segment {
     pub length_mm: f64,
     pub twist_pitch_mm: Option<f64>,
     pub covering_library_part_id: Option<i64>,
+    /// Sale de su breakout hacia atrás (hacia el conector principal, al lado
+    /// del tramo que llega) en vez de hacia adelante. Solo cambia cómo se
+    /// dibuja: diagrama de armado y hoja de armado.
+    pub leaves_backward: bool,
 }
 
 /// Una vía del conector en el proyecto. El contacto (vía con cable) y el tapón
@@ -131,7 +139,9 @@ pub struct ComponentInstance {
     pub offset_from_node_id: Option<i64>,
 }
 
-/// Un extremo de cable: `kind` dice cuál de los cuatro ids aplica.
+/// Un extremo de cable: `kind` dice cuál de los ids aplica. "loose" = queda
+/// suelto en el nodo `node_id`: llega hasta ahí (tiene recorrido y largo)
+/// pero no se conecta a nada.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WireEnd {
     pub kind: String,
@@ -139,6 +149,7 @@ pub struct WireEnd {
     pub splice_id: Option<i64>,
     pub ground_point_id: Option<i64>,
     pub component_instance_id: Option<i64>,
+    pub node_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

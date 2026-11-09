@@ -1,5 +1,6 @@
 import type { ProjectData } from "../model/project";
-import type { AssemblyBranch } from "../logic/sheets";
+import type { AssemblyBranch, AssemblyOutlet } from "../logic/sheets";
+import { partLabel, type Library } from "../model/library";
 
 /**
  * Hoja de armado por breakouts (pedido de Martin, como la hoja a mano del
@@ -111,7 +112,7 @@ function BranchList({ project, branch, distances }: { project: ProjectData; bran
         <tbody>
           {branch.outlets.map((o) => (
             <tr key={o.nodeId}>
-              <td className="strong">{o.branch !== null ? `→ ${o.branch}` : o.name}</td>
+              <td className="strong">{o.backward ? "← " : ""}{o.branch !== null ? `→ ${o.branch}` : o.name}</td>
               <td className="assembly-muted">{o.branch !== null ? "" : o.id}</td>
               <td className="num">{o.lengthMm}</td>
               <td>{o.part}</td>
@@ -124,23 +125,79 @@ function BranchList({ project, branch, distances }: { project: ProjectData; bran
   );
 }
 
-/** La hoja de un breakout: el tramo que llega y sus salidas en abanico, a tamaño de mesa. */
-export function BranchFan({ project, branch, distances, maxHeightMm }: {
+/**
+ * La hoja de un breakout: el tramo que llega y sus salidas en abanico, a tamaño
+ * de mesa. Las salidas hacia adelante van a la derecha; las que vuelven hacia
+ * el conector principal (`backward`), a la izquierda, arriba y abajo del tramo
+ * que llega.
+ */
+export function BranchFan({ project, library, branch, distances, maxHeightMm }: {
   project: ProjectData;
+  library: Library;
   branch: AssemblyBranch;
   distances: Record<string, number> | null;
   maxHeightMm: number;
 }) {
   const main = mainLabel(project);
   const ROW = 86;
-  const n = Math.max(branch.outlets.length, 1);
-  const hub = { x: 230, y: ((n - 1) * ROW) / 2 + 30 };
-  const BOX_X = 640;
+  const BOX_W = 330;
+  const forward = branch.outlets.filter((o) => !o.backward);
+  const backward = branch.outlets.filter((o) => o.backward);
+  const n = Math.max(forward.length, 1);
+  const hub = { x: (backward.length > 0 ? BOX_W + 60 : 0) + 230, y: ((n - 1) * ROW) / 2 + 30 };
+  const BOX_X = hub.x + 410;
+  // Hacia atrás: filas alternadas arriba y abajo del tramo que llega.
+  const backY = backward.map((_, i) => hub.y + (i % 2 === 0 ? -1 : 1) * ROW * (Math.floor(i / 2) + 1));
+  const ys = [...forward.map((_, i) => i * ROW + 30), ...backY, hub.y];
+  const top = Math.min(...ys) - 60;
+  const bottom = Math.max(...ys) + 60;
   const from = branch.num === 0 ? null : branch.parentNum === 0 ? main.id : `${branch.parentNum}`;
   const hubDistance = distanceText(distances, branch.nodeId, main.id);
+  const node = project.nodes.find((x) => x.id === branch.nodeId);
+  const hubTermination =
+    node?.termination && node.termination !== "none"
+      ? [TERMINATION[node.termination], node.termination_library_part_id != null ? partLabel(library, node.termination_library_part_id) : null].filter(Boolean).join(" ")
+      : null;
+
+  /** Una salida: la línea desde el centro, su largo y termo, y el conector (o el breakout siguiente) en la punta. */
+  const outlet = (o: AssemblyOutlet, yc: number, toLeft: boolean) => {
+    const anchor = toLeft ? BOX_W : BOX_X;
+    // Etiqueta cerca de la salida, donde las líneas ya están separadas.
+    const t = 0.72;
+    const lx = hub.x + (anchor - hub.x) * t;
+    const ly = hub.y + (yc - hub.y) * t;
+    const connectors = project.connector_instances.filter((c) => c.node_id === o.nodeId);
+    const tags = [
+      ...connectors.map((c) => (c.termination && c.termination !== "none" ? TERMINATION[c.termination] : null)),
+      distanceText(distances, o.nodeId, main.id),
+    ].filter(Boolean);
+    const boxX = toLeft ? 0 : BOX_X;
+    const circleX = toLeft ? BOX_W - 22 : BOX_X + 22;
+    return (
+      <g key={o.nodeId}>
+        <line x1={hub.x} y1={hub.y} x2={anchor} y2={yc} stroke="#000" strokeWidth={3} />
+        <text x={lx} y={ly - 8} textAnchor="middle" fontSize={20} fontWeight={700} style={halo}>{o.lengthMm} mm</text>
+        {o.hs && <text x={lx} y={ly + 16} textAnchor="middle" fontSize={13} style={halo}>{hsText(o.hs)}</text>}
+        {o.branch !== null ? (
+          <g>
+            <circle cx={circleX} cy={yc} r={22} fill="#fff" stroke="#000" strokeWidth={3} />
+            <text x={circleX} y={yc + 7} textAnchor="middle" fontSize={20} fontWeight={700}>{o.branch}</text>
+            <text x={toLeft ? circleX - 34 : circleX + 34} y={yc + 6} textAnchor={toLeft ? "end" : "start"} fontSize={16}>breakout {o.branch} (own sheet)</text>
+          </g>
+        ) : (
+          <g>
+            <rect x={boxX} y={yc - 32} width={BOX_W} height={64} rx={5} fill="#fff" stroke="#000" strokeWidth={2.5} />
+            <text x={boxX + 12} y={yc - 8} fontSize={20} fontWeight={700}>{o.name}</text>
+            <text x={boxX + 12} y={yc + 12} fontSize={13}>{[o.id, o.part].filter(Boolean).join(" · ")}</text>
+            {tags.length > 0 && <text x={boxX + 12} y={yc + 27} fontSize={11}>{tags.join(" · ")}</text>}
+          </g>
+        )}
+      </g>
+    );
+  };
 
   return (
-    <svg className="assembly" viewBox={`-10 -30 1000 ${n * ROW + 60}`} style={{ maxHeight: `${maxHeightMm}mm` }} fontFamily="Arial, sans-serif" role="img" aria-label={`Breakout ${branch.num}`}>
+    <svg className="assembly" viewBox={`-10 ${top} ${BOX_X + 360} ${bottom - top}`} style={{ maxHeight: `${maxHeightMm}mm` }} fontFamily="Arial, sans-serif" role="img" aria-label={`Breakout ${branch.num}`}>
       {from && (
         <g>
           <line x1={0} y1={hub.y} x2={hub.x} y2={hub.y} stroke="#000" strokeWidth={3} strokeDasharray="10 6" />
@@ -148,42 +205,12 @@ export function BranchFan({ project, branch, distances, maxHeightMm }: {
           {branch.inHs && <text x={hub.x / 2 - 10} y={hub.y + 26} textAnchor="middle" fontSize={14} style={halo}>{hsText(branch.inHs)}</text>}
         </g>
       )}
-      {branch.outlets.map((o, i) => {
-        const yc = i * ROW + 30;
-        // Etiqueta cerca de la salida, donde las líneas ya están separadas.
-        const t = 0.72;
-        const lx = hub.x + (BOX_X - hub.x) * t;
-        const ly = hub.y + (yc - hub.y) * t;
-        const connectors = project.connector_instances.filter((c) => c.node_id === o.nodeId);
-        const tags = [
-          ...connectors.map((c) => (c.termination && c.termination !== "none" ? TERMINATION[c.termination] : null)),
-          distanceText(distances, o.nodeId, main.id),
-        ].filter(Boolean);
-        return (
-          <g key={o.nodeId}>
-            <line x1={hub.x} y1={hub.y} x2={BOX_X} y2={yc} stroke="#000" strokeWidth={3} />
-            <text x={lx} y={ly - 8} textAnchor="middle" fontSize={20} fontWeight={700} style={halo}>{o.lengthMm} mm</text>
-            {o.hs && <text x={lx} y={ly + 16} textAnchor="middle" fontSize={13} style={halo}>{hsText(o.hs)}</text>}
-            {o.branch !== null ? (
-              <g>
-                <circle cx={BOX_X + 22} cy={yc} r={22} fill="#fff" stroke="#000" strokeWidth={3} />
-                <text x={BOX_X + 22} y={yc + 7} textAnchor="middle" fontSize={20} fontWeight={700}>{o.branch}</text>
-                <text x={BOX_X + 56} y={yc + 6} fontSize={16}>breakout {o.branch} (own sheet)</text>
-              </g>
-            ) : (
-              <g>
-                <rect x={BOX_X} y={yc - 32} width={330} height={64} rx={5} fill="#fff" stroke="#000" strokeWidth={2.5} />
-                <text x={BOX_X + 12} y={yc - 8} fontSize={20} fontWeight={700}>{o.name}</text>
-                <text x={BOX_X + 12} y={yc + 12} fontSize={13}>{[o.id, o.part].filter(Boolean).join(" · ")}</text>
-                {tags.length > 0 && <text x={BOX_X + 12} y={yc + 27} fontSize={11}>{tags.join(" · ")}</text>}
-              </g>
-            )}
-          </g>
-        );
-      })}
+      {forward.map((o, i) => outlet(o, i * ROW + 30, false))}
+      {backward.map((o, i) => outlet(o, backY[i], true))}
       <circle cx={hub.x} cy={hub.y} r={24} fill="#fff" stroke="#000" strokeWidth={3} />
       <text x={hub.x} y={hub.y + 8} textAnchor="middle" fontSize={22} fontWeight={700}>{branch.num === 0 ? main.id : branch.num}</text>
       {hubDistance && branch.num !== 0 && <text x={hub.x} y={hub.y + 48} textAnchor="middle" fontSize={13} style={halo}>{hubDistance}</text>}
+      {hubTermination && <text x={hub.x} y={hub.y - 34} textAnchor="middle" fontSize={13} style={halo}>{hubTermination}</text>}
     </svg>
   );
 }

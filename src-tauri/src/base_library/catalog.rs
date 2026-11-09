@@ -152,6 +152,8 @@ pub(super) struct Housing {
     /// primero no admite. Del género de la carcasa.
     pub(super) contacts: &'static [Contact],
     pub(super) seal_plug: Option<&'static str>,
+    /// Sin contactos aparte (bornes a tornillo, ojal): sin contacto ni tapón.
+    pub(super) without_contacts: bool,
 }
 
 pub(super) struct Contact {
@@ -265,6 +267,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "VAG 4-way ignition coil connector (Audi/VW coils)",
         contacts: JPT_SEALED_SOCKETS,
         seal_plug: None,
+        without_contacts: false,
     },
     Housing {
         part_number: "1J0 973 733",
@@ -278,6 +281,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "VAG 6-way connector, mates the Bosch LSU 4.2 lambda sensor (the LSU 4.9 takes Bosch 1 928 404 669)",
         contacts: &[],
         seal_plug: None,
+        without_contacts: false,
     },
     Housing {
         part_number: "1 928 404 669",
@@ -291,6 +295,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "Bosch 6-way BAK connector, code 1: mates the Bosch LSU 4.9 lambda sensor (sensor connector 1 928 404 687)",
         contacts: MCP_15K_SEALED_SOCKETS,
         seal_plug: None,
+        without_contacts: false,
     },
     Housing {
         part_number: "SMPW-K-F",
@@ -304,6 +309,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "Miniature type K thermocouple socket (yellow); the wider blade is negative",
         contacts: &[],
         seal_plug: None,
+        without_contacts: true,
     },
     Housing {
         part_number: "MS3476L24-61P",
@@ -317,6 +323,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "MIL-DTL-26482 Series 2 bayonet plug, shell 24, 61 × size 20 pin contacts",
         contacts: MIL_20_PIN,
         seal_plug: Some("MS27488-20"),
+        without_contacts: false,
     },
     // El "interco" de Martin (2026-11-06): plug negro con dado rojo, sin contactos
     // puestos. Marcado Corsair, J, 2616, c.
@@ -332,6 +339,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "MIL-DTL-26482 Series 2 bayonet plug, shell 20, 41 × size 20 pin contacts",
         contacts: MIL_20_PIN,
         seal_plug: Some("MS27488-20"),
+        without_contacts: false,
     },
     // Fotos y datos de Martin (2026-11-06): receptáculo de brida cuadrada, sockets,
     // el mismo inserto 24-61. Motor interno; marcado "2607B", "aero jan".
@@ -347,6 +355,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "MIL-DTL-26482 Series 2 bayonet wall-mount receptacle, square flange, shell 24, 61 × size 20 socket contacts",
         contacts: MIL_20_SOCKET,
         seal_plug: Some("MS27488-20"),
+        without_contacts: false,
     },
     // Foto de Martin (2026-11-06): marca Delphi, sello azul y traba lila; 13519047
     // es la GT 150 sellada 3 vías hembra del catálogo, sin codificado USCAR.
@@ -362,6 +371,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "GT 150 sealed 3-way female connector assembly (part number to confirm on the part)",
         contacts: GT150_SEALED_SOCKETS,
         seal_plug: Some("15305171"),
+        without_contacts: false,
     },
     Housing {
         part_number: "MINI TYMER 02W-F",
@@ -375,6 +385,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "Mini Timer 2-way female (name as in the workshop sheet; real part number to confirm)",
         contacts: JPT_SEALED_SOCKETS,
         seal_plug: None,
+        without_contacts: false,
     },
     Housing {
         part_number: "ORIGINAL 03W_F",
@@ -388,6 +399,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "3-way female, the sensor's original connector with Mini Timer terminals, A on the left (name as in the workshop sheet; part to confirm)",
         contacts: JPT_SEALED_SOCKETS,
         seal_plug: None,
+        without_contacts: false,
     },
     Housing {
         part_number: "OJAL 16mm2 M6",
@@ -401,6 +413,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         description: "Ring terminal (ojal) for 16 mm² wire, 6 mm hole (M6)",
         contacts: &[],
         seal_plug: None,
+        without_contacts: true,
     },
 ];
 

@@ -19,6 +19,7 @@ pub(super) fn wire_end(
         splice_id: splice,
         ground_point_id: ground,
         component_instance_id: component,
+        node_id: None,
     }
 }
 
@@ -55,6 +56,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 2,
@@ -64,6 +66,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 3,
@@ -73,6 +76,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 4,
@@ -82,6 +86,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
         ],
         segments: vec![
@@ -92,6 +97,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 length_mm: 100.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
             Segment {
                 id: 2,
@@ -100,6 +106,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 length_mm: 200.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
             Segment {
                 id: 3,
@@ -108,6 +115,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 length_mm: 50.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
         ],
         connector_instances: vec![],

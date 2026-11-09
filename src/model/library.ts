@@ -45,6 +45,8 @@ export interface ConnectorDef {
   seal_plug_part_id: number | null;
   /** Largo de la pieza de termo con adhesivo detrás del conector (varía según el conector). */
   adhesive_heatshrink_length_mm: number | null;
+  /** Sin contactos aparte: el cable va directo a la pieza (bornes a tornillo, ojal), sin contacto ni tapón. */
+  without_contacts: boolean;
   cavities: ConnectorDefCavity[];
 }
 

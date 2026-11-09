@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CostReport, WireCutLength } from "../model/calc";
 import { swatchBackground } from "../logic/sheets";
-import { changeConnectorPart, nextCableShortId, nextId, patchItem, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
+import { changeConnectorPart, nextCableShortId, nextId, patchItem, setLeavesBackward, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
 import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { EndEditor } from "../components/EndEditor";
@@ -335,9 +335,35 @@ export default function Inspector({ project, setProject, library, selection, onS
               value={node.termination}
               empty="—"
               options={NODE_TERMINATIONS.map((t) => ({ value: t, label: NODE_TERMINATION_LABELS[t] }))}
-              onChange={(v) => set({ termination: v, termination_library_part_id: null })}
+              onChange={(v) => set({ termination: v, termination_library_part_id: null, termination_segment_id: null })}
             />
           </Field>
+          {node.termination === "boot_straight" && (
+            <>
+              <Field label="Boot">
+                <Select
+                  value={node.termination_library_part_id}
+                  empty="—"
+                  options={parts(library.accessory_defs.filter((a) => a.orientation === "straight"))}
+                  onChange={(v) => set({ termination_library_part_id: v })}
+                />
+              </Field>
+              {/* El lado cable aprieta este tramo; la boca grande queda en el breakout, del lado con más cables. */}
+              <Field label="On segment">
+                <Select
+                  value={node.termination_segment_id}
+                  empty="—"
+                  options={project.segments
+                    .filter((s) => s.node_a_id === node.id || s.node_b_id === node.id)
+                    .map((s) => {
+                      const other = project.nodes.find((n) => n.id === (s.node_a_id === node.id ? s.node_b_id : s.node_a_id));
+                      return { value: s.id, label: `S${s.id} → ${other ? nodeLabel(project, other) : "?"}` };
+                    })}
+                  onChange={(v) => set({ termination_segment_id: v })}
+                />
+              </Field>
+            </>
+          )}
           {node.termination === "t_mold" && (
             <Field label="T-mold">
               <Select value={node.termination_library_part_id} empty="—" options={parts(library.t_mold_defs)} onChange={(v) => set({ termination_library_part_id: v })} />
@@ -379,6 +405,17 @@ export default function Inspector({ project, setProject, library, selection, onS
           </Field>
           <Field label="Covering">
             <Select value={seg.covering_library_part_id} empty="—" options={parts(library.covering_defs)} onChange={(v) => set({ covering_library_part_id: v })} />
+          </Field>
+          {/* Hacia atrás = vuelve hacia el conector principal, al lado del tramo que llega (diagrama y hoja de armado). */}
+          <Field label="Leaves its breakout">
+            <Select
+              value={seg.leaves_backward ? "backward" : "forward"}
+              options={[
+                { value: "forward", label: "Forward" },
+                { value: "backward", label: "Backward (toward the main connector)" },
+              ]}
+              onChange={(v) => setProject(setLeavesBackward(project, seg.id, v === "backward"))}
+            />
           </Field>
         </>
       );

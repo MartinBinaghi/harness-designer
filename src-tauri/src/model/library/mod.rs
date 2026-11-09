@@ -56,6 +56,10 @@ pub struct ConnectorDef {
     /// Largo de la pieza de termo con adhesivo que va detrás de este conector
     /// (varía según el conector; plan 9.3).
     pub adhesive_heatshrink_length_mm: Option<f64>,
+    /// Sin contactos aparte: el cable va directo a la pieza (bornes a tornillo
+    /// de la termocupla, ojal que se crimpea directo), sin contacto ni tapón
+    /// (ver contacts.rs).
+    pub without_contacts: bool,
     pub cavities: Vec<ConnectorDefCavity>,
 }
 
@@ -222,6 +226,7 @@ mod tests {
     #[test]
     fn back_clearance_is_the_diameter_or_the_diagonal() {
         let mut cd = ConnectorDef {
+            without_contacts: false,
             part_id: 1,
             gender: "female".into(),
             series: Some("DTM".into()),

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import type { ProjectData, Selection, WireEnd, WireInstance } from "../model/project";
+import type { ProjectData, Selection, WireInstance } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { TrashIcon } from "../components/icons";
 import { swatchBackground } from "../logic/sheets";
-import { deleteWire, endChoices, endLabel, nextId, parseEnd, setWireType, wireCategoryPatch } from "../logic/projectEdit";
+import { BLANK_END, deleteWire, endChoices, endLabel, nextId, parseEnd, setWireType, wireCategoryPatch } from "../logic/projectEdit";
 import { GoesToInput } from "../components/GoesToInput";
 
 /** A cavity end's parent connector, if any — used by the connector filter. */
@@ -11,10 +11,6 @@ function cavityConnectorShortId(project: ProjectData, cavityAssignmentId: number
   if (cavityAssignmentId === null) return null;
   const connector = project.connector_instances.find((c) => c.cavities.some((cav) => cav.id === cavityAssignmentId));
   return connector?.short_id ?? null;
-}
-
-function blankEnd(): WireEnd {
-  return { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null };
 }
 
 function ColorSwatch({ color }: { color: string | null }) {
@@ -67,8 +63,8 @@ export default function Wires({ project, setProject, library, selection, onSelec
       manual_length_mm: null,
       label: null,
       cable_instance_id: null,
-      end_a: blankEnd(),
-      end_b: blankEnd(),
+      end_a: BLANK_END,
+      end_b: BLANK_END,
     };
     setProject({ ...project, wire_instances: [...project.wire_instances, newWire] });
   }
@@ -116,7 +112,7 @@ export default function Wires({ project, setProject, library, selection, onSelec
         list={listId}
         initial={label}
         onCommit={(text) => {
-          const end = text ? parseEnd(project!, library, text) : blankEnd();
+          const end = text ? parseEnd(project!, library, text) : BLANK_END;
           if (!end) return setNotice(`"${text}" isn't a pin, splice, ground or component of this project.`);
           setNotice("");
           update(wire.id, { [side]: end });

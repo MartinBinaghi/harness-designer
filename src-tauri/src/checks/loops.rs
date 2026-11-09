@@ -75,6 +75,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 2,
@@ -84,6 +85,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 3,
@@ -93,6 +95,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
         ];
         data.segments = vec![
@@ -103,6 +106,7 @@ mod tests {
                 length_mm: 100.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
             Segment {
                 id: 2,
@@ -111,6 +115,7 @@ mod tests {
                 length_mm: 100.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
             Segment {
                 id: 3,
@@ -119,6 +124,7 @@ mod tests {
                 length_mm: 100.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             }, // closes the loop
         ];
         let findings = check_topology_has_no_loops(&data);
@@ -138,6 +144,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 2,
@@ -147,6 +154,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
             Node {
                 id: 3,
@@ -156,6 +164,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
+                termination_segment_id: None,
             },
         ];
         data.segments = vec![
@@ -166,6 +175,7 @@ mod tests {
                 length_mm: 100.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
             Segment {
                 id: 2,
@@ -174,6 +184,7 @@ mod tests {
                 length_mm: 100.0,
                 twist_pitch_mm: None,
                 covering_library_part_id: None,
+                leaves_backward: false,
             },
         ];
         assert!(check_topology_has_no_loops(&data).is_empty());

@@ -56,6 +56,7 @@ function blankConnectorDef(partId: number): ConnectorDef {
     contact_part_id: null,
     seal_plug_part_id: null,
     adhesive_heatshrink_length_mm: null,
+    without_contacts: false,
     cavities: [],
   };
 }
@@ -65,7 +66,7 @@ function missingData(cd: ConnectorDef, part: Part): string[] {
   const out: string[] = [];
   if (part.price_usd == null) out.push("no price");
   if (cd.cavities.length === 0) out.push("no cavities");
-  if (cd.contact_part_id == null) out.push("no contact");
+  if (!cd.without_contacts && cd.contact_part_id == null) out.push("no contact");
   const backKnown =
     cd.back_shape === "round"
       ? cd.back_diameter_mm != null
@@ -260,6 +261,14 @@ function ConnectorDetail({ library, project, cd, part, missing, onPart, onCd, on
               </select>
             </label>
             <label>
+              <span className="field-label" title="None: the wire goes straight to the part (screw terminals, a ring terminal crimped on the wire), with no contact or seal plug">Contacts</span>
+              <select value={cd.without_contacts ? "none" : "crimped"} onChange={(e) => onCd({ without_contacts: e.currentTarget.value === "none" })}>
+                <option value="crimped">Crimped contacts</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            {!cd.without_contacts && (<>
+            <label>
               <span className="field-label" title="Crimped on every wired cavity">Contact</span>
               <select value={cd.contact_part_id ?? ""} onChange={(e) => onCd({ contact_part_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
                 <option value="">—</option>
@@ -280,6 +289,7 @@ function ConnectorDetail({ library, project, cd, part, missing, onPart, onCd, on
                 ))}
               </select>
             </label>
+            </>)}
             <label className="lib-field-wide">
               <span className="field-label">Description</span>
               <input value={part.description ?? ""} onChange={(e) => onPart({ description: e.currentTarget.value || null })} placeholder="—" />

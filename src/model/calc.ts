@@ -71,7 +71,10 @@ export interface TMoldFit {
 
 export interface BreakoutTerminationInfo {
   node_id: number;
+  /** Con molde en T; vacío con boot recto. */
   t_mold_options: TMoldFit[];
+  /** Con boot recto (sobre el tramo elegido); vacío con molde en T. */
+  boot_options: BootFit[];
 }
 
 export interface SpliceOutputGaugeFit {

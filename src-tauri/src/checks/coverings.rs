@@ -65,6 +65,45 @@ pub(super) fn check_boot_assigned_does_not_fit(
     findings
 }
 
+/// Boot recto de breakout: que tenga elegido el tramo sobre el que va y que su
+/// lado cable apriete ese tramo.
+pub(super) fn check_breakout_boot(data: &ProjectData, library: &Library) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for node in &data.nodes {
+        if node.termination.as_deref() != Some("boot_straight") {
+            continue;
+        }
+        let at = FindingTarget::Node { id: node.id };
+        if node.termination_segment_id.is_none() {
+            findings.push(
+                warning(format!(
+                    "Breakout at node {} has a straight boot but not the segment it goes on",
+                    node.id
+                ))
+                .at(at),
+            );
+            continue;
+        }
+        let Some(assigned_id) = node.termination_library_part_id else {
+            continue;
+        };
+        let fits = crate::calc::boots_for_breakout(data, library, node.id);
+        if fits
+            .iter()
+            .any(|f| f.library_part_id == assigned_id && !f.fits)
+        {
+            findings.push(
+                warning(format!(
+                    "Breakout at node {}: the boot's cable side doesn't fit its segment",
+                    node.id
+                ))
+                .at(at),
+            );
+        }
+    }
+    findings
+}
+
 pub(super) fn check_t_mold_assigned_does_not_fit(
     data: &ProjectData,
     library: &Library,
@@ -149,6 +188,7 @@ mod tests {
         data.connector_instances[0].termination_library_part_id = Some(300);
         let mut library = library_with_wire_def(6.0);
         library.connector_defs = vec![crate::model::library::ConnectorDef {
+            without_contacts: false,
             part_id: 10,
             gender: "female".into(),
             series: Some("AMP".into()),

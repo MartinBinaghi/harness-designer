@@ -10,6 +10,7 @@ import {
   changeConnectorPart,
   deleteWire,
   duplicateConnector,
+  duplicateWireToNextPin,
   setWireType,
   freeConnectorNode,
   endChoices,
@@ -403,6 +404,19 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
                               + wire
                             </button>
                           )}
+                          <button
+                            className="link-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const copied = duplicateWireToNextPin(project, w.id, cav.id);
+                              if (typeof copied === "string") return apply(copied);
+                              apply(copied.project);
+                              onSelect({ kind: "wire", id: copied.wireId });
+                            }}
+                            title="Copy this wire (function +1, category, type, color) to the next free pin"
+                          >
+                            ↓ next
+                          </button>
                           <button className="icon-button" onClick={(e) => { e.stopPropagation(); setProject(deleteWire(project, w.id)); }} title="Delete wire" aria-label="Delete wire">
                             <TrashIcon />
                           </button>
@@ -417,8 +431,15 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
         </table>
       </div>
       <p className="hint cn-footnote">
-        Contact {def?.contact_part_id != null ? partLabel(library, def.contact_part_id) : "not set"} and seal plug{" "}
-        {def?.seal_plug_part_id != null ? partLabel(library, def.seal_plug_part_id) : "not set"} from the part in the Library · Length = route through the
+        {def?.without_contacts ? (
+          "No separate contacts or seal plugs: the wire goes straight to the part (Library)"
+        ) : (
+          <>
+            Contact {def?.contact_part_id != null ? partLabel(library, def.contact_part_id) : "not set"} and seal plug{" "}
+            {def?.seal_plug_part_id != null ? partLabel(library, def.seal_plug_part_id) : "not set"} from the part in the Library
+          </>
+        )}{" "}
+        · Length = route through the
         segments + margin; click a row to see the route or set a length by hand (Inspector).
       </p>
     </div>

@@ -43,6 +43,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
         diagram_x: None,
         diagram_y: None,
         adhesive_heatshrink_length_mm: None,
+        termination_segment_id: None,
     };
     data.nodes = vec![node(1, "connector_end"), node(2, "breakout")];
     data.nodes
@@ -67,6 +68,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
             length_mm,
             twist_pitch_mm: None,
             covering_library_part_id: None,
+            leaves_backward: false,
         })
         .collect();
 
@@ -164,6 +166,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
             splice_id: None,
             ground_point_id: None,
             component_instance_id: None,
+            node_id: None,
         }
     };
     let splice = |id| WireEnd {
@@ -172,6 +175,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
         splice_id: Some(id),
         ground_point_id: None,
         component_instance_id: None,
+        node_id: None,
     };
     let ground = WireEnd {
         kind: "ground".into(),
@@ -179,6 +183,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
         splice_id: None,
         ground_point_id: Some(1),
         component_instance_id: None,
+        node_id: None,
     };
     let signal = part("M22759/32-22");
     let power = part("M22759/32-20");

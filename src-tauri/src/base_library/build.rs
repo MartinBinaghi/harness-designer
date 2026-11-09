@@ -108,6 +108,7 @@ pub fn base_library() -> Library {
                     price_date: None,
                 });
                 library.connector_defs.push(ConnectorDef {
+                    without_contacts: false,
                     part_id: id,
                     gender: gender.into(),
                     series: Some(family.series.into()),
@@ -181,6 +182,7 @@ pub fn base_library() -> Library {
             "unit",
         );
         library.connector_defs.push(ConnectorDef {
+            without_contacts: false,
             part_id: id,
             gender: "female".into(),
             series: Some("Superseal 1.0".into()),
@@ -264,6 +266,7 @@ pub fn base_library() -> Library {
             "unit",
         );
         library.connector_defs.push(ConnectorDef {
+            without_contacts: h.without_contacts,
             part_id: id,
             gender: h.gender.into(),
             series: Some(h.series.into()),
@@ -315,6 +318,7 @@ pub fn base_library() -> Library {
             "unit",
         );
         library.connector_defs.push(ConnectorDef {
+            without_contacts: false,
             part_id: id,
             gender: "female".into(),
             series: Some("Marelli SRG14x".into()),

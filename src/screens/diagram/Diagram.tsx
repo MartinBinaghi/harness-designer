@@ -5,7 +5,7 @@ import "@xyflow/react/dist/style.css";
 import { infoFor } from "../../logic/nodeLabels";
 import { constrainDrag, pxPerMm, rootedTree, scaledCenters } from "../../logic/diagramScale";
 import { BLOCK_SIZE, POINT_SIZE, autoLayout, isBlock, rootNodeId } from "../../logic/diagramLayout";
-import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, setSegmentLength, splitSegment } from "../../logic/projectEdit";
+import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, newNode, setSegmentLength, splitSegment } from "../../logic/projectEdit";
 import type { Finding, ProjectData, Selection } from "../../model/project";
 import type { Library } from "../../model/library";
 import type { CostReport } from "../../model/calc";
@@ -257,7 +257,7 @@ export default function Diagram({ project, setProject, library, findings, select
     const id = project!.nodes.reduce((m, n) => Math.max(m, n.id), 0) + 1;
     setProject({
       ...project!,
-      nodes: [...project!.nodes, { id, kind: "connector_end", termination: null, termination_library_part_id: null, diagram_x: x, diagram_y: y, adhesive_heatshrink_length_mm: null }],
+      nodes: [...project!.nodes, newNode(id, "connector_end", x, y)],
     });
     onSelect({ kind: "node", id });
     window.setTimeout(() => void flow?.fitView({ duration: 200, maxZoom: 1 }), 80);

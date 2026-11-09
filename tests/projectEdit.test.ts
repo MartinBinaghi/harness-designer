@@ -139,7 +139,7 @@ console.log("project edit: ok");
 
 // Pinout por conector: destinos escritos a mano, cables que salen de una vía, varios cables por vía.
 {
-  const { addWireAtCavity, deleteWire, endChoices, otherEnd, parseEnd, setOtherEnd, wiresAtCavity } = await import("../src/logic/projectEdit.ts");
+  const { addWireAtCavity, deleteWire, endChoices, endLabel, otherEnd, parseEnd, setOtherEnd, wiresAtCavity } = await import("../src/logic/projectEdit.ts");
   const lib = {
     wire_defs: [{ part_id: 100 }],
     device_defs: [{ part_id: 9, connectors: [{ id: 3, label: "A", connector_def_id: 1, pins: [{ id: 1, cavity_id: "A6", name: "OUT11", function: null }] }] }],
@@ -191,6 +191,28 @@ console.log("project edit: ok");
   assert.equal(otherEnd(q.wire_instances[0], 91).cavity_assignment_id, 42);
   assert.equal(typeof setOtherEnd(q, a.wireId, 42, parseEnd(q, lib, "X4:2")!), "string"); // no puede volver a su propio pin
   assert.equal(wiresAtCavity(deleteWire(q, a.wireId), 42).length, 1);
+
+  // Suelto en un nodo: se elige escribiendo "loose…"; el nodo ya no se puede borrar sin sacarlo antes.
+  const loose = parseEnd(proj, lib, "loose · node 1 · Connector end")!;
+  assert.deepEqual([loose.kind, loose.node_id], ["loose", 1]);
+  const pedal = addWireAtCavity(proj, lib, null, 41);
+  assert.ok(typeof pedal !== "string");
+  const hanging = setOtherEnd(pedal.project, pedal.wireId, 41, loose);
+  assert.ok(typeof hanging !== "string");
+  assert.equal(endLabel(hanging, loose), "loose · node 1 · Connector end");
+  assert.match(String(deleteNode(hanging, 1)), /loose end/);
+
+  // "↓ next": X4:1 "INY Cil 1" se copia a la próxima vía libre (X4:2), con la función +1 y sin destino.
+  const { duplicateWireToNextPin, patchItem } = await import("../src/logic/projectEdit.ts");
+  const inj = addWireAtCavity(proj, lib, null, 41);
+  assert.ok(typeof inj !== "string");
+  const named = setOtherEnd(patchItem(inj.project, "wire_instances", inj.wireId, { specific_name: "INY Cil 1" }), inj.wireId, 41, parseEnd(inj.project, lib, "G1")!);
+  assert.ok(typeof named !== "string");
+  const dup = duplicateWireToNextPin(named, inj.wireId, 41);
+  assert.ok(typeof dup !== "string");
+  const made = dup.project.wire_instances.find((w) => w.id === dup.wireId)!;
+  assert.deepEqual([made.specific_name, made.end_a.cavity_assignment_id, made.end_b.kind, made.end_b.ground_point_id, made.library_part_id], ["INY Cil 2", 42, "cavity", null, 100]);
+  assert.equal(typeof duplicateWireToNextPin(dup.project, dup.wireId, 42), "string"); // no queda vía libre
   console.log("project edit (pinout per connector): ok");
 }
 
@@ -285,4 +307,31 @@ console.log("project edit: ok");
   assert.deepEqual(deleteWire(deleteWire(both, 1), 2).cable_instances, []);
   assert.equal(deleteWire(both, 1).cable_instances.length, 1);
   console.log("project edit (bought cables): ok");
+}
+
+// Tramo hacia atrás: el diagrama ya acomodado se refleja respecto del tramo que llega (y, si quedaría encima, baja una fila); el layout automático lo pone una columna antes.
+{
+  const { setLeavesBackward, segmentEnds } = await import("../src/logic/projectEdit.ts");
+  const { autoLayout } = await import("../src/logic/diagramLayout.ts");
+  // Todo en línea (centros a la altura 24): el breakout es un punto de 14 px, los extremos bloques de 170 × 48.
+  const placed = (id: number, kind: "connector_end" | "breakout", x: number) => ({ ...node(id, kind), diagram_x: x, diagram_y: kind === "breakout" ? 17 : 0 });
+  const proj = {
+    ...base,
+    nodes: [placed(1, "connector_end", 0), placed(2, "breakout", 300), placed(3, "connector_end", 600)],
+    segments: [{ ...seg(1, 1, 2, 300), leaves_backward: false }, { ...seg(2, 3, 2, 300), leaves_backward: false }],
+    splice_instances: [],
+  } as ProjectData;
+  assert.deepEqual(segmentEnds(proj, proj.segments[1]), { parent: 2, child: 3 }); // cuelga del breakout aunque esté guardado al revés
+  const back = setLeavesBackward(proj, 2, true);
+  assert.equal(back.segments[1].leaves_backward, true);
+  // Centro del breakout = 307; el bloque tenía centro 685 → queda en -71 (x = -156), y como caería sobre el tramo que llega, una fila abajo (y = 80).
+  const x3 = back.nodes.find((n) => n.id === 3)!;
+  assert.deepEqual([x3.diagram_x, x3.diagram_y], [-156, 80]);
+  assert.deepEqual(back.nodes.find((n) => n.id === 1)!.diagram_x, 0);
+  // Volver hacia adelante lo refleja de nuevo: misma columna que antes, del mismo lado.
+  const fwd = setLeavesBackward(back, 2, false).nodes.find((n) => n.id === 3)!;
+  assert.deepEqual([fwd.diagram_x, fwd.diagram_y], [600, 80]);
+  const auto = autoLayout({ ...back, nodes: back.nodes.map((n) => ({ ...n, diagram_x: null, diagram_y: null })) });
+  assert.ok(auto.get(3)!.x < auto.get(2)!.x && auto.get(3)!.y > auto.get(2)!.y);
+  console.log("project edit (segment leaving backward): ok");
 }

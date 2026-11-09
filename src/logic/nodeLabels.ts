@@ -10,6 +10,7 @@ export const NODE_KIND_LABELS: Record<Node["kind"], string> = {
 export const NODE_TERMINATION_LABELS: Record<NonNullable<Node["termination"]>, string> = {
   t_mold: "T-mold",
   adhesive_heatshrink: "Adhesive heat-shrink",
+  boot_straight: "Straight boot",
   none: "None",
 };
 export const NODE_KINDS = Object.keys(NODE_KIND_LABELS) as Node["kind"][];
@@ -51,7 +52,7 @@ export function infoFor(project: ProjectData, nodeId: number): EntryInfo {
     return { label: splice.name ? `${splice.short_id} · ${splice.name}` : splice.short_id, select: { kind: "splice", id: splice.id }, dotClass: "tree-dot-splice" };
   }
   if (node?.kind === "breakout") {
-    const label = node.termination && node.termination !== "none" ? `Breakout (${node.termination.replace("_", " ")})` : "Breakout";
+    const label = node.termination && node.termination !== "none" ? `Breakout (${NODE_TERMINATION_LABELS[node.termination].toLowerCase()})` : "Breakout";
     return { label, select: { kind: "node", id: nodeId }, dotClass: "tree-dot-breakout" };
   }
   return { label: `Node ${nodeId}`, select: { kind: "node", id: nodeId }, dotClass: "tree-dot-node" };
