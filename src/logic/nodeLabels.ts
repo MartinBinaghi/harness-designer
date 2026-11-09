@@ -13,6 +13,12 @@ export const NODE_TERMINATION_LABELS: Record<NonNullable<Node["termination"]>, s
   none: "None",
 };
 export const NODE_KINDS = Object.keys(NODE_KIND_LABELS) as Node["kind"][];
+
+/** "node 1 · Connector end · X3 PEDAL 2": con los conectores que tiene, para no tener que recordar cuál es cada X. */
+export function nodeLabel(project: ProjectData, node: Node): string {
+  const here = project.connector_instances.filter((c) => c.node_id === node.id).map((c) => (c.name ? `${c.short_id} ${c.name}` : c.short_id));
+  return [`node ${node.id}`, NODE_KIND_LABELS[node.kind], ...here].join(" · ");
+}
 export const NODE_TERMINATIONS = Object.keys(NODE_TERMINATION_LABELS) as NonNullable<Node["termination"]>[];
 
 interface EntryInfo {

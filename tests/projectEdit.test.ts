@@ -165,6 +165,12 @@ console.log("project edit: ok");
   assert.equal(parseEnd(proj, lib, "SP7 · Coils pin 2")?.splice_id, 7); // splice elegido por su nombre
   assert.equal(parseEnd(proj, lib, "sp7")?.splice_id, 7);
   assert.equal(parseEnd(proj, lib, "X9:B1"), null);
+  // Por nombre del conector: la lista ofrece "X4 · Fuel pump:2" y no repite "X4:2", que se sigue aceptando.
+  const offered = endChoices(proj, lib).filter((c) => !c.hidden).map((c) => c.label);
+  assert.ok(offered.includes("X4 · Fuel pump:2") && !offered.includes("X4:2"));
+  assert.ok(offered.includes("SP7 · Coils pin 2") && !offered.includes("SP7") && offered.includes("G1"));
+  assert.equal(parseEnd(proj, lib, "x4 · fuel pump:2")?.cavity_assignment_id, 42);
+  assert.equal(parseEnd(proj, lib, "X4:2")?.cavity_assignment_id, 42);
   // Pines en paralelo (mismo nombre en dos vías): "Goes to" lleva la vía para saber a cuál va.
   const par = { ...lib, device_defs: [{ part_id: 9, connectors: [{ id: 3, pins: [{ id: 1, cavity_id: "A6", name: "OUT1" }, { id: 2, cavity_id: "a6", name: "OUT1" }] }] }] } as unknown as Library;
   assert.equal(parseEnd(proj, par, "PDM30 OUT1 (a6)")?.cavity_assignment_id, 92);

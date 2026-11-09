@@ -352,12 +352,18 @@ const cavityEnd = (id: number): WireEnd => ({ ...BLANK_END, cavity_assignment_id
  * vía, el nombre del pin en conectores de dispositivo ("PDM30 OUT11"), splices,
  * masas y componentes. Sirve para el autocompletado y para interpretar el texto.
  */
-export function endChoices(project: ProjectData, library: Library): { label: string; end: WireEnd }[] {
-  const out: { label: string; end: WireEnd }[] = [];
+/**
+ * Lo que se puede escribir en "Goes to". Con nombre, la lista ofrece "X1 · ECU:7"
+ * y "G1 · GND" (se busca por el nombre); "X1:7" y "G1" se aceptan igual pero no se
+ * repiten en la lista (`hidden`).
+ */
+export function endChoices(project: ProjectData, library: Library): { label: string; end: WireEnd; hidden?: boolean }[] {
+  const out: { label: string; end: WireEnd; hidden?: boolean }[] = [];
   for (const c of project.connector_instances) {
     const pins = c.cavities.map((cav) => devicePinName(library, c.device_connector_id, cav.cavity_id));
     c.cavities.forEach((cav, i) => {
-      out.push({ label: `${c.short_id}:${cav.cavity_id}`, end: cavityEnd(cav.id) });
+      out.push({ label: `${c.short_id}:${cav.cavity_id}`, end: cavityEnd(cav.id), hidden: !!c.name });
+      if (c.name) out.push({ label: `${c.short_id} · ${c.name}:${cav.cavity_id}`, end: cavityEnd(cav.id) });
       const pin = pins[i];
       // Un nombre en dos vías (pines en paralelo) lleva la vía: "PDM30 OUT1 (A10)".
       const repeated = pins.filter((p) => p === pin).length > 1;
@@ -367,12 +373,12 @@ export function endChoices(project: ProjectData, library: Library): { label: str
   // Splices y masas también con su nombre: con muchos, nadie se acuerda cuál es SP7.
   for (const s of project.splice_instances) {
     const end: WireEnd = { ...BLANK_END, kind: "splice", cavity_assignment_id: null, splice_id: s.id };
-    out.push({ label: s.short_id, end });
+    out.push({ label: s.short_id, end, hidden: !!s.name });
     if (s.name) out.push({ label: `${s.short_id} · ${s.name}`, end });
   }
   for (const g of project.ground_points) {
     const end: WireEnd = { ...BLANK_END, kind: "ground", cavity_assignment_id: null, ground_point_id: g.id };
-    out.push({ label: g.short_id, end });
+    out.push({ label: g.short_id, end, hidden: !!g.name });
     if (g.name) out.push({ label: `${g.short_id} · ${g.name}`, end });
   }
   for (const k of project.component_instances) out.push({ label: k.short_id, end: { ...BLANK_END, kind: "component", cavity_assignment_id: null, component_instance_id: k.id } });

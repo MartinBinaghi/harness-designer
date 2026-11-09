@@ -1,6 +1,6 @@
 // Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { assemblyBranches, colorWord, connectorHeatShrink, coveringRows, pageChunks, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/logic/sheets.ts";
+import { assemblyBranches, colorWord, swatchBackground, wireColors, connectorHeatShrink, coveringRows, pageChunks, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/logic/sheets.ts";
 import type { Library } from "../src/model/library.ts";
 import type { ProjectData } from "../src/model/project.ts";
 import type { PinDestinations } from "../src/model/calc.ts";
@@ -91,6 +91,11 @@ assert.equal(toCsv(["a", "b"], [["x, y", 'say "hi"']]), 'a,b\r\n"x, y","say ""hi
 // Color en palabras (hoja en blanco y negro): texto tal cual; un código hex, al nombre más parecido.
 assert.equal(colorWord("violet"), "violet");
 assert.equal(colorWord("#7f00ff"), "violet");
+// Doble color: base y raya.
+assert.deepEqual(wireColors("orange / white"), ["orange", "white"]);
+assert.deepEqual(wireColors(null), []);
+assert.equal(swatchBackground("red"), "red");
+assert.equal(swatchBackground("orange/white"), "linear-gradient(135deg, orange 50%, white 50%)");
 assert.equal(colorWord(null), "—");
 assert.equal(cutListRows(project, library, cuts, [], "pin").find((r) => r.id === "W001")!.color, "red");
 

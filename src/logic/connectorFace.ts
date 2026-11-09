@@ -80,7 +80,7 @@ function deutschRearGrid(ways: number, triangle: boolean): { grid: Grid; checked
   if (ways === 2) return { grid: [[0, 0], [1, 0]], checked: false };
   if (ways === 3)
     return triangle
-      ? { grid: [[0, 0], [0.5, 0.87], [1, 0]], checked: false }
+      ? { grid: [[0, 0], [1, 0], [0.5, 0.87]], checked: true } // confirmado por Martin: en la cara del macho la C va abajo
       : { grid: [[2, 0], [1, 0], [0, 0]], checked: true }; // confirmado por Martin: hembra con la 3 a la izquierda
   if (ways === 4 || ways === 6) {
     // Dos columnas: baja por la izquierda, sube por la derecha.

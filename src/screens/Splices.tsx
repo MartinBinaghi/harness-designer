@@ -2,13 +2,13 @@ import { useState } from "react";
 import type { ProjectData, Selection } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { TrashIcon } from "../components/icons";
-import { addJunction, deleteJunction, wiresAtJunction, type JunctionKind } from "../logic/projectEdit";
-import { NODE_KIND_LABELS } from "../logic/nodeLabels";
+import { addJunction, deleteJunction, patchItem, wiresAtJunction, type JunctionKind } from "../logic/projectEdit";
+import { nodeLabel } from "../logic/nodeLabels";
 
 /**
  * Splices, masas y componentes (plan 7.3): donde se unen o terminan cables
  * fuera de un conector. Acá se crean, se ven sus cables y se borran; el resto
- * (parte, ubicación, nombre) se edita en el Inspector. Los cables se les
+ * (parte, ubicación) se edita en el Inspector; el nombre, también en la tabla. Los cables se les
  * conectan desde el pinout de Conectores ("Goes to": SP1, G1, R1).
  */
 
@@ -17,6 +17,7 @@ const KINDS: [JunctionKind, string, string][] = [
   ["ground", "Grounds", "ground"],
   ["component", "Components", "component"],
 ];
+const LIST = { splice: "splice_instances", ground: "ground_points", component: "component_instances" } as const;
 
 interface Place {
   node_id: number | null;
@@ -28,7 +29,7 @@ interface Place {
 function where(project: ProjectData, item: Place): string {
   if (item.segment_id != null) return `S${item.segment_id} · ${item.offset_from_end_mm ?? 0} mm from node ${item.offset_from_node_id}`;
   const node = project.nodes.find((n) => n.id === item.node_id);
-  return node ? `node ${node.id} · ${NODE_KIND_LABELS[node.kind]}` : "—";
+  return node ? nodeLabel(project, node) : "—";
 }
 
 interface Props {
@@ -79,7 +80,9 @@ export default function Splices({ project, setProject, library, selection, onSel
                       onClick={() => onSelect({ kind, id: r.id })}
                     >
                       <td><strong>{r.shortId}</strong></td>
-                      <td>{r.name}</td>
+                      <td>
+                        <input className="cn-cell" value={r.name} placeholder="name" aria-label={`${r.shortId} name`} onChange={(e) => setProject(patchItem(project, LIST[kind], r.id, { name: e.currentTarget.value }))} />
+                      </td>
                       <td>{r.part}</td>
                       <td>{r.where}</td>
                       <td>{wires.map((w) => w.short_id).join(", ") || <span className="hint">none</span>}</td>

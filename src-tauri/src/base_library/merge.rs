@@ -3,6 +3,7 @@
 use super::build::base_library;
 use crate::model::library::{
     AccessoryDef, ConnectorDef, ContactDef, CoveringDef, Library, Part, SealPlugDef, WireDef,
+    WireDefConductor,
 };
 use std::collections::HashMap;
 
@@ -102,13 +103,33 @@ pub fn merge_base_library(library: &Library) -> Library {
             });
         }
     }
+    // Los ids de conductor son de toda la biblioteca: los nuevos siguen al mayor.
+    let mut next_conductor = merged
+        .wire_defs
+        .iter()
+        .flat_map(|d| d.conductors.iter().map(|c| c.id))
+        .max()
+        .unwrap_or(0)
+        + 1;
     for def in base
         .wire_defs
         .into_iter()
         .filter(|d| added.contains(&d.part_id))
     {
+        let conductors = def
+            .conductors
+            .iter()
+            .map(|c| {
+                next_conductor += 1;
+                WireDefConductor {
+                    id: next_conductor - 1,
+                    ..c.clone()
+                }
+            })
+            .collect();
         merged.wire_defs.push(WireDef {
             part_id: id_map[&def.part_id],
+            conductors,
             ..def
         });
     }
@@ -233,6 +254,50 @@ mod tests {
             Some(receptacle.part_id)
         );
         assert_eq!(merged.accessory_defs.len(), base.accessory_defs.len());
+    }
+
+    #[test]
+    fn merged_ethernet_pair_gets_conductor_ids_not_already_used() {
+        // Como la biblioteca de Martin: el CAN ya usa los conductores 3 y 4.
+        let mut old = Library::default();
+        old.parts.push(Part {
+            id: 93,
+            part_number: "CAN TWISTED PAIR 22 AWG".into(),
+            manufacturer: None,
+            description: None,
+            category: "wire".into(),
+            purchase_unit: "meter".into(),
+            qty_per_pack: 1.0,
+            price_usd: None,
+            price_date: None,
+        });
+        old.wire_defs.push(WireDef {
+            part_id: 93,
+            gauge: "22 AWG".into(),
+            spec: None,
+            color: None,
+            outer_diameter_mm: 2.2,
+            default_cut_margin_pct: None,
+            conductors: [3, 4]
+                .map(|id| WireDefConductor {
+                    id,
+                    label: None,
+                    gauge: Some("22 AWG".into()),
+                    color: None,
+                    is_shield: false,
+                })
+                .into(),
+        });
+        let merged = merge_base_library(&old);
+        let mut ids: Vec<i64> = merged
+            .wire_defs
+            .iter()
+            .flat_map(|d| d.conductors.iter().map(|c| c.id))
+            .collect();
+        assert_eq!(ids.len(), 4);
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids, [3, 4, 5, 6]);
     }
 
     /// Mantenimiento, no un test: suma a la biblioteca que trae el instalador

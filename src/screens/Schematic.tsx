@@ -22,6 +22,7 @@ import "@xyflow/react/dist/style.css";
 import type { GaugeFacts } from "../model/calc";
 import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, type SchematicBlock, type SchematicPin } from "../logic/schematicLayout";
 import { addWire } from "../logic/projectEdit";
+import { wireColors } from "../logic/sheets";
 import type { ProjectData, Selection, WireEnd } from "../model/project";
 import type { Library } from "../model/library";
 
@@ -101,11 +102,16 @@ interface WireData extends Record<string, unknown> {
   label: string;
 }
 
-/** Línea de un cable: un borde oscuro debajo y el color del cable encima (así un cable blanco se ve). */
+/**
+ * Línea de un cable: un borde oscuro debajo y el color del cable encima (así un
+ * cable blanco se ve). Con doble color ("orange/white"), el segundo va en tramos
+ * sobre el primero, como la raya del cable.
+ */
 function WireEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, data }: EdgeProps<Edge<WireData>>) {
   const [path] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   const d = data!;
   const width = d.highlight === "wire" ? 4 : d.highlight === "net" ? 3 : 2;
+  const [base, stripe] = wireColors(d.color);
   return (
     <>
       <BaseEdge
@@ -114,9 +120,10 @@ function WireEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targ
         style={{ stroke: d.highlight !== "none" ? "var(--accent)" : "var(--text-muted)", strokeWidth: width + 2 }}
         interactionWidth={14}
       />
-      <path d={path} fill="none" stroke={d.color ?? "var(--surface)"} strokeWidth={width} pointerEvents="none">
+      <path d={path} fill="none" stroke={base ?? "var(--surface)"} strokeWidth={width} pointerEvents="none">
         <title>{d.label}</title>
       </path>
+      {stripe && <path d={path} fill="none" stroke={stripe} strokeWidth={width} strokeDasharray="6 6" pointerEvents="none" />}
     </>
   );
 }

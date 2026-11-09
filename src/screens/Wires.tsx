@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ProjectData, Selection, WireEnd, WireInstance } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { TrashIcon } from "../components/icons";
+import { swatchBackground } from "../logic/sheets";
 import { deleteWire, endChoices, endLabel, nextId, parseEnd, setWireType, wireCategoryPatch } from "../logic/projectEdit";
 import { GoesToInput } from "../components/GoesToInput";
 
@@ -17,7 +18,7 @@ function blankEnd(): WireEnd {
 }
 
 function ColorSwatch({ color }: { color: string | null }) {
-  return <span className="swatch" style={{ background: color || "transparent" }} title={color ?? "no color set"} />;
+  return <span className="swatch" style={{ background: swatchBackground(color) }} title={color ?? "no color set"} />;
 }
 
 interface Props {
@@ -127,7 +128,7 @@ export default function Wires({ project, setProject, library, selection, onSelec
   return (
     <>
       <datalist id={listId}>
-        {endChoices(project, library).map((ch) => <option key={ch.label} value={ch.label} />)}
+        {endChoices(project, library).filter((ch) => !ch.hidden).map((ch) => <option key={ch.label} value={ch.label} />)}
       </datalist>
       <div className="toolbar">
         <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search id, name, color, endpoint…" style={{ width: "16em" }} />

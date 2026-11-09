@@ -6,7 +6,7 @@ use super::catalog::{
 };
 use crate::model::library::{
     AccessoryDef, AccessoryDefConnectorMatch, ConnectorDef, ConnectorDefCavity, ContactDef,
-    CoveringDef, Library, Part, SealPlugDef, WireDef,
+    CoveringDef, Library, Part, SealPlugDef, WireDef, WireDefConductor,
 };
 
 fn push_part(
@@ -392,6 +392,37 @@ pub fn base_library() -> Library {
             conductors: vec![],
         });
     }
+    // Par trenzado Ethernet (pedido de Martin, como el CAN y la termocupla del
+    // taller): 2 conductores de 24 AWG; el color de cada uno se pone en el arnés.
+    let ethernet = library.parts.len() as i64 + 1;
+    library.parts.push(Part {
+        id: ethernet,
+        part_number: "ETHERNET TWISTED PAIR 24 AWG".into(),
+        manufacturer: None,
+        description: Some("Ethernet twisted pair, 2 x 24 AWG, unshielded (brand to confirm; OD provisional = 2 x 1.0 mm, measure the whole pair)".into()),
+        category: "wire".into(),
+        purchase_unit: "meter".into(),
+        qty_per_pack: 1.0,
+        price_usd: None,
+        price_date: None,
+    });
+    library.wire_defs.push(WireDef {
+        part_id: ethernet,
+        gauge: "24 AWG".into(),
+        spec: Some("Ethernet".into()),
+        color: None,
+        outer_diameter_mm: 2.0,
+        default_cut_margin_pct: None,
+        conductors: (1..=2)
+            .map(|id| WireDefConductor {
+                id,
+                label: None,
+                gauge: Some("24 AWG".into()),
+                color: None,
+                is_shield: false,
+            })
+            .collect(),
+    });
     for &(size, supplied, shrunk, wall) in DR_25 {
         let id = push_part(&mut library, format!("DR-25-{size}"), "TE / Raychem", format!("DR-25 {size}\" heat-shrink 2:1, no adhesive — base library, unverified: check datasheet"), "covering", "meter");
         library.covering_defs.push(CoveringDef {
@@ -453,6 +484,7 @@ mod tests {
                 + SUPERSEAL_10_SOCKETS.len()
                 + 1
                 + M22759_32.len()
+                + 1
                 + DR_25.len()
                 + ATUM.len()
         );

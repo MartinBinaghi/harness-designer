@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CostReport, WireCutLength } from "../model/calc";
+import { swatchBackground } from "../logic/sheets";
 import { changeConnectorPart, nextCableShortId, nextId, patchItem, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
 import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { EndEditor } from "../components/EndEditor";
 import { ConnectorViews } from "../components/ConnectorViews";
 import { ConnectorPartSelect } from "../components/ConnectorPartSelect";
-import { NODE_KINDS, NODE_KIND_LABELS, NODE_TERMINATIONS, NODE_TERMINATION_LABELS } from "../logic/nodeLabels";
+import { NODE_KINDS, NODE_KIND_LABELS, NODE_TERMINATIONS, NODE_TERMINATION_LABELS, nodeLabel } from "../logic/nodeLabels";
 
 type Placed = Pick<SpliceInstance, "node_id" | "segment_id" | "offset_from_end_mm" | "offset_from_node_id">;
 
@@ -242,7 +243,7 @@ export default function Inspector({ project, setProject, library, selection, onS
     );
   }
 
-  const nodeOptions = project.nodes.map((n) => ({ value: n.id, label: `node ${n.id} · ${NODE_KIND_LABELS[n.kind]}` }));
+  const nodeOptions = project.nodes.map((n) => ({ value: n.id, label: nodeLabel(project, n) }));
   const parts = (defs: { part_id: number }[]) => defs.map((d) => ({ value: d.part_id, label: partLabel(library, d.part_id) }));
 
   let title = "";
@@ -510,7 +511,7 @@ export default function Inspector({ project, setProject, library, selection, onS
           </Field>
           <Field label="Color">
             <span className="inspector-input-row">
-              <span className="swatch" style={{ background: w.color || "transparent" }} />
+              <span className="swatch" style={{ background: swatchBackground(w.color) }} />
               <TextInput value={w.color ?? ""} onChange={(v) => set({ color: v || null })} placeholder="e.g. violet" />
             </span>
           </Field>

@@ -27,12 +27,14 @@ const dt12 = wireSide(connectorFace(def("DT", "male", ways(12, "16")), mil)!);
 assert.ok(at(dt12, "1").y > 0 && at(dt12, "6").y > 0 && at(dt12, "1").x < at(dt12, "6").x);
 assert.ok(at(dt12, "7").y < 0 && at(dt12, "7").x === at(dt12, "6").x && at(dt12, "12").x === at(dt12, "1").x);
 assert.equal(dt12.latch, "sides");
-// DT 3 es triangular (2 arriba, 1 abajo); DTM 3 en línea. La numeración de 2/3 vías no está confirmada.
+// DT 3 es triangular (2 arriba, 1 abajo); DTM 3 en línea.
 const dt3 = connectorFace(def("DT", "male", ways(3, "16")), mil)!;
 assert.equal(new Set(dt3.cavities.map((c) => Math.round(c.y))).size, 2);
 assert.equal(hull(dt3).length, 3);
 assert.equal(new Set(connectorFace(def("DTM", "male", ways(3)), mil)!.cavities.map((c) => c.y)).size, 1);
-assert.equal(dt3.numbering, "inferred");
+assert.equal(dt3.numbering, "datasheet");
+// Cara del macho (Martin): A y B arriba, C abajo.
+assert.ok(at(dt3, "3").y > 0 && at(dt3, "1").y < 0 && at(dt3, "2").y < 0);
 // Marcado A, B, C (como lo usa el taller): misma cara, con las letras.
 assert.deepEqual(connectorFace(def("DT", "male", [["A", "16"], ["B", "16"], ["C", "16"]]), mil)!.cavities.map((c) => c.id), ["A", "B", "C"]);
 // Contorno: rectangular en las Deutsch, salvo el DT de 3 vías (triangular); Superseal ovalado.

@@ -295,7 +295,7 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
 
       <div className="cn-table-box">
         <datalist id={datalistId}>
-          {choices.map((ch) => <option key={ch.label} value={ch.label} />)}
+          {choices.filter((ch) => !ch.hidden).map((ch) => <option key={ch.label} value={ch.label} />)}
         </datalist>
         <table className="cn-pinout">
           <thead>

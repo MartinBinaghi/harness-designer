@@ -287,6 +287,17 @@ export function cutListGroups(project: ProjectData, rows: CutRow[]): CutGroup[] 
  * el texto tal cual (así se carga normalmente: "violet", "red/white"), y si es
  * un código hexadecimal, el nombre del color más parecido.
  */
+/** "orange/white" → ["orange", "white"]: el color de base y el de la raya (doble color). */
+export function wireColors(color: string | null): string[] {
+  return (color ?? "").split("/").map((c) => c.trim()).filter(Boolean).slice(0, 2);
+}
+
+/** Fondo de la muestra de color: un color lleno, o los dos en diagonal. */
+export function swatchBackground(color: string | null): string {
+  const [base, stripe] = wireColors(color);
+  return stripe ? `linear-gradient(135deg, ${base} 50%, ${stripe} 50%)` : base || "transparent";
+}
+
 export function colorWord(color: string | null): string {
   const c = color?.trim();
   if (!c) return "—";
