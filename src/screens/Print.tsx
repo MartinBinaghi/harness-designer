@@ -4,7 +4,8 @@ import type { ProjectData } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import type { CostReport, PinDestinations } from "../model/calc";
 import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "../logic/sheets";
-import { ConnectorFaceView } from "../components/ConnectorFaceView";
+import { ConnectorFaceView, MIL } from "../components/ConnectorFaceView";
+import { connectorFace } from "../logic/connectorFace";
 import { useConnectorImage } from "../platform/connectorImages";
 import { usedCavities } from "../logic/projectEdit";
 import { AssemblySheet } from "../components/AssemblySheet";
@@ -172,24 +173,46 @@ export default function Print({ project, setProject, library, report, destinatio
   } else if (doc === "pinout") {
     // Formato de las planillas de pinout del taller:
     // una tabla apaisada, un bloque por conector, encabezados en castellano.
+    // Al final, una hoja por conector grande con sus vistas en grande (en la
+    // columna no se leen los números; Martin las prefiere todas al final).
+    const shown = project.connector_instances.filter((c) => !skipped.has(c.id));
     sheets = (
-      <section className="sheet" style={{ width: sheetWidth }}>
-        <SheetHeader project={project} title="Pinout" />
-        <table className="pinout-table">
-          <colgroup>
-            <col style={{ width: "15%" }} /><col style={{ width: "5%" }} /><col style={{ width: "20%" }} /><col style={{ width: "28%" }} />
-            <col style={{ width: "14%" }} /><col style={{ width: "18%" }} />
-          </colgroup>
-          <thead>
-            <tr><th>Nombre</th><th>Pin</th><th>Función</th><th>Termina en</th><th>Conector</th><th>Vista delantera</th></tr>
-          </thead>
-          {project.connector_instances
-            .filter((c) => !skipped.has(c.id))
-            .map((c, i) => (
+      <>
+        <section className="sheet" style={{ width: sheetWidth }}>
+          <SheetHeader project={project} title="Pinout" />
+          <table className="pinout-table">
+            <colgroup>
+              <col style={{ width: "15%" }} /><col style={{ width: "5%" }} /><col style={{ width: "20%" }} /><col style={{ width: "28%" }} />
+              <col style={{ width: "14%" }} /><col style={{ width: "18%" }} />
+            </colgroup>
+            <thead>
+              <tr><th>Nombre</th><th>Pin</th><th>Función</th><th>Termina en</th><th>Conector</th><th>Vista delantera</th></tr>
+            </thead>
+            {shown.map((c, i) => (
               <PinoutBlock key={c.id} first={i === 0} project={project} library={library} connectorId={c.id} destinationOf={destinationOf} pageMm={(landscape ? w : h) - 28} charsPerLine={landscape ? 60 : 42} />
             ))}
-        </table>
-      </section>
+          </table>
+        </section>
+        {shown.map((c) => {
+          const def = bigConnector(library, c.library_part_id);
+          return (
+            def && (
+              <section key={c.id} className="sheet" style={{ width: sheetWidth }}>
+                <SheetHeader project={project} title={`Pinout · ${c.name || c.short_id} (${c.short_id}) · vistas`} />
+                <div className="pinout-views">
+                  {(["front", "rear"] as const).map((side) => (
+                    <figure key={side}>
+                      <figcaption>{side === "front" ? "Vista delantera (lado de acople)" : "Vista trasera (lado cables)"}</figcaption>
+                      <ConnectorFaceView def={def} used={usedCavities(project, c)} fixedSide={side} />
+                    </figure>
+                  ))}
+                </div>
+                <p className="pinout-views-note">Resaltadas: las vías con cable.</p>
+              </section>
+            )
+          );
+        })}
+      </>
     );
   } else if (doc === "assembly" && assemblyLayout === "branches") {
     const branches = assemblyBranches(project, library, data.report.segment_diameters);
@@ -361,6 +384,16 @@ export default function Print({ project, setProject, library, report, destinatio
 
 const GENDER_ES = { male: "macho", female: "hembra" } as const;
 
+/**
+ * Desde cuántas vías la cara dibujada va además en una hoja aparte, en grande
+ * (Martin: en la columna no se leían los números de la ECU, el interco y el motor).
+ */
+const BIG_CONNECTOR_WAYS = 25;
+const bigConnector = (library: Library, partId: number) => {
+  const def = library.connector_defs.find((d) => d.part_id === partId);
+  return def && def.cavities.length >= BIG_CONNECTOR_WAYS && connectorFace(def, MIL) ? def : undefined;
+};
+
 /** Un conector en la hoja de pinout: nombre, conector y vista ocupan todo el alto del bloque. */
 function PinoutBlock({ first, project, library, connectorId, destinationOf, pageMm, charsPerLine }: {
   first: boolean;
@@ -409,6 +442,7 @@ function PinoutChunk({ first, cont, project, library, connectorId, rows }: {
       ) : (
         def && <ConnectorFaceView def={def} used={usedCavities(project, c)} fixedSide="front" />
       )}
+      {bigConnector(library, c.library_part_id) && <div className="pinout-views-ref">vistas en grande: al final</div>}
       {c.status === "pending" && <div className="pinout-pending-note">Falta pinout y conector — se envía después</div>}
     </td>
   );

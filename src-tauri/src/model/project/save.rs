@@ -17,6 +17,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
         "ground_points",
         "cavity_assignments",
         "connector_instances",
+        "node_boot_segments",
         "segments",
         "nodes",
         "project",
@@ -48,8 +49,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for n in &data.nodes {
         tx.execute(
-            "INSERT INTO nodes (id, kind, termination, termination_library_part_id, termination_segment_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![n.id, n.kind, n.termination, n.termination_library_part_id, n.termination_segment_id, n.diagram_x, n.diagram_y, n.adhesive_heatshrink_length_mm],
+            "INSERT INTO nodes (id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![n.id, n.kind, n.termination, n.termination_library_part_id, n.diagram_x, n.diagram_y, n.adhesive_heatshrink_length_mm],
         )?;
     }
 
@@ -58,6 +59,15 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
             "INSERT INTO segments (id, node_a_id, node_b_id, length_mm, twist_pitch_mm, covering_library_part_id, leaves_backward) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![s.id, s.node_a_id, s.node_b_id, s.length_mm, s.twist_pitch_mm, s.covering_library_part_id, s.leaves_backward],
         )?;
+    }
+
+    for n in &data.nodes {
+        for segment_id in &n.termination_segment_ids {
+            tx.execute(
+                "INSERT INTO node_boot_segments (node_id, segment_id) VALUES (?1, ?2)",
+                params![n.id, segment_id],
+            )?;
+        }
     }
 
     for c in &data.connector_instances {

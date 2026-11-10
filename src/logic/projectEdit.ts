@@ -30,7 +30,7 @@ const DEFAULT_SEGMENT_MM = 100;
 
 /** Nodo nuevo, sin terminación. Todo nodo nuevo sale de acá (diagrama, Topology, conectores). */
 export function newNode(id: number, kind: Node["kind"], x: number | null, y: number | null): Node {
-  return { id, kind, termination: null, termination_library_part_id: null, termination_segment_id: null, diagram_x: x, diagram_y: y, adhesive_heatshrink_length_mm: null };
+  return { id, kind, termination: null, termination_library_part_id: null, termination_segment_ids: [], diagram_x: x, diagram_y: y, adhesive_heatshrink_length_mm: null };
 }
 
 /** Segmento nuevo entre dos nodos, sin paso ni cobertura propios, hacia adelante. */
@@ -111,7 +111,8 @@ export function splitSegment(project: ProjectData, segmentId: number, position: 
   return {
     project: {
       ...project,
-      nodes: [...project.nodes.map((n) => (n.id === seg.node_b_id && n.termination_segment_id === seg.id ? { ...n, termination_segment_id: second.id } : n)), breakout],
+      // Del lado de node_b el tramo pasa a ser `second`: un boot de ese nodo que lo apretaba lo sigue apretando.
+      nodes: [...project.nodes.map((n) => (n.id === seg.node_b_id ? { ...n, termination_segment_ids: n.termination_segment_ids.map((id) => (id === seg.id ? second.id : id)) } : n)), breakout],
       segments: project.segments.flatMap((s) => (s.id === seg.id ? [first, second] : [s])),
       splice_instances: project.splice_instances.map(relocate),
       component_instances: project.component_instances.map(relocate),
@@ -125,7 +126,7 @@ export function deleteSegment(project: ProjectData, segmentId: number): ProjectD
   if (onIt.length > 0) return `Segment has ${onIt.map((x) => x.short_id).join(", ")} on it — move or delete ${onIt.length === 1 ? "it" : "them"} first.`;
   return {
     ...project,
-    nodes: project.nodes.map((n) => (n.termination_segment_id === segmentId ? { ...n, termination_segment_id: null } : n)),
+    nodes: project.nodes.map((n) => ({ ...n, termination_segment_ids: n.termination_segment_ids.filter((id) => id !== segmentId) })),
     segments: project.segments.filter((s) => s.id !== segmentId),
   };
 }
@@ -225,7 +226,7 @@ export function deleteNode(project: ProjectData, nodeId: number): ProjectData | 
     ...project,
     nodes: project.nodes
       .filter((n) => n.id !== nodeId)
-      .map((n) => (n.termination_segment_id !== null && segIds.has(n.termination_segment_id) ? { ...n, termination_segment_id: null } : n)),
+      .map((n) => ({ ...n, termination_segment_ids: n.termination_segment_ids.filter((id) => !segIds.has(id)) })),
     segments: project.segments.filter((s) => !segIds.has(s.id)),
   };
 }
@@ -441,18 +442,20 @@ const cavityEnd = (id: number): WireEnd => ({ ...BLANK_END, cavity_assignment_id
  * vía, el nombre del pin en conectores de dispositivo ("PDM30 OUT11"), splices,
  * masas y componentes. Sirve para el autocompletado y para interpretar el texto.
  */
+export type EndChoice = { label: string; end: WireEnd; hidden?: boolean };
+
 /**
  * Lo que se puede escribir en "Goes to". Con nombre, la lista ofrece "X1 · ECU:7"
- * y "G1 · GND" (se busca por el nombre); "X1:7" y "G1" se aceptan igual pero no se
- * repiten en la lista (`hidden`).
+ * y "G1 · GND" (se busca por el nombre); "X1:7", "ECU:7" y "G1" se aceptan igual
+ * pero no se repiten en la lista (`hidden`).
  */
-export function endChoices(project: ProjectData, library: Library): { label: string; end: WireEnd; hidden?: boolean }[] {
-  const out: { label: string; end: WireEnd; hidden?: boolean }[] = [];
+export function endChoices(project: ProjectData, library: Library): EndChoice[] {
+  const out: EndChoice[] = [];
   for (const c of project.connector_instances) {
     const pins = c.cavities.map((cav) => devicePinName(library, c.device_connector_id, cav.cavity_id));
     c.cavities.forEach((cav, i) => {
       out.push({ label: `${c.short_id}:${cav.cavity_id}`, end: cavityEnd(cav.id), hidden: !!c.name });
-      if (c.name) out.push({ label: `${c.short_id} · ${c.name}:${cav.cavity_id}`, end: cavityEnd(cav.id) });
+      if (c.name) out.push({ label: `${c.short_id} · ${c.name}:${cav.cavity_id}`, end: cavityEnd(cav.id) }, { label: `${c.name}:${cav.cavity_id}`, end: cavityEnd(cav.id), hidden: true });
       const pin = pins[i];
       // Un nombre en dos vías (pines en paralelo) lleva la vía: "PDM30 OUT1 (A10)".
       const repeated = pins.filter((p) => p === pin).length > 1;
@@ -474,6 +477,28 @@ export function endChoices(project: ProjectData, library: Library): { label: str
   // Suelto en un nodo (el cable llega hasta ahí y no se conecta): se busca escribiendo "loose".
   for (const n of project.nodes) out.push({ label: looseLabel(project, n), end: { ...BLANK_END, kind: "loose", cavity_assignment_id: null, node_id: n.id } });
   return out;
+}
+
+/**
+ * La lista de "Goes to" para un texto: las opciones que lo contienen en
+ * cualquier parte, sin importar mayúsculas, en su texto o en otra forma de
+ * escribir el mismo destino ("X3:r" o "motor:r" encuentran "X3 · MOTOR:r").
+ * Primero las que coinciden también en mayúsculas (la vía "r" no es la "R").
+ * La de WebView2 (`<datalist>`) filtraba con reglas propias y no las encontraba.
+ */
+export function searchEnds(choices: EndChoice[], text: string, limit = 50): string[] {
+  const q = text.trim();
+  if (!q) return [];
+  const key = (e: WireEnd) => `${e.kind}:${e.cavity_assignment_id ?? e.splice_id ?? e.ground_point_id ?? e.component_instance_id ?? e.node_id}`;
+  const hidden = new Map<string, string[]>();
+  for (const c of choices) if (c.hidden) hidden.set(key(c.end), [...(hidden.get(key(c.end)) ?? []), c.label]);
+  const found = choices
+    .filter((c) => !c.hidden)
+    .flatMap((c) => {
+      const texts = [c.label, ...(hidden.get(key(c.end)) ?? [])];
+      return texts.some((t) => t.toLowerCase().includes(q.toLowerCase())) ? [{ label: c.label, sameCase: texts.some((t) => t.includes(q)) }] : [];
+    });
+  return [...found.filter((f) => f.sameCase), ...found.filter((f) => !f.sameCase)].slice(0, limit).map((f) => f.label);
 }
 
 /**
@@ -712,9 +737,10 @@ export function duplicateConnector(project: ProjectData, connectorId: number): {
 
 /**
  * Copia un cable a la próxima vía libre del mismo conector (Martin: INY Cil 1…4,
- * todos iguales salvo el número). Lleva función, categoría, tipo de cable,
- * color y margen; el último número de la función sube uno ("INY Cil 1" →
- * "INY Cil 2"). El destino queda vacío: es de cada pin.
+ * todos iguales salvo un detalle de la función). La fila va tal cual (función,
+ * categoría, tipo, color, margen) y se corrige a mano: subir el número de la
+ * función adivinaba mal ("12V+" → "13V+"). El destino también, salvo que sea
+ * una vía: dos cables a la misma vía casi nunca es lo buscado.
  */
 export function duplicateWireToNextPin(project: ProjectData, wireId: number, cavityId: number): { project: ProjectData; wireId: number } | string {
   const wire = project.wire_instances.find((w) => w.id === wireId);
@@ -729,12 +755,14 @@ export function duplicateWireToNextPin(project: ProjectData, wireId: number, cav
     ...wire,
     id,
     short_id: `W${String(id).padStart(3, "0")}`,
-    specific_name: wire.specific_name?.replace(/(\d+)(?!.*\d)/, (n) => String(Number(n) + 1)) ?? null,
     manual_length_mm: null,
     label: null,
     cable_instance_id: null,
     end_a: cavityEnd(next.id),
-    end_b: BLANK_END,
+    end_b: (() => {
+      const dest = otherEnd(wire, cavityId);
+      return dest.kind === "cavity" ? BLANK_END : dest;
+    })(),
   };
   return { project: { ...project, wire_instances: [...project.wire_instances, copy] }, wireId: id };
 }

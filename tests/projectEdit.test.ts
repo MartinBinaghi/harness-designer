@@ -4,7 +4,7 @@ import { addBranch, addJunction, assignConnector, connectNodes, deleteJunction, 
 import type { ProjectData } from "../src/model/project.ts";
 import type { Library } from "../src/model/library.ts";
 
-const node = (id: number, kind: "connector_end" | "breakout") => ({ id, kind, termination: null, termination_library_part_id: null, diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null });
+const node = (id: number, kind: "connector_end" | "breakout") => ({ id, kind, termination: null, termination_library_part_id: null, termination_segment_ids: [] as number[], diagram_x: null, diagram_y: null, adhesive_heatshrink_length_mm: null });
 const seg = (id: number, a: number, b: number, len: number) => ({ id, node_a_id: a, node_b_id: b, length_mm: len, twist_pitch_mm: null, covering_library_part_id: 7 });
 
 // 1 --S1 (301 mm)-- 2, con un splice a 250 mm del nodo 1 y otro a 30 mm del nodo 2.
@@ -40,6 +40,18 @@ const sp2 = p.splice_instances.find((s) => s.id === 2)!;
 assert.deepEqual([sp1.segment_id, sp1.offset_from_node_id, sp1.offset_from_end_mm], [s2.id, mid, 99]);
 // SP2 estaba a 30 del nodo 2 = 271 del nodo 1 -> segundo tramo, a 120 del breakout.
 assert.deepEqual([sp2.segment_id, sp2.offset_from_end_mm], [s2.id, 120]);
+
+// Boot recto de breakout con S1 en su punta chica (nodo 2): al partir S1, del lado del nodo 2 queda el tramo nuevo; borrarlo lo saca de la lista.
+{
+  const booted = { ...base, nodes: base.nodes.map((n) => (n.id === 2 ? { ...n, termination: "boot_straight" as const, termination_segment_ids: [1] } : n)) };
+  const cut = splitSegment(booted, 1, null);
+  assert.ok(typeof cut !== "string");
+  const second = cut.project.segments.find((s) => s.node_b_id === 2)!;
+  assert.deepEqual(cut.project.nodes.find((n) => n.id === 2)!.termination_segment_ids, [second.id]);
+  const gone = deleteSegment({ ...cut.project, splice_instances: [] }, second.id);
+  assert.ok(typeof gone !== "string");
+  assert.deepEqual(gone.nodes.find((n) => n.id === 2)!.termination_segment_ids, []);
+}
 
 // Lazos: unir dos nodos ya conectados se rechaza; un nodo suelto se puede unir.
 assert.equal(typeof connectNodes(p, 1, 2), "string");
@@ -171,6 +183,15 @@ console.log("project edit: ok");
   assert.ok(offered.includes("SP7 · Coils pin 2") && !offered.includes("SP7") && offered.includes("G1"));
   assert.equal(parseEnd(proj, lib, "x4 · fuel pump:2")?.cavity_assignment_id, 42);
   assert.equal(parseEnd(proj, lib, "X4:2")?.cavity_assignment_id, 42);
+  // Búsqueda de "Goes to" (Martin: "X3:r" y "motor:r" no encontraban nada en la lista de WebView2).
+  const { searchEnds } = await import("../src/logic/projectEdit.ts");
+  const all = endChoices(proj, lib);
+  assert.deepEqual(searchEnds(all, "X4:2"), ["X4 · Fuel pump:2"]); // por el código, que no se muestra
+  assert.deepEqual(searchEnds(all, "pump:2"), ["X4 · Fuel pump:2"]); // por el nombre, en cualquier parte
+  assert.equal(parseEnd(proj, lib, "fuel pump:2")?.cavity_assignment_id, 42); // y se acepta escrito así
+  assert.deepEqual(searchEnds(all, "X9:a6").slice(0, 2), ["X9 · PDM30:a6", "X9 · PDM30:A6"]); // la vía con la misma mayúscula primero
+  assert.deepEqual(searchEnds(all, "coils"), ["SP7 · Coils pin 2"]);
+  assert.deepEqual(searchEnds(all, "  "), []);
   // Pines en paralelo (mismo nombre en dos vías): "Goes to" lleva la vía para saber a cuál va.
   const par = { ...lib, device_defs: [{ part_id: 9, connectors: [{ id: 3, pins: [{ id: 1, cavity_id: "A6", name: "OUT1" }, { id: 2, cavity_id: "a6", name: "OUT1" }] }] }] } as unknown as Library;
   assert.equal(parseEnd(proj, par, "PDM30 OUT1 (a6)")?.cavity_assignment_id, 92);
@@ -202,7 +223,7 @@ console.log("project edit: ok");
   assert.equal(endLabel(hanging, loose), "loose · node 1 · Connector end");
   assert.match(String(deleteNode(hanging, 1)), /loose end/);
 
-  // "↓ next": X4:1 "INY Cil 1" se copia a la próxima vía libre (X4:2), con la función +1 y sin destino.
+  // "↓ next": X4:1 "INY Cil 1" a G1 se copia tal cual a la próxima vía libre (X4:2), destino incluido (no es una vía).
   const { duplicateWireToNextPin, patchItem } = await import("../src/logic/projectEdit.ts");
   const inj = addWireAtCavity(proj, lib, null, 41);
   assert.ok(typeof inj !== "string");
@@ -211,7 +232,7 @@ console.log("project edit: ok");
   const dup = duplicateWireToNextPin(named, inj.wireId, 41);
   assert.ok(typeof dup !== "string");
   const made = dup.project.wire_instances.find((w) => w.id === dup.wireId)!;
-  assert.deepEqual([made.specific_name, made.end_a.cavity_assignment_id, made.end_b.kind, made.end_b.ground_point_id, made.library_part_id], ["INY Cil 2", 42, "cavity", null, 100]);
+  assert.deepEqual([made.specific_name, made.end_a.cavity_assignment_id, made.end_b.kind, made.end_b.ground_point_id, made.library_part_id], ["INY Cil 1", 42, "ground", 1, 100]);
   assert.equal(typeof duplicateWireToNextPin(dup.project, dup.wireId, 42), "string"); // no queda vía libre
   console.log("project edit (pinout per connector): ok");
 }

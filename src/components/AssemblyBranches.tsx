@@ -146,9 +146,15 @@ export function BranchFan({ project, library, branch, distances, maxHeightMm }: 
   const n = Math.max(forward.length, 1);
   const hub = { x: (backward.length > 0 ? BOX_W + 60 : 0) + 230, y: ((n - 1) * ROW) / 2 + 30 };
   const BOX_X = hub.x + 410;
-  // Hacia atrás: filas alternadas arriba y abajo del tramo que llega.
-  const backY = backward.map((_, i) => hub.y + (i % 2 === 0 ? -1 : 1) * ROW * (Math.floor(i / 2) + 1));
-  const ys = [...forward.map((_, i) => i * ROW + 30), ...backY, hub.y];
+  // Hacia atrás: arriba o abajo del tramo que llega como en el diagrama, el más
+  // cercano a ese tramo primero; sin posiciones, filas alternadas.
+  const backY = new Map<AssemblyOutlet, number>();
+  const up = backward.filter((o) => o.above === true).reverse();
+  const down = backward.filter((o) => o.above === false);
+  up.forEach((o, i) => backY.set(o, hub.y - ROW * (i + 1)));
+  down.forEach((o, i) => backY.set(o, hub.y + ROW * (i + 1)));
+  backward.filter((o) => o.above === null).forEach((o, i) => backY.set(o, hub.y + (i % 2 === 0 ? -1 : 1) * ROW * (Math.floor(i / 2) + 1 + (i % 2 === 0 ? up.length : down.length))));
+  const ys = [...forward.map((_, i) => i * ROW + 30), ...backY.values(), hub.y];
   const top = Math.min(...ys) - 60;
   const bottom = Math.max(...ys) + 60;
   const from = branch.num === 0 ? null : branch.parentNum === 0 ? main.id : `${branch.parentNum}`;
@@ -206,7 +212,7 @@ export function BranchFan({ project, library, branch, distances, maxHeightMm }: 
         </g>
       )}
       {forward.map((o, i) => outlet(o, i * ROW + 30, false))}
-      {backward.map((o, i) => outlet(o, backY[i], true))}
+      {backward.map((o) => outlet(o, backY.get(o)!, true))}
       <circle cx={hub.x} cy={hub.y} r={24} fill="#fff" stroke="#000" strokeWidth={3} />
       <text x={hub.x} y={hub.y + 8} textAnchor="middle" fontSize={22} fontWeight={700}>{branch.num === 0 ? main.id : branch.num}</text>
       {hubDistance && branch.num !== 0 && <text x={hub.x} y={hub.y + 48} textAnchor="middle" fontSize={13} style={halo}>{hubDistance}</text>}

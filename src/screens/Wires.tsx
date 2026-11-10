@@ -101,15 +101,15 @@ export default function Wires({ project, setProject, library, selection, onSelec
   });
 
   // Extremos por texto con autocompletado (X1:12, SP3, G1, PDM OUT11), una sola
-  // lista para toda la tabla: un desplegable con todas las vías en cada fila
-  // hacía lenta la pestaña (miles de opciones con un conector de 61 vías).
-  const listId = "wire-ends";
+  // lista de destinos para toda la tabla: un desplegable con todas las vías en
+  // cada fila hacía lenta la pestaña (miles de opciones con un conector de 61 vías).
+  const choices = endChoices(project, library);
   function endInput(wire: WireInstance, side: "end_a" | "end_b") {
     const label = endLabel(project!, wire[side]).replace(/^—$/, "");
     return (
       <GoesToInput
         key={`${wire.id}-${side}-${label}`}
-        list={listId}
+        choices={choices}
         initial={label}
         onCommit={(text) => {
           const end = text ? parseEnd(project!, library, text) : BLANK_END;
@@ -123,9 +123,6 @@ export default function Wires({ project, setProject, library, selection, onSelec
 
   return (
     <>
-      <datalist id={listId}>
-        {endChoices(project, library).filter((ch) => !ch.hidden).map((ch) => <option key={ch.label} value={ch.label} />)}
-      </datalist>
       <div className="toolbar">
         <input value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search id, name, color, endpoint…" style={{ width: "16em" }} />
         <select value={connectorFilter} onChange={(e) => setConnectorFilter(e.currentTarget.value)}>

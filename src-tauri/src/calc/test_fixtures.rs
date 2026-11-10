@@ -99,7 +99,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 2,
@@ -109,7 +109,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
         ],
         segments: vec![Segment {

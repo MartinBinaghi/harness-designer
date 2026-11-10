@@ -226,7 +226,7 @@ export default function Topology({ project, setProject, loadProject, cancelProje
                           updateNode(node.id, {
                             termination: (e.currentTarget.value || null) as Node["termination"],
                             termination_library_part_id: null,
-                            termination_segment_id: null,
+                            termination_segment_ids: [],
                           })
                         }
                       >

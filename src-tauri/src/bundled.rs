@@ -43,7 +43,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
         diagram_x: None,
         diagram_y: None,
         adhesive_heatshrink_length_mm: None,
-        termination_segment_id: None,
+        termination_segment_ids: vec![],
     };
     data.nodes = vec![node(1, "connector_end"), node(2, "breakout")];
     data.nodes

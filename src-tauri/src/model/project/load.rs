@@ -5,6 +5,7 @@ use super::{
     Project, ProjectData, Segment, SpliceInstance, TwistGroup, WireEnd, WireInstance,
 };
 use rusqlite::{params, Connection, Result};
+use std::collections::HashMap;
 
 pub(super) fn wire_end(
     kind: String,
@@ -52,18 +53,27 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
     )?;
 
     let mut nodes_stmt =
-        conn.prepare("SELECT id, kind, termination, termination_library_part_id, termination_segment_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm FROM nodes")?;
+        conn.prepare("SELECT id, kind, termination, termination_library_part_id, diagram_x, diagram_y, adhesive_heatshrink_length_mm FROM nodes")?;
+    let mut boot_stmt = conn.prepare(
+        "SELECT node_id, segment_id FROM node_boot_segments ORDER BY node_id, segment_id",
+    )?;
+    let mut boot_segments: HashMap<i64, Vec<i64>> = HashMap::new();
+    for row in boot_stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))? {
+        let (node_id, segment_id) = row?;
+        boot_segments.entry(node_id).or_default().push(segment_id);
+    }
     let nodes = nodes_stmt
         .query_map([], |row| {
+            let id: i64 = row.get(0)?;
             Ok(Node {
-                id: row.get(0)?,
+                id,
                 kind: row.get(1)?,
                 termination: row.get(2)?,
                 termination_library_part_id: row.get(3)?,
-                termination_segment_id: row.get(4)?,
-                diagram_x: row.get(5)?,
-                diagram_y: row.get(6)?,
-                adhesive_heatshrink_length_mm: row.get(7)?,
+                termination_segment_ids: boot_segments.get(&id).cloned().unwrap_or_default(),
+                diagram_x: row.get(4)?,
+                diagram_y: row.get(5)?,
+                adhesive_heatshrink_length_mm: row.get(6)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;

@@ -49,7 +49,7 @@ fn leg_at_end(
     }
     let node = data.nodes.iter().find(|n| n.id == node_id)?;
     if node.termination.as_deref() == Some("boot_straight") {
-        if node.termination_segment_id != Some(segment_id) {
+        if !node.termination_segment_ids.contains(&segment_id) {
             return None;
         }
         let boot = library
@@ -136,7 +136,7 @@ mod tests {
         );
         assert!(!crate::calc::boots_for_breakout(&data, &library, 2)[0].fits);
 
-        data.nodes[1].termination_segment_id = Some(2);
+        data.nodes[1].termination_segment_ids = vec![2];
         let cuts = covering_cut_list(&data, &library);
         assert_eq!(
             cuts.iter()
@@ -153,6 +153,20 @@ mod tests {
                 .map(|l| l.quantity_needed),
             Some(1.0)
         );
+
+        // Los dos tramos por la punta chica (cables en U): se aprietan juntos,
+        // √(D² + D²) ya no entra en el boot, y la pata se descuenta de los dos.
+        data.nodes[1].termination_segment_ids = vec![1, 2];
+        assert!(!crate::calc::boots_for_breakout(&data, &library, 2)[0].fits);
+        assert_eq!(
+            covering_cut_list(&data, &library)
+                .iter()
+                .map(|c| c.legs_mm)
+                .collect::<Vec<_>>(),
+            [30.0, 30.0]
+        );
+        library.accessory_defs[0].cable_side_max_diameter_mm = d_bundle * 2.0_f64.sqrt() + 0.1;
+        assert!(crate::calc::boots_for_breakout(&data, &library, 2)[0].fits);
     }
 
     #[test]

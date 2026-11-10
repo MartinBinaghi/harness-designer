@@ -105,7 +105,10 @@ pub fn dangling_references(data: &ProjectData) -> Vec<Dangling> {
         }
     }
     for n in &data.nodes {
-        if missing(&segments, n.termination_segment_id) {
+        if n.termination_segment_ids
+            .iter()
+            .any(|&id| missing(&segments, Some(id)))
+        {
             push(
                 format!(
                     "The boot at node {} is on a segment that no longer exists",

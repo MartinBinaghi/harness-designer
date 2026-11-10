@@ -365,8 +365,14 @@ export interface AssemblyOutlet {
   hs: string | null;
   /** Número del breakout al que lleva, si no termina en un conector. */
   branch: number | null;
-  /** Sale hacia atrás (hacia el conector principal, al lado del tramo que llega). */
+  /**
+   * Sale hacia atrás (hacia el conector principal, al lado del tramo que llega):
+   * como está en el diagrama (del mismo lado que el tramo que llega); sin
+   * posiciones en el diagrama, la marca del tramo (`leaves_backward`).
+   */
   backward: boolean;
+  /** Si sale hacia atrás: arriba (true) o abajo (false) del tramo que llega, como en el diagrama; null sin posiciones. */
+  above: boolean | null;
 }
 
 export interface AssemblyBranch {
@@ -394,6 +400,10 @@ export function assemblyBranches(project: ProjectData, library: Library, diamete
   const links = (n: number) => project.segments.filter((s) => s.node_a_id === n || s.node_b_id === n).map((s) => ({ seg: s, to: s.node_a_id === n ? s.node_b_id : s.node_a_id }));
   const size = (n: number, from: number): number => 1 + links(n).filter((l) => l.to !== from).reduce((t, l) => t + size(l.to, n), 0);
   const y = (n: number) => project.nodes.find((x) => x.id === n)?.diagram_y ?? 0;
+  const at = (n: number | null) => {
+    const p = project.nodes.find((x) => x.id === n);
+    return p?.diagram_x != null && p.diagram_y != null ? { x: p.diagram_x, y: p.diagram_y } : null;
+  };
   const branches: AssemblyBranch[] = [];
   const visit = (node: number, from: number | null, parentNum: number | null, inSeg: { length_mm: number; id: number } | null) => {
     const branch: AssemblyBranch = {
@@ -427,9 +437,18 @@ export function assemblyBranches(project: ProjectData, library: Library, diamete
           lengthMm: l.seg.length_mm,
           hs: segmentHeatShrink(project, library, l.seg.id, diameters),
           branch: nums.get(l.to) ?? null,
-          backward: l.seg.leaves_backward,
+          ...side(node, from, l.to, l.seg.leaves_backward),
         };
       });
+  };
+  // Del mismo lado que el tramo que llega (ángulo de menos de 90° con él, en el diagrama) = hacia atrás.
+  const side = (node: number, from: number | null, to: number, flag: boolean) => {
+    const [h, f, t] = [at(node), at(from), at(to)];
+    if (!h || !f || !t) return { backward: flag, above: null };
+    const [inX, inY, outX, outY] = [f.x - h.x, f.y - h.y, t.x - h.x, t.y - h.y];
+    const backward = inX * outX + inY * outY > 0;
+    // Arriba o abajo del tramo que llega, mirando el breakout con ese tramo a la izquierda.
+    return { backward, above: backward ? inX * outY - inY * outX > 0 : null };
   };
   visit(root, null, null, null);
   return branches;

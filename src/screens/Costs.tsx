@@ -204,17 +204,17 @@ export default function Costs({ project, library, selection, onSelect, report }:
               <h3>Breakout boots</h3>
               <table>
                 <thead>
-                  <tr><th>Breakout</th><th>On segment</th><th>Suggested boot</th><th>Alternatives</th></tr>
+                  <tr><th>Breakout</th><th>Cable side</th><th>Suggested boot</th><th>Alternatives</th></tr>
                 </thead>
                 <tbody>
                   {report.breakout_terminations.filter(isBoot).map((b) => {
                     const suggested = b.boot_options.find((x) => x.fits);
                     const alternatives = b.boot_options.filter((x) => x.fits && x.library_part_id !== suggested?.library_part_id);
-                    const segment = project!.nodes.find((n) => n.id === b.node_id)?.termination_segment_id;
+                    const segments = project!.nodes.find((n) => n.id === b.node_id)?.termination_segment_ids ?? [];
                     return (
                       <tr key={b.node_id}>
                         <td>Node {b.node_id}</td>
-                        <td>{segment != null ? `S${segment}` : "not chosen"}</td>
+                        <td>{segments.length > 0 ? segments.map((id) => `S${id}`).join(", ") : "not chosen"}</td>
                         <td style={!suggested ? { color: "var(--warning)" } : undefined}>
                           {suggested ? libraryPartNumber(suggested.library_part_id) : "none in library fits"}
                         </td>

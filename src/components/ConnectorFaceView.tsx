@@ -4,7 +4,7 @@ import type { ConnectorDef } from "../model/library";
 import { CloseIcon, MaximizeIcon } from "./icons";
 import milStd1560 from "../data/mil-std-1560.json";
 
-const MIL = milStd1560.arrangements as MilArrangements;
+export const MIL = milStd1560.arrangements as MilArrangements;
 
 const NUMBERING_NOTE = {
   datasheet: "numbering checked against a drawing or photo of the part",

@@ -335,7 +335,7 @@ export default function Inspector({ project, setProject, library, selection, onS
               value={node.termination}
               empty="—"
               options={NODE_TERMINATIONS.map((t) => ({ value: t, label: NODE_TERMINATION_LABELS[t] }))}
-              onChange={(v) => set({ termination: v, termination_library_part_id: null, termination_segment_id: null })}
+              onChange={(v) => set({ termination: v, termination_library_part_id: null, termination_segment_ids: [] })}
             />
           </Field>
           {node.termination === "boot_straight" && (
@@ -348,19 +348,24 @@ export default function Inspector({ project, setProject, library, selection, onS
                   onChange={(v) => set({ termination_library_part_id: v })}
                 />
               </Field>
-              {/* El lado cable aprieta este tramo; la boca grande queda en el breakout, del lado con más cables. */}
-              <Field label="On segment">
-                <Select
-                  value={node.termination_segment_id}
-                  empty="—"
-                  options={project.segments
-                    .filter((s) => s.node_a_id === node.id || s.node_b_id === node.id)
-                    .map((s) => {
-                      const other = project.nodes.find((n) => n.id === (s.node_a_id === node.id ? s.node_b_id : s.node_a_id));
-                      return { value: s.id, label: `S${s.id} → ${other ? nodeLabel(project, other) : "?"}` };
-                    })}
-                  onChange={(v) => set({ termination_segment_id: v })}
-                />
+              {/* La punta chica aprieta los tramos marcados, juntos; los demás salen por la boca grande, del lado con más cables. */}
+              <Field label="Cable side (small end)">
+                {project.segments
+                  .filter((s) => s.node_a_id === node.id || s.node_b_id === node.id)
+                  .map((s) => {
+                    const other = project.nodes.find((n) => n.id === (s.node_a_id === node.id ? s.node_b_id : s.node_a_id));
+                    const on = node.termination_segment_ids.includes(s.id);
+                    return (
+                      <label key={s.id} className="inspector-check">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => set({ termination_segment_ids: on ? node.termination_segment_ids.filter((id) => id !== s.id) : [...node.termination_segment_ids, s.id].sort((a, b) => a - b) })}
+                        />{" "}
+                        S{s.id} → {other ? nodeLabel(project, other) : "?"}
+                      </label>
+                    );
+                  })}
               </Field>
             </>
           )}

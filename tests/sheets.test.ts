@@ -180,6 +180,26 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual(b[2].outlets.map((o) => o.id), ["G1", "X3"]); // G1 (y 7) arriba de X3 (y 10)
 }
 
+// Lados del breakout como en el diagrama (arnés de Martin, nodo 3): ECU A llega por la izquierda;
+// MOTOR (arriba), ECU B y GND (abajo) están del mismo lado y salen hacia atrás, sin marca en el tramo;
+// 12v+ B.B., a la derecha, sigue hacia adelante.
+{
+  const pos: Record<number, [number, number]> = { 1: [-145, 291], 2: [11, 329], 3: [378, 297], 4: [64, 219], 5: [88, 403], 6: [594, 163] };
+  const tree = {
+    ...project,
+    nodes: Object.entries(pos).map(([id, [x, y]]) => ({ id: Number(id), kind: "breakout", diagram_x: x, diagram_y: y })),
+    segments: [1, 2, 4, 5, 6].map((n, i) => ({ id: i + 1, node_a_id: n === 1 ? 1 : 3, node_b_id: n === 1 ? 3 : n, length_mm: 100, leaves_backward: false })),
+    connector_instances: [],
+    ground_points: [],
+  } as unknown as ProjectData;
+  const hub = assemblyBranches(tree, { ...library, covering_defs: [] } as Library, []).find((x) => x.nodeId === 3)!;
+  assert.deepEqual(hub.outlets.map((o) => [o.nodeId, o.backward, o.above]), [[6, false, null], [4, true, true], [2, true, false], [5, true, false]]);
+  // Sin posiciones en el diagrama manda la marca del tramo.
+  const flagged = { ...tree, nodes: tree.nodes.map((n) => ({ ...n, diagram_x: null })), segments: tree.segments.map((s) => ({ ...s, leaves_backward: s.node_b_id === 4 })) };
+  const plain = assemblyBranches(flagged, { ...library, covering_defs: [] } as Library, []).find((x) => x.nodeId === 3)!;
+  assert.deepEqual(plain.outlets.filter((o) => o.backward).map((o) => o.nodeId), [4]);
+}
+
 // Cable comprado: W002 y W003 son los conductores de WC1, que va en un solo renglón con el
 // largo que da el núcleo (el del más largo) y sus conductores debajo; se cuenta una vez.
 {

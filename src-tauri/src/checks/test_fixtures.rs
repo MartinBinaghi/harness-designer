@@ -69,7 +69,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
-            termination_segment_id: None,
+            termination_segment_ids: vec![],
         },
         Node {
             id: 2,
@@ -79,7 +79,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
-            termination_segment_id: None,
+            termination_segment_ids: vec![],
         },
     ];
     data.segments = vec![Segment {

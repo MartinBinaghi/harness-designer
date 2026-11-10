@@ -65,8 +65,8 @@ pub(super) fn check_boot_assigned_does_not_fit(
     findings
 }
 
-/// Boot recto de breakout: que tenga elegido el tramo sobre el que va y que su
-/// lado cable apriete ese tramo.
+/// Boot recto de breakout: que tenga elegidos los tramos de su lado cable y que
+/// ese lado los apriete juntos.
 pub(super) fn check_breakout_boot(data: &ProjectData, library: &Library) -> Vec<Finding> {
     let mut findings = Vec::new();
     for node in &data.nodes {
@@ -74,10 +74,10 @@ pub(super) fn check_breakout_boot(data: &ProjectData, library: &Library) -> Vec<
             continue;
         }
         let at = FindingTarget::Node { id: node.id };
-        if node.termination_segment_id.is_none() {
+        if node.termination_segment_ids.is_empty() {
             findings.push(
                 warning(format!(
-                    "Breakout at node {} has a straight boot but not the segment it goes on",
+                    "Breakout at node {} has a straight boot but no segments chosen for its cable side",
                     node.id
                 ))
                 .at(at),
@@ -94,7 +94,7 @@ pub(super) fn check_breakout_boot(data: &ProjectData, library: &Library) -> Vec<
         {
             findings.push(
                 warning(format!(
-                    "Breakout at node {}: the boot's cable side doesn't fit its segment",
+                    "Breakout at node {}: the boot's cable side doesn't fit the segments that go through it",
                     node.id
                 ))
                 .at(at),

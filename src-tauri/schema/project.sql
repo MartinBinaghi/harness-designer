@@ -32,10 +32,6 @@ CREATE TABLE IF NOT EXISTS nodes (
     -- t_mold_defs si termination = 't_mold', covering_defs si 'adhesive_heatshrink',
     -- accessory_defs si 'boot_straight'
     termination_library_part_id INTEGER,
-    -- con boot recto: el segmento sobre el que va (su lado cable aprieta ese
-    -- tramo; la boca grande queda en el breakout). Sin REFERENCES: segments
-    -- referencia a nodes y se guardan antes; lo controla la capa de aplicación.
-    termination_segment_id      INTEGER,
     -- posición en el diagrama de armado (no escalado); NULL hasta acomodarlo
     diagram_x                   REAL,
     diagram_y                   REAL,
@@ -53,6 +49,14 @@ CREATE TABLE IF NOT EXISTS segments (
     -- sale del breakout hacia atrás (hacia el conector principal, al lado del
     -- tramo que llega) en vez de hacia adelante: diagrama y hoja de armado
     leaves_backward             INTEGER NOT NULL DEFAULT 0 CHECK (leaves_backward IN (0, 1))
+);
+
+-- Con boot recto en un breakout: los tramos que salen por su lado cable (la
+-- punta chica, que los aprieta juntos); los demás salen por la boca grande.
+CREATE TABLE IF NOT EXISTS node_boot_segments (
+    node_id                     INTEGER NOT NULL REFERENCES nodes(id),
+    segment_id                  INTEGER NOT NULL REFERENCES segments(id),
+    PRIMARY KEY (node_id, segment_id)
 );
 
 CREATE TABLE IF NOT EXISTS connector_instances (

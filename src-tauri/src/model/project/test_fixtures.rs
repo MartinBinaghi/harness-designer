@@ -30,7 +30,7 @@ pub(super) fn sample() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 2,
@@ -40,7 +40,7 @@ pub(super) fn sample() -> ProjectData {
                 diagram_x: Some(120.5),
                 diagram_y: Some(-40.0),
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: Some(1),
+                termination_segment_ids: vec![1],
             },
             Node {
                 id: 3,
@@ -50,7 +50,7 @@ pub(super) fn sample() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
         ],
         segments: vec![Segment {

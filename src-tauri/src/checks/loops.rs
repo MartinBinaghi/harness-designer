@@ -75,7 +75,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 2,
@@ -85,7 +85,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 3,
@@ -95,7 +95,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
         ];
         data.segments = vec![
@@ -144,7 +144,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 2,
@@ -154,7 +154,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 3,
@@ -164,7 +164,7 @@ mod tests {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
         ];
         data.segments = vec![

@@ -209,7 +209,6 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
   const def = library.connector_defs.find((d) => d.part_id === c.library_part_id);
   const showExternal = c.is_interconnect || c.cavities.some((cav) => cav.external_reference);
   const choices = endChoices(project, library);
-  const datalistId = `goes-to-${c.id}`;
 
   function newWire(cavityId: number, patch: Partial<WireInstance> = {}) {
     const result = addWireAtCavity(project, library, gauges, cavityId);
@@ -295,9 +294,6 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
       {notice && <p className="diagram-notice">{notice}</p>}
 
       <div className="cn-table-box">
-        <datalist id={datalistId}>
-          {choices.filter((ch) => !ch.hidden).map((ch) => <option key={ch.label} value={ch.label} />)}
-        </datalist>
         <table className="cn-pinout">
           <thead>
             <tr>
@@ -351,7 +347,7 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
                     <td>
                       <GoesToInput
                         key={w ? `${w.id}-${endLabel(project, otherEnd(w, cav.id))}` : "new"}
-                        list={datalistId}
+                        choices={choices}
                         initial={w ? endLabel(project, otherEnd(w, cav.id)).replace(/^—$/, "") : ""}
                         onCommit={(text) => {
                           if (!text && !w) return;
@@ -413,7 +409,7 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
                               apply(copied.project);
                               onSelect({ kind: "wire", id: copied.wireId });
                             }}
-                            title="Copy this wire (function +1, category, type, color) to the next free pin"
+                            title="Copy this row (function, category, type, color and destination, unless it is a pin) to the next free pin"
                           >
                             ↓ next
                           </button>

@@ -12,7 +12,7 @@ mod wires;
 
 use connectors::{
     check_adhesive_heatshrink_connector_without_back_diameter, check_gauge_within_contact_range,
-    check_pending_connectors, check_unused_cavities_without_seal_plug,
+    check_main_connector, check_pending_connectors, check_unused_cavities_without_seal_plug,
     check_used_cavities_without_contact,
 };
 use coverings::{
@@ -115,6 +115,7 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
             "Splice gauge range",
             check_gauge_within_splice_range(data, library),
         ),
+        ("Main connector", check_main_connector(data)),
         ("Pending connectors", check_pending_connectors(data)),
         (
             "Unused cavities without seal plug",

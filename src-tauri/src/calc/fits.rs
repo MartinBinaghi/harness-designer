@@ -131,23 +131,35 @@ pub fn boots_for_connector(
         .collect()
 }
 
-/// Boots rectos contra un breakout (pedido de Martin, 2026-11-09): el boot va
-/// sobre uno de sus tramos (`Node::termination_segment_id`), con la boca grande
-/// en el breakout, del lado con más cables; su lado cable tiene que apretar
-/// ese tramo. No hay conector, así que la serie/carcasa no se pide
-/// (`connector_compatible` = true). Sin tramo elegido, ninguno calza.
+/// Boots rectos contra un breakout (pedidos de Martin, 2026-11-09 y 11-10): la
+/// boca grande queda en el breakout, del lado con más cables, y por la punta
+/// chica salen uno o varios tramos juntos (`Node::termination_segment_ids`; con
+/// cables que doblan en U son varios). Esa punta tiene que apretarlos: su
+/// diámetro es el de todos los cables de esos tramos en un mazo,
+/// √(Σ D²), porque cada D² ya es Σd²/f. No hay conector, así que la
+/// serie/carcasa no se pide (`connector_compatible` = true). Sin tramos
+/// elegidos, ninguno calza.
 pub fn boots_for_breakout(data: &ProjectData, library: &Library, node_id: i64) -> Vec<BootFit> {
-    let segment = data
+    let chosen: Vec<i64> = data
         .nodes
         .iter()
         .find(|n| n.id == node_id)
-        .and_then(|n| n.termination_segment_id)
+        .map(|n| n.termination_segment_ids.clone())
+        .unwrap_or_default()
+        .into_iter()
         .filter(|&id| {
             data.segments
                 .iter()
                 .any(|s| s.id == id && (s.node_a_id == node_id || s.node_b_id == node_id))
-        });
-    let diameter = segment.map(|id| bundle_diameter_mm(data, library, id));
+        })
+        .collect();
+    let diameter = (!chosen.is_empty()).then(|| {
+        chosen
+            .iter()
+            .map(|&id| bundle_diameter_mm(data, library, id).powi(2))
+            .sum::<f64>()
+            .sqrt()
+    });
     library
         .accessory_defs
         .iter()
@@ -364,7 +376,7 @@ mod tests {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
-            termination_segment_id: None,
+            termination_segment_ids: vec![],
         });
         data.nodes.push(Node {
             id: 4,
@@ -374,7 +386,7 @@ mod tests {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
-            termination_segment_id: None,
+            termination_segment_ids: vec![],
         });
         data.segments.push(Segment {
             id: 2,

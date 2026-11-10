@@ -45,7 +45,12 @@ pub const PROJECT: Format = Format {
     noun: "harness project",
     schema: PROJECT_SCHEMA,
     marker_table: "project",
-    migrations: &[project_v0_to_v1, project_v1_to_v2, project_v2_to_v3],
+    migrations: &[
+        project_v0_to_v1,
+        project_v1_to_v2,
+        project_v2_to_v3,
+        project_v3_to_v4,
+    ],
 };
 
 pub const LIBRARY: Format = Format {
@@ -154,6 +159,25 @@ fn project_v2_to_v3(tx: &Transaction) -> rusqlite::Result<()> {
          ALTER TABLE wire_instances_v3 RENAME TO wire_instances;
 
          ALTER TABLE segments ADD COLUMN leaves_backward INTEGER NOT NULL DEFAULT 0 CHECK (leaves_backward IN (0, 1));",
+    )
+}
+
+/// Pedido de Martin del 2026-11-10: el boot recto de un breakout aprieta con su
+/// punta chica **varios tramos juntos** (en su arnés, los cables de la ECU doblan
+/// en U: por la boca grande salen la ECU, el motor y la masa; por la punta, los
+/// otros cinco conectores). El tramo único pasa a una lista, `node_boot_segments`.
+/// El tramo elegido antes se copia (si todavía existe).
+fn project_v3_to_v4(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE node_boot_segments (
+             node_id                     INTEGER NOT NULL REFERENCES nodes(id),
+             segment_id                  INTEGER NOT NULL REFERENCES segments(id),
+             PRIMARY KEY (node_id, segment_id)
+         );
+         INSERT INTO node_boot_segments (node_id, segment_id)
+             SELECT id, termination_segment_id FROM nodes
+             WHERE termination_segment_id IN (SELECT id FROM segments);
+         ALTER TABLE nodes DROP COLUMN termination_segment_id;",
     )
 }
 
@@ -510,6 +534,8 @@ mod tests {
     /// Esquema de los proyectos en el formato 2, tal cual salió (hasta la 0.1.5).
     const PROJECT_SCHEMA_V2: &str = include_str!("../schema/history/project.v2.sql");
     const LIBRARY_SCHEMA_V2: &str = include_str!("../schema/history/library.v2.sql");
+    /// Esquema de los proyectos en el formato 3, tal cual salió (0.1.6).
+    const PROJECT_SCHEMA_V3: &str = include_str!("../schema/history/project.v3.sql");
 
     /// Un proyecto como los que había antes del versionado: el esquema de
     /// octubre (con `format_version`, sin nombre de splice ni redondeo) y versión 0.
@@ -662,7 +688,7 @@ mod tests {
         data.wire_instances[1].end_b.cavity_assignment_id = None;
         data.wire_instances[1].end_b.node_id = Some(2);
         data.nodes[1].termination = Some("boot_straight".into());
-        data.nodes[1].termination_segment_id = Some(1);
+        data.nodes[1].termination_segment_ids = vec![1];
         project::save(&mut conn, &data).unwrap();
         assert_eq!(project::load(&conn).unwrap(), data);
         // Las claves foráneas vuelven a estar activas después de migrar.
@@ -674,6 +700,42 @@ mod tests {
             .is_err());
         drop(conn);
         let _ = std::fs::remove_file(format!("{path}.v2.bak"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_v3_breakout_boot_keeps_its_segment_in_the_new_list() {
+        let path = temp_path("v3.harness.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V3).unwrap();
+        conn.execute_batch(
+            "INSERT INTO project (id, name, harness_code) VALUES (1, 'Motor', 'MOT-01');
+             INSERT INTO nodes (id, kind, termination, termination_segment_id) VALUES (1, 'connector_end', NULL, NULL), (2, 'breakout', 'boot_straight', 1), (3, 'connector_end', NULL, NULL), (4, 'breakout', 'boot_straight', 99);
+             INSERT INTO segments (id, node_a_id, node_b_id, length_mm) VALUES (1, 1, 2, 300), (2, 2, 3, 200), (3, 2, 4, 100);",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        drop(conn);
+
+        let mut conn = open_project(&path).unwrap();
+        let mut data = project::load(&conn).unwrap();
+        // El tramo elegido pasa a la lista; uno que ya no existía (99) no.
+        let ids = |data: &ProjectData| {
+            data.nodes
+                .iter()
+                .map(|n| n.termination_segment_ids.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&data), [vec![], vec![1], vec![], vec![]]);
+        // Varios tramos por la punta chica.
+        data.nodes[1].termination_segment_ids = vec![1, 2];
+        project::save(&mut conn, &data).unwrap();
+        assert_eq!(
+            ids(&project::load(&conn).unwrap()),
+            [vec![], vec![1, 2], vec![], vec![]]
+        );
+        drop(conn);
+        let _ = std::fs::remove_file(format!("{path}.v3.bak"));
         let _ = std::fs::remove_file(path);
     }
 

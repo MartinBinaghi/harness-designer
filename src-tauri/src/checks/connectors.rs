@@ -15,6 +15,22 @@ pub(super) fn check_pending_connectors(data: &ProjectData) -> Vec<Finding> {
         .collect()
 }
 
+/// Sin conector principal elegido, las hojas de armado no saben de dónde
+/// arrancan (no dibujan el tramo que llega al primer breakout) ni miden
+/// distancias, y la etiqueta del arnés no tiene dónde ir (Martin, 2026-11-10:
+/// su arnés no tenía ninguno y la hoja salía incompleta sin decir por qué).
+pub(super) fn check_main_connector(data: &ProjectData) -> Vec<Finding> {
+    let main = data.project.main_connector_instance_id;
+    if data.connector_instances.is_empty()
+        || data.connector_instances.iter().any(|c| Some(c.id) == main)
+    {
+        return Vec::new();
+    }
+    vec![warning(
+        "No main connector: the assembly sheets don't know where the harness starts and show no distances. Choose it by clicking the harness name in the tree",
+    )]
+}
+
 /// Vías sin cable a las que la biblioteca no les da tapón (el del conector, o
 /// uno del mismo tamaño): un aviso por conector, no uno por vía.
 pub(super) fn check_unused_cavities_without_seal_plug(
@@ -180,7 +196,7 @@ mod tests {
             diagram_x: None,
             diagram_y: None,
             adhesive_heatshrink_length_mm: None,
-            termination_segment_id: None,
+            termination_segment_ids: vec![],
         }];
         data.connector_instances = vec![ConnectorInstance {
             id: 1,
@@ -203,6 +219,9 @@ mod tests {
         }];
         let pending = check_pending_connectors(&data);
         assert_eq!(pending.len(), 1);
+        assert_eq!(check_main_connector(&data).len(), 1);
+        data.project.main_connector_instance_id = Some(1);
+        assert!(check_main_connector(&data).is_empty());
         assert_eq!(pending[0].target, Some(FindingTarget::Connector { id: 1 }));
 
         let unused = check_unused_cavities_without_seal_plug(&data, &empty_library());

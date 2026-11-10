@@ -56,7 +56,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 2,
@@ -66,7 +66,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 3,
@@ -76,7 +76,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
             Node {
                 id: 4,
@@ -86,7 +86,7 @@ pub(super) fn y_shaped_topology() -> ProjectData {
                 diagram_x: None,
                 diagram_y: None,
                 adhesive_heatshrink_length_mm: None,
-                termination_segment_id: None,
+                termination_segment_ids: vec![],
             },
         ],
         segments: vec![

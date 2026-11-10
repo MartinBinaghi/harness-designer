@@ -292,6 +292,54 @@
   display: none;
 }
 
+/* Hoja de vistas de un conector grande: las dos caras una al lado de la otra;
+   las apaisadas (ECU), una debajo de la otra, a todo el ancho. */
+.pinout-views {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8mm;
+  margin-top: 4mm;
+}
+
+.pinout-views:has(.cf-wide) {
+  grid-template-columns: 1fr;
+}
+
+.pinout-views figure {
+  margin: 0;
+}
+
+.pinout-views > figure > figcaption {
+  font-weight: 700;
+  font-size: 10pt;
+  text-align: center;
+  margin-bottom: 2mm;
+}
+
+.pinout-views .connector-face figcaption {
+  display: none;
+}
+
+.pinout-views .connector-face svg {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  max-height: 150mm;
+  margin: 0 auto;
+}
+
+.pinout-views:has(.cf-wide) .connector-face svg {
+  max-height: 70mm;
+}
+
+.pinout-views-note,
+.pinout-views-ref {
+  font-size: 7pt;
+  color: #555;
+  text-align: center;
+}
+
 .pinout-pending {
   font-weight: 600;
   text-transform: uppercase;

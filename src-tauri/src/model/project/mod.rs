@@ -47,9 +47,10 @@ pub struct Node {
     /// `TMoldDef` si `termination = "t_mold"`, `CoveringDef` si es
     /// "adhesive_heatshrink", `AccessoryDef` (un boot) si es "boot_straight".
     pub termination_library_part_id: Option<i64>,
-    /// Con boot recto: el tramo sobre el que va. Su lado cable aprieta ese
-    /// tramo y la boca grande queda en el breakout, del lado con más cables.
-    pub termination_segment_id: Option<i64>,
+    /// Con boot recto: los tramos que salen por su lado cable (la punta chica
+    /// los aprieta juntos); los demás salen por la boca grande, que queda en el
+    /// breakout. Ordenados por id.
+    pub termination_segment_ids: Vec<i64>,
     /// Posición en el diagrama de armado (no escalado, plan 10.2). `None` hasta
     /// que se acomoda a mano o con el layout automático.
     pub diagram_x: Option<f64>,

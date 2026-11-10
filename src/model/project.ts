@@ -26,8 +26,8 @@ export interface Node {
   termination: "t_mold" | "adhesive_heatshrink" | "boot_straight" | "none" | null;
   /** TMoldDef si termination = "t_mold", CoveringDef si "adhesive_heatshrink", AccessoryDef (boot) si "boot_straight". */
   termination_library_part_id: number | null;
-  /** Con boot recto: el tramo sobre el que va (su lado cable aprieta ese tramo; la boca grande queda en el breakout). */
-  termination_segment_id: number | null;
+  /** Con boot recto: los tramos que salen por su lado cable (la punta chica los aprieta juntos); los demás salen por la boca grande, en el breakout. */
+  termination_segment_ids: number[];
   /** Posición en el diagrama de armado; null hasta acomodarlo (a mano o con el layout automático). */
   diagram_x: number | null;
   diagram_y: number | null;
