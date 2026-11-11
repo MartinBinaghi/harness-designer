@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ReactFlow,
@@ -128,8 +128,17 @@ function WireEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targ
   );
 }
 
-const nodeTypes = { block: BlockNode };
-const edgeTypes = { wire: WireEdge };
+// Rendimiento (Martin: con su arnés, 138 cables y bloques de 105 vías, la pestaña iba lenta): un bloque o un
+// cable se redibuja solo si cambió lo que muestra. Antes, un clic en un cable rehacía todos los bloques (con
+// todas sus patitas) y todos los cables, y arrastrar un bloque rehacía todos los cables en cada cuadro.
+const sameWire = (a: EdgeProps<Edge<WireData>>, b: EdgeProps<Edge<WireData>>) =>
+  a.sourceX === b.sourceX && a.sourceY === b.sourceY && a.targetX === b.targetX && a.targetY === b.targetY &&
+  a.sourcePosition === b.sourcePosition && a.targetPosition === b.targetPosition &&
+  a.data?.color === b.data?.color && a.data?.highlight === b.data?.highlight && a.data?.label === b.data?.label;
+// Un bloque solo depende de sus datos: mientras se arrastra le llegan la posición y "dragging", que no usa,
+// y sin esto rehacía sus filas y patitas (105 vías en la ECU) en cada cuadro.
+const nodeTypes = { block: memo(BlockNode, (a, b) => a.data === b.data) };
+const edgeTypes = { wire: memo(WireEdge, sameWire) };
 
 interface Props {
   project: ProjectData | null;
@@ -183,18 +192,32 @@ export default function Schematic({ project, setProject, library, selection, onS
     if (!model) return setNodes([]);
     setNodes(model.blocks.map((b) => ({ id: b.key, type: "block", position: { x: b.x, y: b.y }, data: { block: b, selected: isSelected(b) } })));
   }, [model]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Solo cambian los bloques que se seleccionan o dejan de estarlo; los demás quedan como están (no se redibujan).
   useEffect(() => {
-    setNodes((ns) => ns.map((n) => ({ ...n, data: { ...n.data, selected: isSelected(n.data.block) } })));
+    setNodes((ns) =>
+      ns.map((n) => {
+        const selected = isSelected(n.data.block);
+        return selected === n.data.selected ? n : { ...n, data: { ...n.data, selected } };
+      }),
+    );
   }, [selection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Por qué lado sale cada punta de cada cable: el que mira al otro bloque; en la misma columna, ambas por la
+  // derecha. Mientras se arrastra un bloque, esto cambia solo cuando cruza a otro bloque, así que la lista de
+  // cables (y los que no tocan al bloque arrastrado) no se rehace en cada cuadro.
+  const xOf = new Map(nodes.map((n) => [n.id, n.position.x]));
+  const sides = (model?.links ?? [])
+    .map((l) => {
+      const ax = xOf.get(l.from.block) ?? 0;
+      const bx = xOf.get(l.to.block) ?? 0;
+      return ax < bx ? "RL" : ax > bx ? "LR" : "RR";
+    })
+    .join("");
 
   const edges = useMemo<Edge<WireData>[]>(() => {
     if (!model) return [];
-    const xOf = new Map(nodes.map((n) => [n.id, n.position.x]));
-    return model.links.map((l) => {
-      const ax = xOf.get(l.from.block) ?? 0;
-      const bx = xOf.get(l.to.block) ?? 0;
-      // Cada punta sale por el lado que mira al otro bloque; en la misma columna, ambas por la derecha.
-      const [sa, sb] = ax < bx ? (["R", "L"] as const) : ax > bx ? (["L", "R"] as const) : (["R", "R"] as const);
+    return model.links.map((l, i) => {
+      const [sa, sb] = [sides[2 * i] as "L" | "R", sides[2 * i + 1] as "L" | "R"];
       const handle = (end: typeof l.from, side: "L" | "R") => (end.cavityId !== null ? pinHandle(end.cavityId, side) : blockHandle(end.block, side));
       const highlight = selection?.kind === "wire" && selection.id === l.wireId ? "wire" : netWires.has(l.wireId) ? "net" : "none";
       return {
@@ -208,7 +231,7 @@ export default function Schematic({ project, setProject, library, selection, onS
         zIndex: highlight === "none" ? 0 : 1,
       };
     });
-  }, [model, nodes, selection, netWires]);
+  }, [model, sides, selection, netWires]);
 
   if (!project || !model) {
     return <p>Open or load a project first (Topology tab).</p>;
