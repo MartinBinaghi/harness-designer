@@ -1,5 +1,3 @@
-/* Vista pin a pin (pestaña Schematic). */
-
 /* Vista pin a pin (pestaña Schematic, plan 10.3). */
 .sc-block {
   background: var(--surface);
@@ -130,4 +128,13 @@
 
 .sc-junction-label {
   margin-left: 0.15rem;
+}
+
+/* Arrastre de un bloque (Martin: se atrasaba al pasar por encima de otros cables). Todos los cables
+   comparten una capa: al mover uno, la GPU volvía a pasar a píxeles toda la zona que tocan sus cables,
+   con cada cable que la cruza (sobre el mazo, más de cien curvas por tramo). Mientras se arrastra, el
+   bloque y sus cables van en capas propias, encima del resto, que queda en caché sin redibujarse. */
+.sc-flow .react-flow__edges svg:has(> .sc-wire-moving),
+.sc-flow .react-flow__node.dragging {
+  will-change: transform;
 }

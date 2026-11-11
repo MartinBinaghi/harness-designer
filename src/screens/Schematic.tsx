@@ -214,12 +214,17 @@ export default function Schematic({ project, setProject, library, selection, onS
     })
     .join("");
 
+  // Bloque que se está arrastrando: sus cables van en una capa propia (ver `.sc-wire-moving` en schematic.css).
+  // Cambia solo al empezar y al terminar el arrastre, así que la lista de cables se rehace esas dos veces.
+  const dragging = nodes.find((n) => n.dragging)?.id ?? null;
+
   const edges = useMemo<Edge<WireData>[]>(() => {
     if (!model) return [];
     return model.links.map((l, i) => {
       const [sa, sb] = [sides[2 * i] as "L" | "R", sides[2 * i + 1] as "L" | "R"];
       const handle = (end: typeof l.from, side: "L" | "R") => (end.cavityId !== null ? pinHandle(end.cavityId, side) : blockHandle(end.block, side));
       const highlight = selection?.kind === "wire" && selection.id === l.wireId ? "wire" : netWires.has(l.wireId) ? "net" : "none";
+      const moving = dragging !== null && (l.from.block === dragging || l.to.block === dragging);
       return {
         id: `w${l.wireId}`,
         source: l.from.block,
@@ -228,10 +233,12 @@ export default function Schematic({ project, setProject, library, selection, onS
         targetHandle: handle(l.to, sb),
         type: "wire",
         data: { color: l.color, highlight, label: l.label },
-        zIndex: highlight === "none" ? 0 : 1,
+        className: moving ? "sc-wire-moving" : undefined,
+        // Los que se mueven van encima de todos: así ningún cable quieto les queda arriba y tiene que redibujarse con ellos.
+        zIndex: moving ? 2 : highlight === "none" ? 0 : 1,
       };
     });
-  }, [model, sides, selection, netWires]);
+  }, [model, sides, selection, netWires, dragging]);
 
   if (!project || !model) {
     return <p>Open or load a project first (Topology tab).</p>;
@@ -272,6 +279,7 @@ export default function Schematic({ project, setProject, library, selection, onS
           <p className="hint" style={{ padding: "1rem" }}>No connectors yet.</p>
         ) : (
           <ReactFlow
+            className="sc-flow"
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
