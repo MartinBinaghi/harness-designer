@@ -124,7 +124,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
         id: 1,
         short_id: "G1".into(),
         name: "Engine block".into(),
-        terminal_library_part_id: Some(part("OJAL 16mm2 M6")),
+        terminal_library_part_id: Some(part("RING TERMINAL 16mm2 M6")),
         node_id: 8,
     }];
     data.splice_instances = [("SP1", "5V sensors"), ("SP2", "0V sensors")]

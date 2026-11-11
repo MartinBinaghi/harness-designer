@@ -402,7 +402,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         without_contacts: false,
     },
     Housing {
-        part_number: "OJAL 16mm2 M6",
+        part_number: "RING TERMINAL 16mm2 M6",
         manufacturer: "—",
         series: "Ring terminal",
         gender: "male",
@@ -410,7 +410,7 @@ pub(super) const OTHER_HOUSINGS: &[Housing] = &[
         shell_size: Some("M6"),
         suggested_termination: Some("none"),
         cavities: &["1"],
-        description: "Ring terminal (ojal) for 16 mm² wire, 6 mm hole (M6)",
+        description: "Ring terminal for 16 mm² wire, 6 mm hole (M6)",
         contacts: &[],
         seal_plug: None,
         without_contacts: true,
