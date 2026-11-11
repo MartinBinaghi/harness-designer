@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ProjectData } from "../model/project";
 import type { AssemblyBranch, AssemblyOutlet } from "../logic/sheets";
 import { partLabel, type Library } from "../model/library";
@@ -63,7 +64,7 @@ export function AssemblyOverview({ project, branches, distances, maxHeightMm }: 
 
   return (
     <>
-      <svg className="assembly assembly-skeleton" viewBox={box.join(" ")} style={{ maxHeight: `${maxHeightMm * 0.45}mm` }} fontFamily="Arial, sans-serif" role="img" aria-label="Harness overview">
+      <svg className="assembly assembly-skeleton" viewBox={box.join(" ")} style={svgSize(box[2], maxHeightMm * 0.45)} fontFamily="Arial, sans-serif" role="img" aria-label="Harness overview">
         {branches.slice(1).map((b) => {
           const a = pos.get(b.parentNum!)!;
           const p = pos.get(b.num)!;
@@ -125,6 +126,97 @@ function BranchList({ project, branch, distances }: { project: ProjectData; bran
   );
 }
 
+// Medidas del abanico, en unidades del dibujo (ver ASSEMBLY_MM_PER_UNIT).
+const ROW = 86;
+const BOX_W = 330;
+/** Del centro del breakout al recuadro de una salida. */
+const REACH = 410;
+const MAIN_W = 220;
+
+/**
+ * Escala fija de los dibujos de armado (mm de papel por unidad): antes se
+ * estiraban a todo el ancho de la hoja y, con pocos elementos, la letra quedaba
+ * enorme (Martin). Un dibujo más grande que la hoja se achica para entrar.
+ */
+const ASSEMBLY_MM_PER_UNIT = 0.15;
+const svgSize = (width: number, maxHeightMm: number) => ({ width: `${width * ASSEMBLY_MM_PER_UNIT}mm`, maxHeight: `${maxHeightMm}mm` });
+
+type Point = { x: number; y: number };
+/** Un punto de la línea a → b, a una fracción `t` de su largo. */
+const along = (a: Point, b: Point, t: number): Point => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+
+/**
+ * Filas de las salidas hacia atrás, relativas al tramo que llega (−1 = una
+ * arriba): arriba o abajo como en el diagrama, la más cercana primero; sin
+ * posiciones, alternadas.
+ */
+function backRows(backward: AssemblyOutlet[]): Map<AssemblyOutlet, number> {
+  const rows = new Map<AssemblyOutlet, number>();
+  const up = backward.filter((o) => o.above === true).reverse();
+  const down = backward.filter((o) => o.above === false);
+  up.forEach((o, i) => rows.set(o, -(i + 1)));
+  down.forEach((o, i) => rows.set(o, i + 1));
+  backward
+    .filter((o) => o.above === null)
+    .forEach((o, i) => rows.set(o, (i % 2 === 0 ? -1 : 1) * (Math.floor(i / 2) + 1 + (i % 2 === 0 ? up.length : down.length))));
+  return rows;
+}
+
+/** Largo y termo de un tramo, en `at` (cerca de la punta, donde las líneas ya están separadas). */
+function SegmentLabel({ at, o }: { at: Point; o: { lengthMm: number; hs: string | null } }) {
+  return (
+    <>
+      <text x={at.x} y={at.y - 8} textAnchor="middle" fontSize={20} fontWeight={700} style={halo}>{o.lengthMm} mm</text>
+      {o.hs && <text x={at.x} y={at.y + 16} textAnchor="middle" fontSize={13} style={halo}>{hsText(o.hs)}</text>}
+    </>
+  );
+}
+
+/** El recuadro de una salida que termina en un conector o masa: nombre, ID y pieza, terminación y distancia. */
+function OutletBox({ project, o, x, yc, distances, mainId }: { project: ProjectData; o: AssemblyOutlet; x: number; yc: number; distances: Record<string, number> | null; mainId: string }) {
+  const tags = [
+    ...project.connector_instances.filter((c) => c.node_id === o.nodeId).map((c) => (c.termination && c.termination !== "none" ? TERMINATION[c.termination] : null)),
+    distanceText(distances, o.nodeId, mainId),
+  ].filter(Boolean);
+  return (
+    <g>
+      <rect x={x} y={yc - 32} width={BOX_W} height={64} rx={5} fill="#fff" stroke="#000" strokeWidth={2.5} />
+      <text x={x + 12} y={yc - 8} fontSize={20} fontWeight={700}>{o.name}</text>
+      <text x={x + 12} y={yc + 12} fontSize={13}>{[o.id, o.part].filter(Boolean).join(" · ")}</text>
+      {tags.length > 0 && <text x={x + 12} y={yc + 27} fontSize={12}>{tags.join(" · ")}</text>}
+    </g>
+  );
+}
+
+/** El centro de un breakout: su número, la terminación arriba y la distancia abajo. */
+function Hub({ project, library, branch, at, label, distances, mainId }: { project: ProjectData; library: Library; branch: AssemblyBranch; at: Point; label: string; distances: Record<string, number> | null; mainId: string }) {
+  const node = project.nodes.find((n) => n.id === branch.nodeId);
+  const termination =
+    node?.termination && node.termination !== "none"
+      ? [TERMINATION[node.termination], node.termination_library_part_id != null ? partLabel(library, node.termination_library_part_id) : null].filter(Boolean).join(" ")
+      : null;
+  const distance = branch.num !== 0 ? distanceText(distances, branch.nodeId, mainId) : null;
+  return (
+    <g>
+      <circle cx={at.x} cy={at.y} r={24} fill="#fff" stroke="#000" strokeWidth={3} />
+      <text x={at.x} y={at.y + 8} textAnchor="middle" fontSize={22} fontWeight={700}>{label}</text>
+      {distance && <text x={at.x} y={at.y + 48} textAnchor="middle" fontSize={13} style={halo}>{distance}</text>}
+      {termination && <text x={at.x} y={at.y - 34} textAnchor="middle" fontSize={13} style={halo}>{termination}</text>}
+    </g>
+  );
+}
+
+/** Una salida que lleva a otro breakout, cuando ese breakout se dibuja aparte. */
+function BranchRef({ num, x, yc, toLeft, note }: { num: number; x: number; yc: number; toLeft: boolean; note: string }) {
+  return (
+    <g>
+      <circle cx={x} cy={yc} r={22} fill="#fff" stroke="#000" strokeWidth={3} />
+      <text x={x} y={yc + 7} textAnchor="middle" fontSize={20} fontWeight={700}>{num}</text>
+      <text x={toLeft ? x - 34 : x + 34} y={yc + 6} textAnchor={toLeft ? "end" : "start"} fontSize={16}>breakout {num} ({note})</text>
+    </g>
+  );
+}
+
 /**
  * La hoja de un breakout: el tramo que llega y sus salidas en abanico, a tamaño
  * de mesa. Las salidas hacia adelante van a la derecha; las que vuelven hacia
@@ -139,71 +231,36 @@ export function BranchFan({ project, library, branch, distances, maxHeightMm }: 
   maxHeightMm: number;
 }) {
   const main = mainLabel(project);
-  const ROW = 86;
-  const BOX_W = 330;
   const forward = branch.outlets.filter((o) => !o.backward);
   const backward = branch.outlets.filter((o) => o.backward);
   const n = Math.max(forward.length, 1);
   const hub = { x: (backward.length > 0 ? BOX_W + 60 : 0) + 230, y: ((n - 1) * ROW) / 2 + 30 };
-  const BOX_X = hub.x + 410;
-  // Hacia atrás: arriba o abajo del tramo que llega como en el diagrama, el más
-  // cercano a ese tramo primero; sin posiciones, filas alternadas.
-  const backY = new Map<AssemblyOutlet, number>();
-  const up = backward.filter((o) => o.above === true).reverse();
-  const down = backward.filter((o) => o.above === false);
-  up.forEach((o, i) => backY.set(o, hub.y - ROW * (i + 1)));
-  down.forEach((o, i) => backY.set(o, hub.y + ROW * (i + 1)));
-  backward.filter((o) => o.above === null).forEach((o, i) => backY.set(o, hub.y + (i % 2 === 0 ? -1 : 1) * ROW * (Math.floor(i / 2) + 1 + (i % 2 === 0 ? up.length : down.length))));
-  const ys = [...forward.map((_, i) => i * ROW + 30), ...backY.values(), hub.y];
+  const boxX = hub.x + REACH;
+  const back = backRows(backward);
+  const ys = [...forward.map((_, i) => i * ROW + 30), ...[...back.values()].map((r) => hub.y + r * ROW), hub.y];
   const top = Math.min(...ys) - 60;
   const bottom = Math.max(...ys) + 60;
   const from = branch.num === 0 ? null : branch.parentNum === 0 ? main.id : `${branch.parentNum}`;
-  const hubDistance = distanceText(distances, branch.nodeId, main.id);
-  const node = project.nodes.find((x) => x.id === branch.nodeId);
-  const hubTermination =
-    node?.termination && node.termination !== "none"
-      ? [TERMINATION[node.termination], node.termination_library_part_id != null ? partLabel(library, node.termination_library_part_id) : null].filter(Boolean).join(" ")
-      : null;
+  const width = boxX + 360;
 
   /** Una salida: la línea desde el centro, su largo y termo, y el conector (o el breakout siguiente) en la punta. */
   const outlet = (o: AssemblyOutlet, yc: number, toLeft: boolean) => {
-    const anchor = toLeft ? BOX_W : BOX_X;
-    // Etiqueta cerca de la salida, donde las líneas ya están separadas.
-    const t = 0.72;
-    const lx = hub.x + (anchor - hub.x) * t;
-    const ly = hub.y + (yc - hub.y) * t;
-    const connectors = project.connector_instances.filter((c) => c.node_id === o.nodeId);
-    const tags = [
-      ...connectors.map((c) => (c.termination && c.termination !== "none" ? TERMINATION[c.termination] : null)),
-      distanceText(distances, o.nodeId, main.id),
-    ].filter(Boolean);
-    const boxX = toLeft ? 0 : BOX_X;
-    const circleX = toLeft ? BOX_W - 22 : BOX_X + 22;
+    const anchor = { x: toLeft ? BOX_W : boxX, y: yc };
     return (
       <g key={o.nodeId}>
-        <line x1={hub.x} y1={hub.y} x2={anchor} y2={yc} stroke="#000" strokeWidth={3} />
-        <text x={lx} y={ly - 8} textAnchor="middle" fontSize={20} fontWeight={700} style={halo}>{o.lengthMm} mm</text>
-        {o.hs && <text x={lx} y={ly + 16} textAnchor="middle" fontSize={13} style={halo}>{hsText(o.hs)}</text>}
+        <line x1={hub.x} y1={hub.y} x2={anchor.x} y2={yc} stroke="#000" strokeWidth={3} />
+        <SegmentLabel at={along(hub, anchor, 0.72)} o={o} />
         {o.branch !== null ? (
-          <g>
-            <circle cx={circleX} cy={yc} r={22} fill="#fff" stroke="#000" strokeWidth={3} />
-            <text x={circleX} y={yc + 7} textAnchor="middle" fontSize={20} fontWeight={700}>{o.branch}</text>
-            <text x={toLeft ? circleX - 34 : circleX + 34} y={yc + 6} textAnchor={toLeft ? "end" : "start"} fontSize={16}>breakout {o.branch} (own sheet)</text>
-          </g>
+          <BranchRef num={o.branch} x={toLeft ? BOX_W - 22 : boxX + 22} yc={yc} toLeft={toLeft} note="own sheet" />
         ) : (
-          <g>
-            <rect x={boxX} y={yc - 32} width={BOX_W} height={64} rx={5} fill="#fff" stroke="#000" strokeWidth={2.5} />
-            <text x={boxX + 12} y={yc - 8} fontSize={20} fontWeight={700}>{o.name}</text>
-            <text x={boxX + 12} y={yc + 12} fontSize={13}>{[o.id, o.part].filter(Boolean).join(" · ")}</text>
-            {tags.length > 0 && <text x={boxX + 12} y={yc + 27} fontSize={11}>{tags.join(" · ")}</text>}
-          </g>
+          <OutletBox project={project} o={o} x={toLeft ? 0 : boxX} yc={yc} distances={distances} mainId={main.id} />
         )}
       </g>
     );
   };
 
   return (
-    <svg className="assembly" viewBox={`-10 ${top} ${BOX_X + 360} ${bottom - top}`} style={{ maxHeight: `${maxHeightMm}mm` }} fontFamily="Arial, sans-serif" role="img" aria-label={`Breakout ${branch.num}`}>
+    <svg className="assembly" viewBox={`-10 ${top} ${width} ${bottom - top}`} style={svgSize(width, maxHeightMm)} fontFamily="Arial, sans-serif" role="img" aria-label={`Breakout ${branch.num}`}>
       {from && (
         <g>
           <line x1={0} y1={hub.y} x2={hub.x} y2={hub.y} stroke="#000" strokeWidth={3} strokeDasharray="10 6" />
@@ -212,11 +269,133 @@ export function BranchFan({ project, library, branch, distances, maxHeightMm }: 
         </g>
       )}
       {forward.map((o, i) => outlet(o, i * ROW + 30, false))}
-      {backward.map((o) => outlet(o, backY.get(o)!, true))}
-      <circle cx={hub.x} cy={hub.y} r={24} fill="#fff" stroke="#000" strokeWidth={3} />
-      <text x={hub.x} y={hub.y + 8} textAnchor="middle" fontSize={22} fontWeight={700}>{branch.num === 0 ? main.id : branch.num}</text>
-      {hubDistance && branch.num !== 0 && <text x={hub.x} y={hub.y + 48} textAnchor="middle" fontSize={13} style={halo}>{hubDistance}</text>}
-      {hubTermination && <text x={hub.x} y={hub.y - 34} textAnchor="middle" fontSize={13} style={halo}>{hubTermination}</text>}
+      {backward.map((o) => outlet(o, hub.y + back.get(o)! * ROW, true))}
+      <Hub project={project} library={library} branch={branch} at={hub} label={branch.num === 0 ? main.id : String(branch.num)} distances={distances} mainId={main.id} />
     </svg>
+  );
+}
+
+/**
+ * Todo el arnés en un dibujo (pedido de Martin: la vista general y las hojas de
+ * los breakouts juntas, no una copia del diagrama): el conector principal, el
+ * tronco con los breakouts numerados y, en cada breakout, sus salidas en
+ * abanico como en su hoja. Un breakout que sale de otro abre su abanico en la
+ * punta de ese tramo; las salidas hacia atrás van a la izquierda de su
+ * breakout. Un breakout que sale hacia atrás de otro (raro) se dibuja aparte,
+ * debajo, como en su hoja.
+ */
+export function WholeHarness({ project, library, branches, distances, maxHeightMm }: {
+  project: ProjectData;
+  library: Library;
+  branches: AssemblyBranch[];
+  distances: Record<string, number> | null;
+  maxHeightMm: number;
+}) {
+  if (branches.length === 0) return <p className="hint">The harness has no topology yet.</p>;
+  const main = mainLabel(project);
+  const forwardOf = (b: AssemblyBranch) => (b.num === 0 ? b.outlets : b.outlets.filter((o) => !o.backward));
+  const backwardOf = (b: AssemblyBranch) => (b.num === 0 ? [] : b.outlets.filter((o) => o.backward));
+  const child = (o: AssemblyOutlet) => (o.branch !== null ? branches[o.branch] : null);
+
+  // Alto de cada breakout: su columna hacia adelante (un renglón por conector,
+  // el alto entero de cada breakout que sale de él) y las filas hacia atrás,
+  // arriba y abajo del tramo que llega.
+  const sizes = new Map<number, { fwd: number; above: number; below: number }>();
+  const size = (b: AssemblyBranch): { fwd: number; above: number; below: number } => {
+    const known = sizes.get(b.num);
+    if (known) return known;
+    const fwd =
+      forwardOf(b).reduce((t, o) => {
+        const c = child(o);
+        return t + (c ? size(c).above + size(c).below : ROW);
+      }, 0) || ROW;
+    const rows = [...backRows(backwardOf(b)).values()];
+    const up = Math.max(0, ...rows.map((r) => -r));
+    const down = Math.max(0, ...rows.map((r) => r));
+    const s = { fwd, above: Math.max(fwd / 2, (up + 0.5) * ROW), below: Math.max(fwd / 2, (down + 0.5) * ROW) };
+    sizes.set(b.num, s);
+    return s;
+  };
+
+  const lines: ReactNode[] = [];
+  const marks: ReactNode[] = [];
+  const apart: AssemblyBranch[] = [];
+  let right = 0;
+  /** Dibuja un breakout (o el conector principal) desde `left`, con su franja desde `top`; devuelve su centro. */
+  const draw = (b: AssemblyBranch, left: number, top: number): Point => {
+    const s = size(b);
+    const back = backRows(backwardOf(b));
+    const hub = { x: b.num === 0 ? left + MAIN_W : left + (back.size > 0 ? BOX_W + 60 : 0) + 230, y: top + s.above };
+    const forward = forwardOf(b);
+    // Si le sale algún conector, los breakouts siguientes van después de su columna de recuadros.
+    const childLeft = hub.x + (forward.some((o) => !child(o)) ? REACH + BOX_W + 40 : 260);
+    let rowTop = hub.y - s.fwd / 2;
+    for (const o of forward) {
+      const c = child(o);
+      if (c) {
+        const at = draw(c, childLeft, rowTop);
+        // El largo, a mitad de camino hasta donde empieza el breakout siguiente.
+        const t = (childLeft - hub.x) / 2 / (at.x - hub.x);
+        lines.push(<line key={`l${c.num}`} x1={hub.x} y1={hub.y} x2={at.x} y2={at.y} stroke="#000" strokeWidth={3} />);
+        marks.push(<SegmentLabel key={`t${c.num}`} at={along(hub, at, t)} o={o} />);
+        rowTop += size(c).above + size(c).below;
+      } else {
+        const anchor = { x: hub.x + REACH, y: rowTop + ROW / 2 };
+        lines.push(<line key={`o${o.nodeId}`} x1={hub.x} y1={hub.y} x2={anchor.x} y2={anchor.y} stroke="#000" strokeWidth={3} />);
+        marks.push(
+          <g key={`o${o.nodeId}`}>
+            <SegmentLabel at={along(hub, anchor, 0.72)} o={o} />
+            <OutletBox project={project} o={o} x={anchor.x} yc={anchor.y} distances={distances} mainId={main.id} />
+          </g>,
+        );
+        right = Math.max(right, anchor.x + BOX_W);
+        rowTop += ROW;
+      }
+    }
+    for (const o of backwardOf(b)) {
+      const anchor = { x: left + BOX_W, y: hub.y + back.get(o)! * ROW };
+      const c = child(o);
+      if (c) apart.push(c);
+      lines.push(<line key={`b${o.nodeId}`} x1={hub.x} y1={hub.y} x2={anchor.x} y2={anchor.y} stroke="#000" strokeWidth={3} />);
+      marks.push(
+        <g key={`b${o.nodeId}`}>
+          <SegmentLabel at={along(hub, anchor, 0.72)} o={o} />
+          {c ? (
+            <BranchRef num={c.num} x={anchor.x - 22} yc={anchor.y} toLeft note="drawn below" />
+          ) : (
+            <OutletBox project={project} o={o} x={left} yc={anchor.y} distances={distances} mainId={main.id} />
+          )}
+        </g>,
+      );
+    }
+    marks.push(
+      b.num === 0 ? (
+        <g key="main">
+          <rect x={left} y={hub.y - 32} width={MAIN_W} height={64} rx={5} fill="#fff" stroke="#000" strokeWidth={3} />
+          <text x={left + MAIN_W / 2} y={hub.y - 4} textAnchor="middle" fontSize={22} fontWeight={700}>{main.name}</text>
+          <text x={left + MAIN_W / 2} y={hub.y + 18} textAnchor="middle" fontSize={14}>{main.id}</text>
+        </g>
+      ) : (
+        <Hub key={`h${b.num}`} project={project} library={library} branch={b} at={hub} label={String(b.num)} distances={distances} mainId={main.id} />
+      ),
+    );
+    right = Math.max(right, hub.x + 30);
+    return hub;
+  };
+  const root = size(branches[0]);
+  draw(branches[0], 0, 0);
+  const width = right + 20;
+
+  return (
+    <>
+      {/* Las líneas primero: los recuadros, centros y largos van encima. */}
+      <svg className="assembly" viewBox={`-10 -50 ${width} ${root.above + root.below + 100}`} style={svgSize(width, maxHeightMm)} fontFamily="Arial, sans-serif" role="img" aria-label="Whole harness">
+        {lines}
+        {marks}
+      </svg>
+      {apart.map((b) => (
+        <BranchFan key={b.num} project={project} library={library} branch={b} distances={distances} maxHeightMm={maxHeightMm} />
+      ))}
+    </>
   );
 }

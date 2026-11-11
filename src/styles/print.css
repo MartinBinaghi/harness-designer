@@ -254,6 +254,21 @@
   break-inside: avoid;
 }
 
+.pinout-new-page {
+  break-before: page;
+}
+
+/* Líneas entre renglones en las columnas de un valor por vía (Pin, Función,
+   Termina en; las de todo el bloque van en el primer renglón, con rowspan),
+   para seguir la fila con la vista (Martin). Borde de 1 px como las líneas
+   verticales: un fondo de 0,25 mm el visor de PDF lo dibujaba más grueso en
+   unas filas que en otras. El px se le saca al relleno de arriba, así el alto
+   del renglón no cambia (la paginación, paginatePinout, lo mide). */
+.pinout-block tr + tr td {
+  border-top: 1px solid #bdbdbd;
+  padding-top: calc(0.5mm - 1px);
+}
+
 .pinout-gap td {
   height: 3mm;
   padding: 0;
@@ -383,10 +398,11 @@
   }
 }
 
-/* Hoja de armado: el dibujo ocupa el ancho de la hoja y no pasa de su alto. */
+/* Hoja de armado: el dibujo va a escala fija (ancho en mm, desde el código) y se
+   achica si no entra en el ancho o el alto de la hoja. */
 svg.assembly {
   display: block;
-  width: 100%;
+  max-width: 100%;
   height: auto;
   margin-top: 4mm;
 }

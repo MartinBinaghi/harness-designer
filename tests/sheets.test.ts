@@ -1,6 +1,6 @@
 // Chequeo de las hojas imprimibles (lista de corte, pinout, etiquetas). Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { assemblyBranches, colorWord, swatchBackground, wireColors, connectorHeatShrink, coveringRows, pageChunks, cutListGroups, cutListRows, heatShrinkSize, labelRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals } from "../src/logic/sheets.ts";
+import { assemblyBranches, colorWord, swatchBackground, wireColors, connectorHeatShrink, coveringRows, paginatePinout, cutListGroups, cutListRows, cutPairGroups, heatShrinkSize, labelRows, mergeCutRows, pinoutRows, terminatesAt, terminationRows, toCsv, wireTotals , type CutRow } from "../src/logic/sheets.ts";
 import type { Library } from "../src/model/library.ts";
 import type { ProjectData } from "../src/model/project.ts";
 import type { PinDestinations } from "../src/model/calc.ts";
@@ -58,6 +58,12 @@ assert.deepEqual(cutListRows(project, library, cuts, [], "length").map((r) => r.
 const byType = cutListRows(project, library, cuts, [], "type");
 assert.deepEqual(byType.map((r) => r.id), ["W003", "W004", "W002", "W001"]);
 assert.equal(byType[2].wireType, "22 AWG M22759/32");
+// Dentro del mismo tipo, por color (un rollo es de un color; Martin): W001 blanco va después de W002 rojo
+// aunque sea más corto; sin el color, el largo lo ponía primero.
+{
+  const colored = { ...project, twist_groups: [], wire_instances: project.wire_instances.map((w) => (w.id === 1 ? { ...w, color: "white" } : w)) } as ProjectData;
+  assert.deepEqual(cutListRows(colored, library, cuts, [], "type").filter((r) => r.wireType === "22 AWG M22759/32").map((r) => [r.id, r.color]), [["W002", "red"], ["W001", "white"]]);
+}
 assert.equal(byType[2].from, "SP1");
 // Dividida por conector, cada cable una sola vez: W001 (X1 → SP1) va con X1, el principal;
 // W002 (SP1 → X2) con X2; W003 (SP1 → X3) con X3. W004 (X1 → G1) va con X1, pero está
@@ -67,6 +73,88 @@ assert.deepEqual(groups.map((g) => [g.title, g.rows.map((r) => r.id)]), [["X1 ·
 // Por pin del conector de cada bloque: X1 tiene W001 (pin 1) y W004 (pin 2).
 const byPin = cutListGroups({ ...project, twist_groups: [] }, cutListRows({ ...project, twist_groups: [] }, library, cuts, [], "pin"));
 assert.deepEqual(byPin.find((g) => g.connectorId === 1)!.rows.map((r) => [r.id, r.pin]), [["W001", "1"], ["W004", "2"]]);
+// Por tramo entre dos puntos (Martin: "todos los cables de ECU A a Motor"): el principal primero, después
+// los conectores y al final splices y masas. El trenzado W002 + W004 va entero al bloque de su primer cable.
+const pairs = (p: ProjectData) => cutPairGroups(p, cutListRows(p, library, cuts, [], "length")).map((g) => [g.title, g.rows.map((r) => r.id)]);
+assert.deepEqual(pairs(project), [["X1 · ECU ↔ SP1", ["W001"]], ["X2 · MAP ↔ SP1", ["W002", "W004"]], ["X3 · TPS ↔ SP1", ["W003"]]]);
+assert.deepEqual(pairs({ ...project, twist_groups: [] }), [["X1 · ECU ↔ SP1", ["W001"]], ["X1 · ECU ↔ G1 · Chassis", ["W004"]], ["X2 · MAP ↔ SP1", ["W002"]], ["X3 · TPS ↔ SP1", ["W003"]]]);
+// Por un splice (Martin: el cable se corta de conector a conector y la unión se hace después): la punta en
+// el splice cuenta como lo que dice "Termina en" de la otra punta; con varios, el primero de la lista (el
+// principal): SP1 une X1 con X2 y X3, así que W002 (SP1 → X2) va en "X1 ↔ X2" y W001 (X1 → SP1), en el
+// primero de sus destinos, X2. W003 (SP1 → X3:1, sin destinos cargados en el ejemplo) queda con el splice;
+// con destinos iría en "X1 ↔ X3".
+assert.deepEqual(
+  cutPairGroups({ ...project, twist_groups: [] }, cutListRows({ ...project, twist_groups: [] }, library, cuts, [], "length"), destinationOf).map((g) => [g.title, g.rows.map((r) => r.id)]),
+  [["X1 · ECU ↔ X2 · MAP", ["W002", "W001"]], ["X1 · ECU ↔ G1 · Chassis", ["W004"]], ["X3 · TPS ↔ SP1", ["W003"]]],
+);
+// Splice de tres puntas con todos los destinos (Martin: "x1 ecu - x2 map y x1 ecu - x3 tps").
+{
+  const all = new Map(destinations);
+  all.set(31, { cavity_assignment_id: 31, ends: [end("cavity", { cavity: 11 }), end("cavity", { cavity: 21 })], via_splices: [1] } as PinDestinations);
+  const p = { ...project, twist_groups: [], wire_instances: project.wire_instances.filter((w) => w.id !== 4) } as ProjectData;
+  assert.deepEqual(cutPairGroups(p, cutListRows(p, library, cuts.slice(0, 3), [], "pin"), (id) => all.get(id)).map((g) => [g.title, g.rows.map((r) => r.id).sort()]), [
+    ["X1 · ECU ↔ X2 · MAP", ["W001", "W002"]],
+    ["X1 · ECU ↔ X3 · TPS", ["W003"]],
+  ]);
+}
+// Suelto en el nodo de un conector (el pedal 2 de Martin): va con ese conector aunque no se conecte. X2 está
+// en el nodo 2; W005 va de X1:2 suelto al nodo 2, W006 de X1:3 a X2:1; un suelto en un nodo sin conector queda aparte.
+{
+  const loose = (node: number) => ({ ...end("loose", {}), node_id: node });
+  const p = {
+    ...project,
+    twist_groups: [],
+    nodes: [{ id: 2, kind: "connector_end" }, { id: 9, kind: "breakout" }],
+    wire_instances: [wire(5, 21, "Pedal 2", end("cavity", { cavity: 12 }), loose(2)), wire(6, 21, "Pedal 1", end("cavity", { cavity: 13 }), end("cavity", { cavity: 21 })), wire(7, 21, "Spare", end("cavity", { cavity: 14 }), loose(9))],
+  } as unknown as ProjectData;
+  const lengths = [5, 6, 7].map((wire_id) => ({ wire_id, length_with_twist_mm: 10, margin_pct: 10, twist_min_margin_pct: 2, cut_length_mm: 11 }));
+  assert.deepEqual(cutPairGroups(p, cutListRows(p, library, lengths, [], "pin")).map((g) => [g.title, g.rows.map((r) => r.id)]), [
+    ["X1 · ECU ↔ X2 · MAP", ["W006", "W005"]],
+    ["X1 · ECU ↔ loose · node 9", ["W007"]],
+  ]);
+}
+// El caso de Martin: X1:101 y X1:102 se unen en SP1 y van a X3:T. Los tres cables, en "ECU A ↔ MOTOR".
+{
+  const viaSplice = {
+    ...project,
+    twist_groups: [],
+    connector_instances: [conn(1, "X1", "ECU A", [cav(1, "101"), cav(2, "102")]), conn(3, "X3", "MOTOR", [cav(3, "T")])],
+    wire_instances: [
+      wire(1, 21, "Throttle", end("cavity", { cavity: 1 }), end("splice", { splice: 1 })),
+      wire(2, 21, "Throttle", end("cavity", { cavity: 2 }), end("splice", { splice: 1 })),
+      wire(3, 21, "Throttle", end("splice", { splice: 1 }), end("cavity", { cavity: 3 })),
+    ],
+  } as unknown as ProjectData;
+  const far = new Map([
+    [1, { cavity_assignment_id: 1, ends: [end("cavity", { cavity: 3 })], via_splices: [1] }],
+    [2, { cavity_assignment_id: 2, ends: [end("cavity", { cavity: 3 })], via_splices: [1] }],
+    [3, { cavity_assignment_id: 3, ends: [end("cavity", { cavity: 1 }), end("cavity", { cavity: 2 })], via_splices: [1] }],
+  ]) as Map<number, PinDestinations>;
+  const lengths = [1, 2, 3].map((wire_id) => ({ wire_id, length_with_twist_mm: 10, margin_pct: 10, twist_min_margin_pct: 2, cut_length_mm: 11 }));
+  assert.deepEqual(cutPairGroups(viaSplice, cutListRows(viaSplice, library, lengths, [], "pin"), (id) => far.get(id)).map((g) => [g.title, g.rows.length]), [["X1 · ECU A ↔ X3 · MOTOR", 3]]);
+}
+// Entre dos conectores, en cualquier sentido, al mismo bloque.
+{
+  const direct = {
+    ...project,
+    twist_groups: [],
+    wire_instances: [wire(5, 21, "A", end("cavity", { cavity: 31 }), end("cavity", { cavity: 21 })), wire(6, 21, "B", end("cavity", { cavity: 21 }), end("cavity", { cavity: 31 }))],
+  } as unknown as ProjectData;
+  const lengths = [5, 6].map((wire_id) => ({ wire_id, length_with_twist_mm: 10, margin_pct: 10, twist_min_margin_pct: 2, cut_length_mm: 11 }));
+  assert.deepEqual(cutPairGroups(direct, cutListRows(direct, library, lengths, [], "pin")).map((g) => [g.key, g.title, g.rows.length]), [["c2|c3", "X2 · MAP ↔ X3 · TPS", 2]]);
+}
+// Sin nombres: los cables iguales en un renglón con la cantidad. W002 y W004 tendrían el mismo largo
+// pero W002 es de otro tipo; W003 y W005 (iguales) se juntan; un trenzado no se junta con uno suelto.
+{
+  const row = (id: string, wireType: string, cutMm: number, twist: string | null = null) => ({ id, wireType, color: "blue", cutMm, twist }) as CutRow;
+  const merged = mergeCutRows([row("W001", "22 AWG", 1250), row("W002", "20 AWG", 1250), row("W003", "22 AWG", 1250), row("W004", "22 AWG", 1300), row("W005", "22 AWG", 1250, "twist I")]);
+  assert.deepEqual(merged.map((m) => [m.wireType, m.cutMm, m.twist, m.count, m.ids]), [
+    ["22 AWG", 1250, null, 2, ["W001", "W003"]],
+    ["20 AWG", 1250, null, 1, ["W002"]],
+    ["22 AWG", 1300, null, 1, ["W004"]],
+    ["22 AWG", 1250, "twist I", 1, ["W005"]],
+  ]);
+}
 // Totales por tipo, en metros.
 assert.deepEqual(wireTotals(byType), [{ wireType: "20 AWG", count: 2, meters: 0.275 }, { wireType: "22 AWG M22759/32", count: 2, meters: 0.44 }]);
 
@@ -148,14 +236,26 @@ assert.deepEqual(connectorHeatShrink(withSegments, covLib, 1, diameters), ["none
   assert.deepEqual(terminationRows(p, lib), [["X2 · MAP", "90° boot", "not chosen"], ["X3 · TPS", "Adhesive heat-shrink", '1/4" · DR-25-1/4 · cut 40 mm'], ["Breakout 9", "T-mold", "T-202"]]);
 }
 
-// Bloques largos de pinout: tramos que entran en una hoja; un renglón de varias líneas cuenta más.
+// Paginación del pinout (A4 apaisada: 181 mm por hoja, título 9, espacio entre conectores 3,5).
 {
-  const rows = Array.from({ length: 61 }, (_, i) => ({ goesTo: i === 0 ? "x".repeat(110) : "X2:1" }));
-  const chunks = pageChunks(rows, 182, 52, 168);
-  assert.equal(chunks.flat().length, 61);
-  // 1.ª hoja (168 mm, con el título): el renglón de 3 líneas (12,3 mm) + 31 de 4,9 mm; el resto en la 2.ª.
-  assert.deepEqual(chunks.map((c) => c.length), [32, 29]);
-  assert.deepEqual(pageChunks([], 172, 55), [[]]);
+  const opts = { pageMm: 181, titleMm: 9, gapMm: 3.5, charsPerLine: 60 };
+  const rows = (n: number) => Array.from({ length: n }, () => ({ goesTo: "X6:U · INTERCO" }));
+  const shape = (chunks: ReturnType<typeof paginatePinout>) => chunks.map((c) => [c.block, c.rows.length, c.cont, c.newPage]);
+  // ECU A y ECU B de Martin (105 vías cada una). Con 4,9 mm por renglón el 2.º tramo de la A no
+  // entraba (hoja en blanco, tramo partido); y la B empezaba en hoja nueva dejando un hueco: ahora
+  // arranca debajo del último tramo de la A y usa lo que queda de esa hoja.
+  const ecus = paginatePinout([{ rows: rows(105), extraMm: 3 }, { rows: rows(105), extraMm: 3 }], opts);
+  assert.deepEqual(shape(ecus), [
+    [0, 33, false, false], [0, 35, true, true], [0, 35, true, true], [0, 2, true, true],
+    [1, 31, false, false], [1, 35, true, true], [1, 35, true, true], [1, 4, true, true],
+  ]);
+  // Cada tramo entra con lo medido en su PDF (5,12 mm por renglón, encabezado 7,4, título 8,6, hoja 190).
+  assert.ok(ecus.filter((c) => c.rows.length > 2).every((c) => c.rows.length * 5.12 + 7.4 + (c.block === 0 && !c.cont ? 8.6 : 0) <= 190));
+  // Si al final de la hoja no entran ni 8 renglones del conector siguiente, empieza en la otra.
+  assert.deepEqual(shape(paginatePinout([{ rows: rows(30), extraMm: 0 }, { rows: rows(10), extraMm: 0 }], opts)), [[0, 30, false, false], [1, 10, false, true]]);
+  // Un renglón de varias líneas cuenta más (3 líneas = 12,55 mm); un conector sin vías, un tramo vacío.
+  const long = [{ goesTo: "x".repeat(150) }, ...rows(40)];
+  assert.deepEqual(shape(paginatePinout([{ rows: long, extraMm: 0 }, { rows: [], extraMm: 0 }], opts)), [[0, 31, false, false], [0, 10, true, true], [1, 0, false, false]]);
 }
 
 // Hoja de armado por breakouts: X1 (nodo 1) → 1000 → B (5) → X2 y otro B (6) → X3, G1.

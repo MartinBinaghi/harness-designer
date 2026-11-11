@@ -3,13 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ProjectData } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import type { CostReport, PinDestinations } from "../model/calc";
-import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, labelRows, pageChunks, pinoutRows, terminationRows, toCsv, wireTotals, type CutSort } from "../logic/sheets";
+import { assemblyBranches, connectorHeatShrink, coveringRows, cutListGroups, cutListRows, cutPairGroups, labelRows, mergeCutRows, paginatePinout, pinoutRows, pinoutViewMm, terminationRows, toCsv, wireTotals, type CutGrouping, type CutSort } from "../logic/sheets";
 import { ConnectorFaceView, MIL } from "../components/ConnectorFaceView";
 import { connectorFace } from "../logic/connectorFace";
 import { useConnectorImage } from "../platform/connectorImages";
 import { usedCavities } from "../logic/projectEdit";
-import { AssemblySheet } from "../components/AssemblySheet";
-import { AssemblyOverview, BranchFan, branchesWithSheet } from "../components/AssemblyBranches";
+import { AssemblyOverview, BranchFan, branchesWithSheet, WholeHarness } from "../components/AssemblyBranches";
 import { fileName, pickFileToSave } from "../platform/fileDialogs";
 
 /**
@@ -25,9 +24,13 @@ const DOCS: [Doc, string, string][] = [
   ["assembly", "Assembly drawing", "The harness diagram with its lengths, for the table: fitted to one sheet (A3 for big harnesses)."],
   ["labels", "Label list", "Harness, connectors and labelled wires, for the label printer."],
 ];
+const CUT_GROUPINGS: [CutGrouping, string][] = [
+  ["connector", "Connector"],
+  ["pair", "Connector to connector (X1 ↔ X3)"],
+];
 const CUT_SORTS: [CutSort, string][] = [
   ["pin", "Pin"],
-  ["type", "Wire type (cut from the same reel)"],
+  ["type", "Wire type and color (cut from the same reel)"],
   ["length", "Length"],
 ];
 const PAPER_MM = { A4: [210, 297], A3: [297, 420], Letter: [215.9, 279.4] } as const;
@@ -57,11 +60,12 @@ const CUT_ROUNDING: [number | null, string][] = [
 export default function Print({ project, setProject, library, report, destinations, projectRevision }: Props) {
   const [doc, setDoc] = useState<Doc>("cut");
   const [sort, setSort] = useState<CutSort>("pin");
+  const [grouping, setGrouping] = useState<CutGrouping>("connector");
+  const [hideNames, setHideNames] = useState(false);
   const [paper, setPaper] = useState<Paper>("A4");
   const [landscape, setLandscape] = useState(false);
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState("");
-  const [toScale, setToScale] = useState(false);
   // Por breakouts (vista general + una hoja por breakout, como la hoja a mano del taller) o todo el dibujo en una hoja.
   const [assemblyLayout, setAssemblyLayout] = useState<"branches" | "whole">("branches");
   const [showDistances, setShowDistances] = useState(true);
@@ -121,16 +125,20 @@ export default function Print({ project, setProject, library, report, destinatio
         <SheetHeader project={project} title="Cut list" />
         <table>
           <thead>
-            <tr>
-              <th>Wire</th><th>Function</th><th>Type</th><th>Color</th><th>From</th><th>To</th><th>Twist</th>
-              <th className="num">Route (mm)</th><th className="num">Margin</th><th className="num">Cut (mm)</th><th className="check" aria-label="Done">✓</th>
-            </tr>
+            {hideNames ? (
+              <tr><th>Type</th><th>Color</th><th>Twist</th><th className="num">Cut (mm)</th><th className="num">Qty</th><th className="check" aria-label="Done">✓</th></tr>
+            ) : (
+              <tr>
+                <th>Wire</th><th>Function</th><th>Type</th><th>Color</th><th>From</th><th>To</th><th>Twist</th>
+                <th className="num">Route (mm)</th><th className="num">Margin</th><th className="num">Cut (mm)</th><th className="check" aria-label="Done">✓</th>
+              </tr>
+            )}
           </thead>
-          {/* Dividida por conector (cada cable una sola vez), para no perderse en la mesa. */}
-          {cutListGroups(project, rows).map((g) => (
-            <tbody key={g.connectorId ?? "other"} className="cut-group">
+          {/* Dividida por conector, o por los dos puntos que une cada cable (cada cable una sola vez), para no perderse en la mesa. */}
+          {(grouping === "pair" ? cutPairGroups(project, rows, destinationOf) : cutListGroups(project, rows)).map((g) => (
+            <tbody key={g.key} className="cut-group">
               <tr className="cut-group-title">
-                <td colSpan={11}>
+                <td colSpan={hideNames ? 6 : 11}>
                   {g.title}
                   <span className="cut-group-count">{g.rows.length} wire{g.rows.length === 1 ? "" : "s"}</span>
                   {g.connectorId !== null && (
@@ -140,7 +148,14 @@ export default function Print({ project, setProject, library, report, destinatio
                   )}
                 </td>
               </tr>
-              {g.rows.map((r) => (
+              {/* Sin nombres: los cables iguales (tipo, color, largo, trenzado) en un renglón con la cantidad. */}
+              {hideNames && mergeCutRows(g.rows).map((m) => (
+                <tr key={m.ids[0]} title={m.ids.join(", ")}>
+                  <td>{m.wireType}</td><td>{m.color}</td><td>{m.twist ?? ""}</td>
+                  <td className="num strong">{m.cutMm.toFixed(0)}</td><td className="num strong">× {m.count}</td><td className="check"><span className="tick-box" /></td>
+                </tr>
+              ))}
+              {!hideNames && g.rows.map((r) => (
                 <Fragment key={r.wireId}>
                   <tr>
                     <td className="strong">{r.id}</td><td>{r.fn}</td><td>{r.wireType}</td><td>{r.color}</td><td>{r.from}</td><td>{r.to}</td><td>{r.twist ?? ""}</td>
@@ -176,6 +191,16 @@ export default function Print({ project, setProject, library, report, destinatio
     // Al final, una hoja por conector grande con sus vistas en grande (en la
     // columna no se leen los números; Martin las prefiere todas al final).
     const shown = project.connector_instances.filter((c) => !skipped.has(c.id));
+    // Un bloque que no entra se parte en tramos, y cada uno repite nombre,
+    // conector y vista (Martin: en el PDF quedaban solo arriba de la primera).
+    const chunks = paginatePinout(
+      shown.map((c) => ({
+        rows: pinoutRows(project, library, c.id, destinationOf),
+        // Notas debajo del dibujo: "vistas en grande" y la de pendiente.
+        extraMm: (bigConnector(library, c.library_part_id) ? 3 : 0) + (c.status === "pending" ? 5 : 0),
+      })),
+      { pageMm: (landscape ? w : h) - PINOUT_PAGE_LOSS_MM, titleMm: PINOUT_TITLE_MM, gapMm: PINOUT_GAP_MM, charsPerLine: landscape ? 60 : 42 },
+    );
     sheets = (
       <>
         <section className="sheet" style={{ width: sheetWidth }}>
@@ -188,8 +213,8 @@ export default function Print({ project, setProject, library, report, destinatio
             <thead>
               <tr><th>Nombre</th><th>Pin</th><th>Función</th><th>Termina en</th><th>Conector</th><th>Vista delantera</th></tr>
             </thead>
-            {shown.map((c, i) => (
-              <PinoutBlock key={c.id} first={i === 0} project={project} library={library} connectorId={c.id} destinationOf={destinationOf} pageMm={(landscape ? w : h) - 28} charsPerLine={landscape ? 60 : 42} />
+            {chunks.map((ch, i) => (
+              <PinoutChunk key={i} gap={i > 0 && !ch.newPage} newPage={ch.newPage} cont={ch.cont} project={project} library={library} connectorId={shown[ch.block].id} rows={ch.rows} />
             ))}
           </table>
         </section>
@@ -237,7 +262,7 @@ export default function Print({ project, setProject, library, report, destinatio
       <section className="sheet" style={{ width: sheetWidth }}>
         <SheetHeader project={project} title="Assembly drawing" />
         {/* Alto de la hoja menos márgenes (10 mm × 2) y encabezado: el dibujo entra en una sola hoja. */}
-        <AssemblySheet project={project} library={library} report={data.report} distances={distances} toScale={toScale} maxHeightMm={(landscape ? w : h) - 38} />
+        <WholeHarness project={project} library={library} branches={assemblyBranches(project, library, data.report.segment_diameters)} distances={distances} maxHeightMm={(landscape ? w : h) - 38} />
       </section>
     );
   } else {
@@ -289,10 +314,23 @@ export default function Print({ project, setProject, library, report, destinatio
 
         {doc === "cut" && (
           <label className="print-field">
-            <span className="field-label">Order within each connector</span>
+            <span className="field-label">Group by</span>
+            <select value={grouping} onChange={(e) => setGrouping(e.currentTarget.value as CutGrouping)}>
+              {CUT_GROUPINGS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </label>
+        )}
+        {doc === "cut" && (
+          <label className="print-field">
+            <span className="field-label">Order within each group</span>
             <select value={sort} onChange={(e) => setSort(e.currentTarget.value as CutSort)}>
               {CUT_SORTS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
+          </label>
+        )}
+        {doc === "cut" && (
+          <label className="print-check" title="Identical wires (type, color, cut length, twist) in one row with the quantity">
+            <input type="checkbox" checked={hideNames} onChange={(e) => setHideNames(e.currentTarget.checked)} /> Hide names (count identical wires)
           </label>
         )}
         {doc === "cut" && project && (
@@ -317,11 +355,6 @@ export default function Print({ project, setProject, library, report, destinatio
                 <option value="whole">Whole harness on one sheet</option>
               </select>
             </label>
-            {assemblyLayout === "whole" && (
-              <label className="print-check">
-                <input type="checkbox" checked={toScale} onChange={(e) => setToScale(e.currentTarget.checked)} /> To scale
-              </label>
-            )}
             <label className="print-check">
               <input type="checkbox" checked={showDistances} onChange={(e) => setShowDistances(e.currentTarget.checked)} disabled={mainNode === undefined} />
               Distance from the main connector
@@ -385,6 +418,17 @@ export default function Print({ project, setProject, library, report, destinatio
 const GENDER_ES = { male: "macho", female: "hembra" } as const;
 
 /**
+ * Medidas de la hoja de pinout impresa para partir los bloques (medidas en un
+ * PDF de Martin, A4 apaisada): del alto del papel se van los márgenes (10 mm
+ * arriba y abajo), el encabezado de la tabla que se repite en cada hoja
+ * (7,4 mm) y 1,6 mm de resguardo; en la primera hoja, además, el título; antes
+ * de un conector que no es el primero, el espacio que lo separa.
+ */
+const PINOUT_PAGE_LOSS_MM = 29;
+const PINOUT_TITLE_MM = 9;
+const PINOUT_GAP_MM = 3.5;
+
+/**
  * Desde cuántas vías la cara dibujada va además en una hoja aparte, en grande
  * (Martin: en la columna no se leían los números de la ECU, el interco y el motor).
  */
@@ -394,33 +438,11 @@ const bigConnector = (library: Library, partId: number) => {
   return def && def.cavities.length >= BIG_CONNECTOR_WAYS && connectorFace(def, MIL) ? def : undefined;
 };
 
-/** Un conector en la hoja de pinout: nombre, conector y vista ocupan todo el alto del bloque. */
-function PinoutBlock({ first, project, library, connectorId, destinationOf, pageMm, charsPerLine }: {
-  first: boolean;
-  project: ProjectData;
-  library: Library;
-  connectorId: number;
-  destinationOf: (cavityId: number) => PinDestinations | undefined;
-  /** Alto útil de una hoja y caracteres por línea de "Termina en", para partir bloques largos. */
-  pageMm: number;
-  charsPerLine: number;
-}) {
-  const c = project.connector_instances.find((x) => x.id === connectorId);
-  if (!c) return null;
-  // Un bloque que no entra en una hoja se parte en tramos, y cada uno repite
-  // nombre, conector y vista (Martin: en el PDF quedaban solo arriba de la primera).
-  return (
-    <>
-      {/* El primero de la hoja comparte la primera página con el título (~14 mm). */}
-      {pageChunks(pinoutRows(project, library, c.id, destinationOf), pageMm, charsPerLine, first ? pageMm - 14 : pageMm).map((rows, i) => (
-        <PinoutChunk key={i} first={first && i === 0} cont={i > 0} project={project} library={library} connectorId={connectorId} rows={rows} />
-      ))}
-    </>
-  );
-}
-
-function PinoutChunk({ first, cont, project, library, connectorId, rows }: {
-  first: boolean;
+/** Un tramo de un conector en la hoja de pinout: nombre, conector y vista ocupan todo su alto. */
+function PinoutChunk({ gap, newPage, cont, project, library, connectorId, rows }: {
+  /** Va a continuación del tramo anterior, separado por un espacio. */
+  gap: boolean;
+  newPage: boolean;
   cont: boolean;
   project: ProjectData;
   library: Library;
@@ -432,7 +454,7 @@ function PinoutChunk({ first, cont, project, library, connectorId, rows }: {
   const photo = useConnectorImage(def?.part_id, "front");
   const span = Math.max(rows.length, 1);
   // La vista ocupa el alto del bloque (~4,2 mm por renglón), sin estirar los renglones.
-  const viewHeight = { "--view-h": `${Math.min(40, Math.max(12, span * 4.2))}mm` } as CSSProperties;
+  const viewHeight = { "--view-h": `${pinoutViewMm(span)}mm` } as CSSProperties;
   // Sin vista lateral por ahora (decisión de Martin): solo la delantera.
   // Un conector pendiente igual lleva su dibujo si se sabe la pieza; la nota va debajo.
   const views = (
@@ -460,10 +482,10 @@ function PinoutChunk({ first, cont, project, library, connectorId, rows }: {
   );
   return (
     <>
-      {!first && (
+      {gap && (
         <tbody aria-hidden="true" className="pinout-gap"><tr><td colSpan={6} /></tr></tbody>
       )}
-      <tbody className="pinout-block">
+      <tbody className={newPage ? "pinout-block pinout-new-page" : "pinout-block"}>
         {rows.length === 0 ? (
           <tr>{head}<td /><td /><td />{connectorCell}{views}</tr>
         ) : (

@@ -10,6 +10,8 @@ import { endLabel } from "./projectEdit.ts";
 import type { ProjectData, WireEnd, WireInstance } from "../model/project";
 
 export type CutSort = "pin" | "type" | "length";
+/** Bloques de la lista de corte: por conector, o por los dos puntos que une el cable ("X1 ↔ X3"). */
+export type CutGrouping = "connector" | "pair";
 
 export interface CutRow {
   wireId: number;
@@ -44,6 +46,9 @@ export interface CutConductor {
 }
 
 export interface CutGroup {
+  /** Clave del bloque (única en la lista). */
+  key: string;
+  /** El conector del bloque, en la lista por conector (lleva su termo); null en "Other" y en la lista por par. */
   connectorId: number | null;
   title: string;
   rows: CutRow[];
@@ -102,8 +107,8 @@ function groupPin(project: ProjectData, wire: WireInstance): string {
 
 /**
  * Lista de corte (plan 8.1): un renglón por cable, ordenada por pin del
- * conector de su bloque, por tipo de cable (para cortar de corrido del mismo
- * rollo) o por largo. Los cables de un grupo
+ * conector de su bloque, por tipo de cable y color (para cortar de corrido del
+ * mismo rollo: Martin, un rollo es de un color) o por largo. Los cables de un grupo
  * de trenzado quedan juntos, donde aparece el primero. Un cable comprado (par
  * trenzado, multipolar) va en un solo renglón, con el largo que calcula el
  * núcleo (`cableCuts`) y sus conductores debajo: se corta una vez.
@@ -167,7 +172,7 @@ export function cutListRows(project: ProjectData, library: Library, cuts: WireCu
     sort === "pin"
       ? (a, b) => natural(a.pin, b.pin)
       : sort === "type"
-        ? (a, b) => natural(a.wireType, b.wireType) || byLength(a, b)
+        ? (a, b) => natural(a.wireType, b.wireType) || natural(a.color, b.color) || byLength(a, b)
         : byLength,
   );
   // Trenzados juntos: cuando aparece el primer cable de un grupo, entran todos sus cables.
@@ -277,16 +282,102 @@ export function cutListGroups(project: ProjectData, rows: CutRow[]): CutGroup[] 
   }
   const groups: CutGroup[] = project.connector_instances
     .filter((c) => byConnector.has(c.id))
-    .map((c) => ({ connectorId: c.id, title: c.name ? `${c.short_id} · ${c.name}` : c.short_id, rows: byConnector.get(c.id)! }));
-  if (byConnector.has(null)) groups.push({ connectorId: null, title: "Other (splices, grounds, components)", rows: byConnector.get(null)! });
+    .map((c) => ({ key: `c${c.id}`, connectorId: c.id, title: c.name ? `${c.short_id} · ${c.name}` : c.short_id, rows: byConnector.get(c.id)! }));
+  if (byConnector.has(null)) groups.push({ key: "other", connectorId: null, title: "Other (splices, grounds, components)", rows: byConnector.get(null)! });
   return groups;
 }
 
+/** Un punto donde termina un cable, para agrupar por par: su clave, su orden en la lista y cómo se llama. */
+function cutPlace(project: ProjectData, end: WireEnd): { key: string; order: number; title: string } {
+  const named = (id: string, name: string | null | undefined) => (name ? `${id} · ${name}` : id);
+  const main = project.project.main_connector_instance_id;
+  const index = <T extends { id: number }>(list: T[], id: number | null) => list.findIndex((x) => x.id === id);
+  const connector = (i: number) => {
+    const c = project.connector_instances[i];
+    return c && { key: `c${c.id}`, order: c.id === main ? -1 : i, title: named(c.short_id, c.name) };
+  };
+  switch (end.kind) {
+    case "cavity": {
+      const c = connector(project.connector_instances.findIndex((x) => x.cavities.some((cav) => cav.id === end.cavity_assignment_id)));
+      if (c) return c;
+      break;
+    }
+    case "splice": {
+      const s = project.splice_instances.find((x) => x.id === end.splice_id);
+      if (s) return { key: `s${s.id}`, order: 10_000 + index(project.splice_instances, s.id), title: named(s.short_id, s.name) };
+      break;
+    }
+    case "ground": {
+      const g = project.ground_points.find((x) => x.id === end.ground_point_id);
+      if (g) return { key: `g${g.id}`, order: 20_000 + index(project.ground_points, g.id), title: named(g.short_id, g.name) };
+      break;
+    }
+    case "component": {
+      const k = project.component_instances.find((x) => x.id === end.component_instance_id);
+      if (k) return { key: `k${k.id}`, order: 30_000 + index(project.component_instances, k.id), title: named(k.short_id, k.name) };
+      break;
+    }
+    case "loose": {
+      // Suelta en un nodo con conector (el pedal 2 de Martin): llega a ese conector aunque no se conecte.
+      const c = connector(project.connector_instances.findIndex((x) => x.node_id === end.node_id));
+      if (c) return c;
+      return { key: `l${end.node_id}`, order: 40_000 + (end.node_id ?? 0), title: `loose · node ${end.node_id}` };
+    }
+  }
+  return { key: "none", order: 50_000, title: "—" };
+}
+
 /**
- * El color en palabras, para que se lea en una hoja impresa en blanco y negro:
- * el texto tal cual (así se carga normalmente: "violet", "red/white"), y si es
- * un código hexadecimal, el nombre del color más parecido.
+ * La lista de corte por tramo entre dos puntos (Martin: "todos los cables que
+ * van de ECU A a Motor"): un bloque por par de extremos — conector, masa,
+ * componente o punta suelta; suelta en el nodo de un conector cuenta como ese
+ * conector (llega hasta él aunque no se conecte) —, sin importar el sentido
+ * del cable. Una punta en
+ * un splice cuenta como lo que hay del otro lado del splice (lo que dice
+ * "Termina en" de la otra punta, `destinationOf`): el cable se corta de
+ * conector a conector y la unión se hace después (Martin); si del otro lado hay
+ * varios, el primero de la lista (el principal, o el primer conector): en un
+ * splice X1 → X2 y X3 quedan los tramos "X1 ↔ X2" y "X1 ↔ X3", y el cable de
+ * X1 al splice va en el primero. Sin nada del otro lado, queda el splice. Va primero el conector principal, después los
+ * conectores en el orden del proyecto, y al final splices, masas, componentes y
+ * puntas sueltas. Dentro de cada bloque se mantiene el orden de `rows`; un
+ * trenzado va entero al bloque de su primer cable, y un cable comprado, al de
+ * su renglón.
  */
+export function cutPairGroups(project: ProjectData, rows: CutRow[], destinationOf: (cavityId: number) => PinDestinations | undefined = () => undefined): CutGroup[] {
+  type Place = { key: string; order: number; title: string };
+  // Una punta en un splice: lo que hay del otro lado, visto desde la otra punta.
+  const side = (end: WireEnd, other: WireEnd): Place => {
+    const own = cutPlace(project, end);
+    if (end.kind !== "splice" || other.kind !== "cavity" || other.cavity_assignment_id === null) return own;
+    const far = new Map<string, Place>();
+    for (const e of destinationOf(other.cavity_assignment_id)?.ends ?? []) {
+      const p = cutPlace(project, e);
+      if (p.key !== "none") far.set(p.key, p);
+    }
+    if (far.size === 0) return own;
+    return [...far.values()].sort((a, b) => a.order - b.order)[0];
+  };
+  const groupOfTwist = new Map<string, string>();
+  const groups = new Map<string, CutGroup & { order: [number, number] }>();
+  for (const row of rows) {
+    const wire = project.wire_instances.find((w) => w.id === row.wireId);
+    if (!wire) continue;
+    const [a, b] = [side(wire.end_a, wire.end_b), side(wire.end_b, wire.end_a)].sort((x, y) => x.order - y.order);
+    let key = `${a.key}|${b.key}`;
+    if (row.twist !== null) {
+      if (!groupOfTwist.has(row.twist)) groupOfTwist.set(row.twist, key);
+      key = groupOfTwist.get(row.twist)!;
+    }
+    const group = groups.get(key) ?? { key, connectorId: null, title: `${a.title} ↔ ${b.title}`, rows: [], order: [a.order, b.order] };
+    group.rows.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .sort((x, y) => x.order[0] - y.order[0] || x.order[1] - y.order[1])
+    .map(({ order: _order, ...g }) => g);
+}
+
 /** "orange/white" → ["orange", "white"]: el color de base y el de la raya (doble color). */
 export function wireColors(color: string | null): string[] {
   return (color ?? "").split("/").map((c) => c.trim()).filter(Boolean).slice(0, 2);
@@ -298,6 +389,11 @@ export function swatchBackground(color: string | null): string {
   return stripe ? `linear-gradient(135deg, ${base} 50%, ${stripe} 50%)` : base || "transparent";
 }
 
+/**
+ * El color en palabras, para que se lea en una hoja impresa en blanco y negro:
+ * el texto tal cual (así se carga normalmente: "violet", "red/white"), y si es
+ * un código hexadecimal, el nombre del color más parecido.
+ */
 export function colorWord(color: string | null): string {
   const c = color?.trim();
   if (!c) return "—";
@@ -454,6 +550,35 @@ export function assemblyBranches(project: ProjectData, library: Library, diamete
   return branches;
 }
 
+/** Cables iguales de la lista de corte, en un renglón con la cantidad (ver `mergeCutRows`). */
+export interface MergedCutRow {
+  wireType: string;
+  color: string;
+  twist: string | null;
+  cutMm: number;
+  count: number;
+  /** Los cables que junta (W001, WC1…), en el orden de la lista. */
+  ids: string[];
+}
+
+/**
+ * La lista de corte sin nombres (Martin: "si hay 5 cables 22 AWG del mismo
+ * color y largo, que diga 22 AWG azul largo × 5"): junta los renglones del
+ * mismo tipo, color, largo de corte y trenzado (un trenzado se corta con su
+ * par, no suelto), en el orden en que aparece el primero de cada uno.
+ */
+export function mergeCutRows(rows: CutRow[]): MergedCutRow[] {
+  const merged = new Map<string, MergedCutRow>();
+  for (const r of rows) {
+    const key = JSON.stringify([r.wireType, r.color, r.cutMm, r.twist]);
+    const m = merged.get(key) ?? { wireType: r.wireType, color: r.color, twist: r.twist, cutMm: r.cutMm, count: 0, ids: [] };
+    m.count += 1;
+    m.ids.push(r.id);
+    merged.set(key, m);
+  }
+  return [...merged.values()];
+}
+
 /** Metros a cortar de cada tipo de cable (plan 8.1, totales por WireDef). */
 export function wireTotals(rows: CutRow[]): WireTotal[] {
   const totals = new Map<string, WireTotal>();
@@ -518,38 +643,76 @@ function cavityLabel(project: ProjectData, library: Library, cavityId: number | 
   return connector.name ? `${pin} · ${connector.name}` : pin;
 }
 
+/** Alto de la vista en un tramo de pinout de `rows` renglones (mm): el del bloque, entre 12 y 40. */
+export const pinoutViewMm = (rows: number) => Math.min(40, Math.max(12, Math.max(rows, 1) * 4.2));
+
+/** Un tramo de la hoja de pinout: renglones de un conector que van juntos en una hoja. */
+export interface PinoutChunk<T> {
+  /** Índice del conector en la lista recibida. */
+  block: number;
+  rows: T[];
+  /** Sigue a un tramo anterior del mismo conector ("X1 (cont.)"). */
+  cont: boolean;
+  /** Empieza hoja nueva (los demás van a continuación del anterior, separados por un espacio). */
+  newPage: boolean;
+}
+
+/**
+ * Pagina la hoja de pinout (Martin: un bloque largo, como el de motor, tiene
+ * que repetir nombre, conector y vista en cada hoja; y no quiere huecos entre
+ * conectores). Sigue cuánto se llenó cada hoja: un conector arranca a
+ * continuación del anterior y ocupa lo que queda de la hoja, partiéndose si
+ * hace falta; pasa a la hoja siguiente solo si ahí no entran ni `minRows`
+ * renglones. Cada continuación empieza hoja nueva. El alto es una estimación
+ * (medida en PDFs impresos): renglón de 5,15 mm y 3,7 mm más por cada línea
+ * extra de "Termina en"; un tramo no es más bajo que su vista (más `extraMm`
+ * del conector: notas debajo del dibujo).
+ */
+export function paginatePinout<T extends { goesTo: string }>(
+  blocks: { rows: T[]; extraMm: number }[],
+  o: { pageMm: number; titleMm: number; gapMm: number; charsPerLine: number; minRows?: number },
+): PinoutChunk<T>[] {
+  const minRows = o.minRows ?? 8;
+  const rowMm = (r: T) => 5.15 + (Math.max(1, Math.ceil(r.goesTo.length / o.charsPerLine)) - 1) * 3.7;
+  const height = (rows: T[], extraMm: number) => Math.max(rows.reduce((t, r) => t + rowMm(r), 0) || 5.15, pinoutViewMm(rows.length) + 2 + extraMm);
+  const out: PinoutChunk<T>[] = [];
+  let used = o.titleMm;
+  let pageEmpty = true;
+  blocks.forEach(({ rows, extraMm }, block) => {
+    let i = 0;
+    for (;;) {
+      const gap = pageEmpty ? 0 : o.gapMm;
+      const room = o.pageMm - used - gap;
+      let n = 0;
+      while (i + n < rows.length && height(rows.slice(i, i + n + 1), extraMm) <= room) n++;
+      const rest = rows.length - i;
+      const fits = rest === 0 ? height([], extraMm) <= room : n >= Math.min(minRows, rest);
+      if (!fits && !pageEmpty) {
+        used = 0;
+        pageEmpty = true;
+        continue;
+      }
+      // En una hoja vacía va igual (un tramo más alto que la hoja no tiene otro lugar).
+      const take = rest === 0 ? 0 : Math.max(n, 1);
+      const chunk = rows.slice(i, i + take);
+      out.push({ block, rows: chunk, cont: i > 0, newPage: pageEmpty && out.length > 0 });
+      used += gap + height(chunk, extraMm);
+      pageEmpty = false;
+      i += take;
+      if (i >= rows.length) break;
+      used = 0;
+      pageEmpty = true;
+    }
+  });
+  return out;
+}
+
 /**
  * Hoja de pinout de un conector, con el formato de las hojas del taller:
  * un renglón por vía — Pin · Función · Termina en. Si una vía tiene varios
  * cables, sus funciones van juntas; sin cable, "n/c" y su referencia externa
  * (qué hay del otro lado) si la tiene.
  */
-/**
- * Parte los renglones de un conector en tramos que entren en una hoja, para que
- * un bloque largo (el de motor, 61 vías) repita nombre, conector y vista en cada
- * hoja en vez de dejarlos solo en la primera. El alto es una estimación (un
- * renglón por línea de "Termina en"): si se pasa, el tramo baja entero a la
- * hoja siguiente.
- */
-export function pageChunks<T extends { goesTo: string }>(rows: T[], pageMm: number, charsPerLine: number, firstPageMm = pageMm): T[][] {
-  // Medido en un PDF impreso: renglón de 4,9 mm, y 3,7 mm más por cada línea extra.
-  const rowMm = (r: T) => 4.9 + (Math.max(1, Math.ceil(r.goesTo.length / charsPerLine)) - 1) * 3.7;
-  const chunks: T[][] = [];
-  let current: T[] = [];
-  let used = 0;
-  for (const r of rows) {
-    if (current.length > 0 && used + rowMm(r) > (chunks.length === 0 ? firstPageMm : pageMm)) {
-      chunks.push(current);
-      current = [];
-      used = 0;
-    }
-    current.push(r);
-    used += rowMm(r);
-  }
-  if (current.length > 0 || chunks.length === 0) chunks.push(current);
-  return chunks;
-}
-
 export function pinoutRows(project: ProjectData, library: Library, connectorId: number, destinationOf: (cavityId: number) => PinDestinations | undefined): PinRow[] {
   const connector = project.connector_instances.find((c) => c.id === connectorId);
   if (!connector) return [];
