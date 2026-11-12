@@ -429,7 +429,8 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - **Generada automáticamente** desde los datos (no se dibuja a mano): conectores como bloques con su lista de pines, líneas pin a pin, splices como puntos de unión.
 - Colores según el tipo de señal.
 - Crear un cable arrastrando de un pin a otro (crea el mismo registro que la tabla de cables).
-- Muestra solo los pines usados por defecto (opción para ver todos). Las posiciones no se guardan: siempre se regenera desde los datos (principal a la izquierda, uniones en el medio, resto a la derecha, ordenado para minimizar cruces).
+- Muestra solo los pines usados por defecto (opción para ver todos). Acomodo automático (principal a la izquierda, uniones en el medio, resto a la derecha, ordenado para minimizar cruces) hasta que el usuario mueve un bloque: ahí **se guarda con el proyecto** dónde quedó cada uno (`Project.schematic_layout`, formato 5) y no se mueven solos cuando cambian los datos; un bloque nuevo va donde lo pone el automático. "Re-arrange" vuelve al automático.
+- **Filtro de cables** para revisar una función: texto (ID, nombre, etiqueta, color o tipo de señal: "5V", "W012", "red") y botones con los tipos de señal de la biblioteca. Quedan solo esos cables, los pines donde llegan y los bloques que tocan, acomodados entre ellos (compacto; si el principal no tiene ninguno, va a la izquierda el conector con más); los bloques que el usuario ya ubicó siguen en su lugar. Mover un bloque con el filtro puesto guarda solo ese.
 
 ### 10.4 Interacción (ambas vistas)
 - Crear: arrastrar el "+" de un nodo a un lugar vacío (rama nueva) o a otro nodo (segmento, si no cierra un lazo); partir un segmento para insertar un breakout; doble click en la etiqueta de un segmento para editar su largo; Supr para borrar (lo que tiene conector/masa/splice se borra desde su tabla).

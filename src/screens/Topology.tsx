@@ -197,7 +197,7 @@ export default function Topology({ project, setProject, loadProject, cancelProje
       </section>
 
       {!project ? (
-        <p>Load the sample project or open a file to get started.</p>
+        <p>No project loaded. Open a file, start a new one or load the sample to get started.</p>
       ) : (
         <>
           <section>

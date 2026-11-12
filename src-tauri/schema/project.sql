@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS project (
     -- repuesto por categoría de parte, JSON {"contact": 10, ...} (%)
     spare_pcts                  TEXT NOT NULL DEFAULT '{}',
     -- largos de corte redondeados hacia arriba a este múltiplo (mm); NULL = sin redondeo
-    cut_round_mm                REAL
+    cut_round_mm                REAL,
+    -- dónde dejó el usuario cada bloque del esquema, JSON {"c12": [x, y], ...}
+    -- (c conector, s splice, g masa, r componente); sin entrada = acomodo automático
+    schematic_layout            TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS nodes (

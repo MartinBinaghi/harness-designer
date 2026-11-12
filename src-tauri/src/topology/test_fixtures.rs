@@ -39,6 +39,7 @@ pub(super) fn empty_project() -> Project {
         cost_on_purchased: false,
         spare_pcts: Default::default(),
         cut_round_mm: None,
+        schematic_layout: Default::default(),
     }
 }
 

@@ -258,6 +258,24 @@ export default function App() {
 
   const appWindow = getCurrentWindow();
 
+  // Sin proyecto, las pestañas que lo necesitan muestran lo mismo que Topology: abrir, nuevo o el ejemplo.
+  const topology = (
+    <Topology
+      project={project}
+      setProject={setProject}
+      loadProject={loadProject}
+      cancelProjectEdits={cancelProjectEdits}
+      flushProjectEdits={projectHistory.flush}
+      confirmDiscard={confirmDiscardProject}
+      afterSave={refreshProjectStatus}
+      filePath={projectPath}
+      setFilePath={setProjectPath}
+      library={library}
+      selection={selection}
+      onSelect={setSelection}
+    />
+  );
+
   return (
     <main className="app">
       {/* La ventana corre sin decoración nativa (tauri.conf.json): esta es
@@ -329,53 +347,72 @@ export default function App() {
             />
           </Pane>
           <Pane name="Topology" active={section === "Topology"} visited={visited}>
-            <Topology
-              project={project}
-              setProject={setProject}
-              loadProject={loadProject}
-              cancelProjectEdits={cancelProjectEdits}
-              flushProjectEdits={projectHistory.flush}
-              confirmDiscard={confirmDiscardProject}
-              afterSave={refreshProjectStatus}
-              filePath={projectPath}
-              setFilePath={setProjectPath}
-              library={library}
-              selection={selection}
-              onSelect={setSelection}
-            />
+            {topology}
           </Pane>
-          <Pane name="Diagram" active={section === "Diagram"} visited={visited} canvas>
-            <Diagram
-              project={project}
-              setProject={setProject}
-              report={report}
-              projectRevision={projectStatus.revision}
-              library={library}
-              findings={findings}
-              selection={selection}
-              onSelect={setSelection}
-            />
+          <Pane name="Diagram" active={section === "Diagram"} visited={visited} canvas={!!project}>
+            {project ? (
+              <Diagram
+                project={project}
+                setProject={setProject}
+                report={report}
+                projectRevision={projectStatus.revision}
+                library={library}
+                findings={findings}
+                selection={selection}
+                onSelect={setSelection}
+              />
+            ) : (
+              topology
+            )}
           </Pane>
-          <Pane name="Schematic" active={section === "Schematic"} visited={visited} canvas>
-            <Schematic project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} projectRevision={projectStatus.revision} gauges={gauges} />
+          <Pane name="Schematic" active={section === "Schematic"} visited={visited} canvas={!!project}>
+            {project ? (
+              <Schematic project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} projectRevision={projectStatus.revision} gauges={gauges} />
+            ) : (
+              topology
+            )}
           </Pane>
           <Pane name="Connectors" active={section === "Connectors"} visited={visited}>
-            <Connectors project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} report={report} destinations={destinations} gauges={gauges} />
+            {project ? (
+              <Connectors project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} report={report} destinations={destinations} gauges={gauges} />
+            ) : (
+              topology
+            )}
           </Pane>
           <Pane name="Wires" active={section === "Wires"} visited={visited}>
-            <Wires project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+            {project ? (
+              <Wires project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+            ) : (
+              topology
+            )}
           </Pane>
           <Pane name="Splices" active={section === "Splices"} visited={visited}>
-            <Splices project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+            {project ? (
+              <Splices project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+            ) : (
+              topology
+            )}
           </Pane>
           <Pane name="Checks" active={section === "Checks"} visited={visited}>
-            <Checks project={project} findings={findings} selection={selection} onSelect={setSelection} />
+            {project ? (
+              <Checks project={project} findings={findings} selection={selection} onSelect={setSelection} />
+            ) : (
+              topology
+            )}
           </Pane>
           <Pane name="Costs" active={section === "Costs"} visited={visited}>
-            <Costs project={project} library={library} selection={selection} onSelect={setSelection} report={report} />
+            {project ? (
+              <Costs project={project} library={library} selection={selection} onSelect={setSelection} report={report} />
+            ) : (
+              topology
+            )}
           </Pane>
           <Pane name="Print" active={section === "Print"} visited={visited}>
-            <Print project={project} setProject={setProject} library={library} report={report} destinations={destinations} projectRevision={projectStatus.revision} />
+            {project ? (
+              <Print project={project} setProject={setProject} library={library} report={report} destinations={destinations} projectRevision={projectStatus.revision} />
+            ) : (
+              topology
+            )}
           </Pane>
         {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} report={report} projectRevision={projectStatus.revision} />}
       </div>

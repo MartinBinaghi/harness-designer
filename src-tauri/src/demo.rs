@@ -53,6 +53,7 @@ pub fn sample_project() -> ProjectData {
             cost_on_purchased: false,
             spare_pcts: Default::default(),
             cut_round_mm: None,
+            schematic_layout: Default::default(),
         },
         nodes: vec![
             Node {

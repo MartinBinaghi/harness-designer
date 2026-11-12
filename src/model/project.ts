@@ -18,6 +18,8 @@ export interface Project {
   spare_pcts: Record<string, number>;
   /** Largos de corte redondeados hacia arriba a este múltiplo (mm); null = sin redondeo. */
   cut_round_mm: number | null;
+  /** Dónde dejó el usuario cada bloque del esquema ("c12", "s3"…: [x, y]); sin entrada = acomodo automático. */
+  schematic_layout: Record<string, [number, number]>;
 }
 
 export interface Node {

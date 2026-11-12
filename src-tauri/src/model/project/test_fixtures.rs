@@ -20,6 +20,7 @@ pub(super) fn sample() -> ProjectData {
             cost_on_purchased: true,
             spare_pcts: [("contact".to_string(), 10.0)].into(),
             cut_round_mm: Some(5.0),
+            schematic_layout: [("c1".to_string(), [10.0, -20.5])].into(),
         },
         nodes: vec![
             Node {

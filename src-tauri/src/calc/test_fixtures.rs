@@ -89,6 +89,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
             cost_on_purchased: false,
             spare_pcts: Default::default(),
             cut_round_mm: None,
+            schematic_layout: Default::default(),
         },
         nodes: vec![
             Node {

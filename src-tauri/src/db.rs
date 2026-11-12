@@ -50,6 +50,7 @@ pub const PROJECT: Format = Format {
         project_v1_to_v2,
         project_v2_to_v3,
         project_v3_to_v4,
+        project_v4_to_v5,
     ],
 };
 
@@ -179,6 +180,12 @@ fn project_v3_to_v4(tx: &Transaction) -> rusqlite::Result<()> {
              WHERE termination_segment_id IN (SELECT id FROM segments);
          ALTER TABLE nodes DROP COLUMN termination_segment_id;",
     )
+}
+
+/// Pedido de Martin del 2026-11-12: el acomodo del esquema se guarda con el
+/// proyecto (antes se rehacía solo cada vez que cambiaban los datos).
+fn project_v4_to_v5(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch("ALTER TABLE project ADD COLUMN schematic_layout TEXT NOT NULL DEFAULT '{}';")
 }
 
 /// Ver `project_v0_to_v1`. Los grupos de pines de dispositivos se sacaron el
@@ -536,6 +543,8 @@ mod tests {
     const LIBRARY_SCHEMA_V2: &str = include_str!("../schema/history/library.v2.sql");
     /// Esquema de los proyectos en el formato 3, tal cual salió (0.1.6).
     const PROJECT_SCHEMA_V3: &str = include_str!("../schema/history/project.v3.sql");
+    /// Esquema de los proyectos en el formato 4, tal cual salió (0.1.7).
+    const PROJECT_SCHEMA_V4: &str = include_str!("../schema/history/project.v4.sql");
 
     /// Un proyecto como los que había antes del versionado: el esquema de
     /// octubre (con `format_version`, sin nombre de splice ni redondeo) y versión 0.
@@ -736,6 +745,33 @@ mod tests {
         );
         drop(conn);
         let _ = std::fs::remove_file(format!("{path}.v3.bak"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_v4_project_starts_with_an_automatic_schematic_and_keeps_a_saved_one() {
+        let path = temp_path("v4.harness.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "INSERT INTO project (id, name, harness_code) VALUES (1, 'Motor', 'MOT-01');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 4).unwrap();
+        drop(conn);
+
+        let mut conn = open_project(&path).unwrap();
+        let mut data = project::load(&conn).unwrap();
+        assert!(data.project.schematic_layout.is_empty());
+        data.project.schematic_layout = [
+            ("c1".to_string(), [12.5, -40.0]),
+            ("s2".to_string(), [400.0, 80.0]),
+        ]
+        .into();
+        project::save(&mut conn, &data).unwrap();
+        assert_eq!(project::load(&conn).unwrap(), data);
+        drop(conn);
+        let _ = std::fs::remove_file(format!("{path}.v4.bak"));
         let _ = std::fs::remove_file(path);
     }
 

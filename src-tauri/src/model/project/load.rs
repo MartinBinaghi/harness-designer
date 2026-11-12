@@ -27,7 +27,7 @@ pub(super) fn wire_end(
 
 pub fn load(conn: &Connection) -> Result<ProjectData> {
     let project = conn.query_row(
-        "SELECT name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm
+        "SELECT name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm, schematic_layout
          FROM project WHERE id = 1",
         [],
         |row| {
@@ -48,6 +48,8 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 spare_pcts: serde_json::from_str(&row.get::<_, String>(12)?)
                     .map_err(|e| rusqlite::Error::FromSqlConversionFailure(12, rusqlite::types::Type::Text, Box::new(e)))?,
                 cut_round_mm: row.get(13)?,
+                schematic_layout: serde_json::from_str(&row.get::<_, String>(14)?)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(14, rusqlite::types::Type::Text, Box::new(e)))?,
             })
         },
     )?;

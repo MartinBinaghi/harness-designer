@@ -37,6 +37,10 @@ pub struct Project {
     /// Largos de corte redondeados hacia arriba a este múltiplo (mm); `None` = sin redondeo.
     #[serde(default)]
     pub cut_round_mm: Option<f64>,
+    /// Posición de cada bloque del esquema que el usuario acomodó (clave "c12", "s3"…);
+    /// los que no están van donde los pone el acomodo automático.
+    #[serde(default)]
+    pub schematic_layout: BTreeMap<String, [f64; 2]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -226,6 +230,7 @@ impl ProjectData {
                 cost_on_purchased: false,
                 spare_pcts: BTreeMap::new(),
                 cut_round_mm: None,
+                schematic_layout: Default::default(),
             },
             nodes: vec![],
             segments: vec![],

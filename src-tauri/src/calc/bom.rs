@@ -316,6 +316,7 @@ mod tests {
             cost_on_purchased: false,
             spare_pcts: Default::default(),
             cut_round_mm: None,
+            schematic_layout: Default::default(),
         };
         let bom = vec![BomRow {
             library_part_id: 1,

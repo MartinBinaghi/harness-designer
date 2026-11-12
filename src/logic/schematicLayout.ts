@@ -7,7 +7,12 @@
  * (splices, masas, componentes) en el medio y el resto de los conectores a la
  * derecha. Dentro de cada columna, cada bloque se ordena por la altura media
  * de los pines con los que se une (baricentro), para que las líneas se crucen
- * lo menos posible.
+ * lo menos posible. Un bloque que el usuario acomodó va donde lo dejó
+ * (`Project.schematic_layout`).
+ *
+ * Con un filtro de cables (`keep`) quedan solo esos cables, los pines donde
+ * llegan y los bloques que tocan, acomodados solos entre ellos (compacto); los
+ * que el usuario ya ubicó siguen en su lugar.
  */
 import { devicePinName, type Library } from "../model/library.ts";
 import type { ProjectData, WireEnd } from "../model/project";
@@ -58,7 +63,24 @@ export function anchorY(b: SchematicBlock, cavityId: number | null): number {
   return b.y + BLOCK_HEADER + (i < 0 ? 0 : i) * PIN_ROW + PIN_ROW / 2;
 }
 
-export function buildSchematic(project: ProjectData, library: Library, showAllPins: boolean): { blocks: SchematicBlock[]; links: SchematicLink[] } {
+/**
+ * Cables que pasan el filtro del esquema: el texto (sin distinguir mayúsculas)
+ * en el ID, el nombre, la etiqueta, el color o el tipo de señal, y si se eligió
+ * un tipo de señal, ese. Sin filtro, `null` (se ven todos).
+ */
+export function matchWires(project: ProjectData, library: Library, text: string, signalTypeId: number | null): Set<number> | null {
+  const q = text.trim().toLowerCase();
+  if (!q && signalTypeId === null) return null;
+  const typeName = new Map(library.signal_types.map((t) => [t.id, t.name]));
+  return new Set(
+    project.wire_instances
+      .filter((w) => signalTypeId === null || w.signal_type_id === signalTypeId)
+      .filter((w) => !q || [w.short_id, w.specific_name, w.label, w.color, w.signal_type_id !== null ? typeName.get(w.signal_type_id) : null].some((f) => f?.toLowerCase().includes(q)))
+      .map((w) => w.id),
+  );
+}
+
+export function buildSchematic(project: ProjectData, library: Library, showAllPins: boolean, keep: Set<number> | null = null): { blocks: SchematicBlock[]; links: SchematicLink[] } {
   const connectorOfCavity = new Map<number, number>();
   for (const c of project.connector_instances) for (const cav of c.cavities) connectorOfCavity.set(cav.id, c.id);
 
@@ -78,6 +100,7 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
   // muestra igual, con la nota "loose".
   const looseNotes: { cavityId: number; label: string }[] = [];
   for (const w of project.wire_instances) {
+    if (keep && !keep.has(w.id)) continue;
     const from = endBlock(w.end_a);
     const to = endBlock(w.end_b);
     const label = w.specific_name ?? w.short_id;
@@ -94,16 +117,19 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
   const notesByCavity = new Map<number, string[]>();
   for (const n of notes) notesByCavity.set(n.cavityId, [...(notesByCavity.get(n.cavityId) ?? []), n.label]);
 
-  // Conector principal: el marcado en el proyecto, o el que más cables tiene.
+  // Conector principal: el marcado en el proyecto, o el que más cables tiene. Con filtro, si el marcado
+  // no tiene ninguno de esos cables, el que más tiene (si no, todo quedaba en una sola columna).
   const wiresPerConnector = (id: number) => links.filter((l) => l.from.block === `c${id}` || l.to.block === `c${id}`).length;
+  const marked = project.project.main_connector_instance_id;
   const mainId =
-    project.project.main_connector_instance_id ??
-    [...project.connector_instances].sort((a, b) => wiresPerConnector(b.id) - wiresPerConnector(a.id))[0]?.id;
+    marked != null && (!keep || wiresPerConnector(marked) > 0)
+      ? marked
+      : [...project.connector_instances].sort((a, b) => wiresPerConnector(b.id) - wiresPerConnector(a.id))[0]?.id;
 
   const blocks: SchematicBlock[] = [
     ...project.connector_instances.map((c): SchematicBlock => {
       const pins = c.cavities
-        .filter((cav) => showAllPins || wiredCavities.has(cav.id))
+        .filter((cav) => (showAllPins && !keep) || wiredCavities.has(cav.id))
         .map((cav) => {
           const note = (notesByCavity.get(cav.id) ?? []).join(", ") || cav.external_reference || "";
           // En el conector de un dispositivo, el nombre del pin (OUT11) va primero.
@@ -118,7 +144,8 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
         subtitle: c.name,
         column: c.id === mainId ? 0 : 2,
         pins,
-        hiddenPins: c.cavities.length - pins.length,
+        // Con filtro, los pines ocultos no son "sin usar": no se cuentan.
+        hiddenPins: keep ? 0 : c.cavities.length - pins.length,
         x: 0,
         y: 0,
       };
@@ -127,9 +154,9 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
     ...project.ground_points.map((g): SchematicBlock => ({ key: `g${g.id}`, kind: "ground", refId: g.id, title: g.short_id, subtitle: g.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
     ...project.component_instances.map((r): SchematicBlock => ({ key: `r${r.id}`, kind: "component", refId: r.id, title: r.short_id, subtitle: r.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
   ];
-  // Un punto de unión sin cables no aporta nada al esquema.
+  // Un punto de unión sin cables no aporta nada al esquema; con filtro, tampoco un conector sin esos cables.
   const linkedBlocks = new Set(links.flatMap((l) => [l.from.block, l.to.block]));
-  const shown = blocks.filter((b) => b.kind === "connector" || linkedBlocks.has(b.key));
+  const shown = blocks.filter((b) => (b.kind === "connector" && !keep) || b.pins.length > 0 || linkedBlocks.has(b.key));
   const byKey = new Map(shown.map((b) => [b.key, b]));
 
   // Ubicar columna por columna; cada una se ordena por el baricentro de sus vínculos con las ya ubicadas.
@@ -156,5 +183,7 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
       placed.add(b.key);
     }
   }
+  const saved = project.project.schematic_layout ?? {};
+  for (const b of shown) [b.x, b.y] = saved[b.key] ?? [b.x, b.y];
   return { blocks: shown, links };
 }

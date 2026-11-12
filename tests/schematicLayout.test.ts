@@ -1,6 +1,6 @@
 // Chequeo de la vista esquemática pin a pin. Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { anchorY, buildSchematic } from "../src/logic/schematicLayout.ts";
+import { anchorY, buildSchematic, matchWires } from "../src/logic/schematicLayout.ts";
 import type { Library } from "../src/model/library.ts";
 import type { ProjectData } from "../src/model/project.ts";
 
@@ -43,5 +43,29 @@ assert.ok(b("c3").y < b("c2").y);
 assert.ok(anchorY(b("c1"), 11) < anchorY(b("c1"), 12));
 // Con todos los pines.
 assert.equal(buildSchematic(project, library, true).blocks.find((x) => x.key === "c1")!.pins.length, 4);
+
+
+// Filtro: "5v" (sin distinguir mayúsculas) deja los dos cables del splice, sus pines y sus bloques; X3 se va.
+const keep = matchWires(project, { ...library, signal_types: [] } as Library, "5v", null)!;
+assert.deepEqual([...keep], [3, 4]);
+const only5v = buildSchematic(project, library, true, keep);
+assert.deepEqual(only5v.blocks.map((x) => x.key).sort(), ["c1", "c2", "s1"]);
+assert.deepEqual(only5v.blocks.find((x) => x.key === "c1")!.pins.map((p) => p.label), ["3"]);
+// El principal va a la izquierda si tiene alguno de esos cables; si no, el que más tiene.
+const onlyMid = buildSchematic(project, library, false, new Set([2]));
+assert.deepEqual(onlyMid.blocks.map((x) => [x.key, x.column]), [["c1", 0], ["c2", 2]]);
+project.project.main_connector_instance_id = 3;
+assert.equal(buildSchematic(project, library, false, new Set([4])).blocks.find((x) => x.key === "c2")!.column, 0);
+project.project.main_connector_instance_id = 1;
+// Por tipo de señal; sin filtro, null.
+project.wire_instances[0].signal_type_id = 7;
+assert.deepEqual([...matchWires(project, { signal_types: [{ id: 7, name: "GND", default_color: "black" }] } as unknown as Library, "", 7)!], [1]);
+assert.deepEqual([...matchWires(project, { signal_types: [{ id: 7, name: "GND", default_color: "black" }] } as unknown as Library, "gnd", null)!], [1]);
+assert.equal(matchWires(project, library, "  ", null), null);
+// Un bloque acomodado va donde lo dejó el usuario; los demás, donde los pone el automático.
+project.project.schematic_layout = { c3: [900, -50] };
+const placed = buildSchematic(project, library, false).blocks;
+assert.deepEqual([placed.find((x) => x.key === "c3")!.x, placed.find((x) => x.key === "c3")!.y], [900, -50]);
+assert.equal(placed.find((x) => x.key === "c2")!.y, b("c2").y);
 
 console.log("schematic: ok");

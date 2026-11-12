@@ -20,7 +20,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { GaugeFacts } from "../model/calc";
-import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, type SchematicBlock, type SchematicPin } from "../logic/schematicLayout";
+import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, matchWires, type SchematicBlock, type SchematicPin } from "../logic/schematicLayout";
 import { BLANK_END, addWire } from "../logic/projectEdit";
 import { wireColors } from "../logic/sheets";
 import type { ProjectData, Selection, WireEnd } from "../model/project";
@@ -30,8 +30,10 @@ import type { Library } from "../model/library";
  * Vista esquemática pin a pin (plan 10.3): se genera sola desde los datos —
  * conectores con sus pines, una línea por cable con su color, splices / masas
  * / componentes como puntos de unión. Arrastrar de un pin a otro crea un cable
- * (el mismo registro que la tabla de Wires). Las posiciones no se guardan: es
- * una vista calculada; mover un bloque dura hasta que cambian los datos.
+ * (el mismo registro que la tabla de Wires). El acomodo es automático hasta que
+ * el usuario mueve un bloque: ahí se guarda con el proyecto (`schematic_layout`)
+ * la posición de todos, y "Re-arrange" vuelve al automático. Un filtro (texto o
+ * tipo de señal) deja solo esos cables, sin mover nada.
  */
 
 // Ids de handle: "cav:<cavityAssignmentId>:L|R" para pines, "blk:<key>:L|R" para puntos de unión.
@@ -157,7 +159,10 @@ export default function Schematic({ project, setProject, library, selection, onS
   const [notice, setNotice] = useState<string | null>(null);
   const [netWires, setNetWires] = useState<Set<number>>(new Set());
 
-  const model = useMemo(() => (project ? buildSchematic(project, library, showAllPins) : null), [project, library, showAllPins]);
+  const [search, setSearch] = useState("");
+  const [signalType, setSignalType] = useState<number | null>(null);
+  const keep = useMemo(() => (project ? matchWires(project, library, search, signalType) : null), [project, library, search, signalType]);
+  const model = useMemo(() => (project ? buildSchematic(project, library, showAllPins, keep) : null), [project, library, showAllPins, keep]);
   const [nodes, setNodes] = useState<FlowNode<BlockData>[]>([]);
 
   useEffect(() => {
@@ -255,6 +260,15 @@ export default function Schematic({ project, setProject, library, selection, onS
     setNotice(`Added W${String(result.wireId).padStart(3, "0")} — set its type, name and color in Wires.`);
   }
 
+  // Al soltar un bloque en el esquema completo se guarda dónde está cada uno, así ninguno se mueve solo
+  // después cuando cambian los datos. Con filtro, solo el que se movió: los demás están acomodados para
+  // ese filtro, no para el esquema completo. Redondeado: un píxel de lienzo no se nota.
+  function saveLayout(dragged: FlowNode<BlockData>[]) {
+    const at = (ns: FlowNode<BlockData>[]) => Object.fromEntries(ns.map((n): [string, [number, number]] => [n.id, [Math.round(n.position.x), Math.round(n.position.y)]]));
+    const layout = { ...(keep ? project!.project.schematic_layout : at(nodes)), ...at(dragged) };
+    setProject({ ...project!, project: { ...project!.project, schematic_layout: layout } });
+  }
+
   function selectBlock(b: SchematicBlock) {
     if (b.kind === "connector") onSelect({ kind: "connector", id: b.refId });
     else if (b.kind === "splice") onSelect({ kind: "splice", id: b.refId });
@@ -264,14 +278,26 @@ export default function Schematic({ project, setProject, library, selection, onS
   return (
     <div className="diagram-screen">
       <div className="toolbar diagram-toolbar">
+        <input type="search" style={{ width: "13rem" }} value={search} onChange={(e) => setSearch(e.currentTarget.value)} placeholder="Search wires: 5V, W012, red…" aria-label="Search wires" />
+        {library.signal_types.map((t) => (
+          <button key={t.id} type="button" className={signalType === t.id ? "filter-chip active" : "filter-chip"} aria-pressed={signalType === t.id} onClick={() => setSignalType(signalType === t.id ? null : t.id)}>
+            {t.name}
+          </button>
+        ))}
+        {keep && <span className="hint" style={{ margin: 0 }}>{model.links.length} of {project.wire_instances.length} wires</span>}
         <label>
-          <input type="checkbox" checked={showAllPins} onChange={(e) => setShowAllPins(e.currentTarget.checked)} /> Show unused pins
+          <input type="checkbox" checked={showAllPins} disabled={!!keep} onChange={(e) => setShowAllPins(e.currentTarget.checked)} /> Show unused pins
         </label>
         <span style={{ flex: 1 }} />
         {notice ? (
           <span className="diagram-notice" role="status">{notice}</span>
         ) : (
-          <span className="hint" style={{ margin: 0 }}>Generated from the data · drag from one pin to another to add a wire</span>
+          <span className="hint" style={{ margin: 0 }}>Drag a block to place it · drag from one pin to another to add a wire</span>
+        )}
+        {Object.keys(project.project.schematic_layout ?? {}).length > 0 && (
+          <button type="button" onClick={() => setProject({ ...project, project: { ...project.project, schematic_layout: {} } })} title="Forget where the blocks were placed and lay them out automatically">
+            Re-arrange
+          </button>
         )}
       </div>
       <div className="diagram-canvas">
@@ -285,6 +311,7 @@ export default function Schematic({ project, setProject, library, selection, onS
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodesChange={(changes: NodeChange<FlowNode<BlockData>>[]) => setNodes((ns) => applyNodeChanges(changes, ns))}
+            onNodeDragStop={(_e, _n, dragged) => saveLayout(dragged)}
             onNodeClick={(_e, n) => selectBlock(n.data.block)}
             onEdgeClick={(_e, e) => onSelect({ kind: "wire", id: Number(e.id.slice(1)) })}
             onPaneClick={() => onSelect(null)}
