@@ -91,13 +91,17 @@ export function previewPaste(rows: string[][], roles: ColumnRole[], cavityIds: s
   };
   return rows.map((row) => {
     const cavity = cell(row, "cavity");
-    const find = (text: string) => {
-      const loose = cavityIds.filter((id) => id.toLowerCase() === text.toLowerCase());
-      return cavityIds.includes(text) ? text : loose.length === 1 ? loose[0] : null;
-    };
-    const prefixed = label && cavity.toLowerCase().startsWith(label.toLowerCase()) ? find(cavity.slice(label.length)) : null;
-    return { cavity, name: cell(row, "name"), fn: cell(row, "function"), match: find(cavity) ?? prefixed };
+    return { cavity, name: cell(row, "name"), fn: cell(row, "function"), match: matchCavity(cavity, cavityIds, label) };
   });
+}
+
+/** La vía que corresponde a un texto pegado (ver `previewPaste`; también la usa el pegado de pinout de un conector). */
+export function matchCavity(text: string, cavityIds: string[], label = ""): string | null {
+  const find = (t: string) => {
+    const loose = cavityIds.filter((id) => id.toLowerCase() === t.toLowerCase());
+    return cavityIds.includes(t) ? t : loose.length === 1 ? loose[0] : null;
+  };
+  return find(text) ?? (label && text.toLowerCase().startsWith(label.toLowerCase()) ? find(text.slice(label.length)) : null);
 }
 
 /** Aplica las filas que corresponden a una vía. Sin `replace`, no pisa lo que ya estaba escrito. */

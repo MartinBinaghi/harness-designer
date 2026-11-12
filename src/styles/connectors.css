@@ -308,12 +308,21 @@ table.cn-pinout {
   color: var(--text-muted);
 }
 
-/* Connectors: duplicar el conector elegido (con su pinout). */
+/* Connectors: pegar el pinout y duplicar el conector elegido (con su pinout), a la derecha. */
 .cn-duplicate {
   align-self: end;
   margin-left: auto;
 }
 
-.cn-duplicate + .cn-delete {
+.cn-header-button {
+  align-self: end;
   margin-left: 0.4rem;
+}
+
+.cn-header-button + .cn-delete {
+  margin-left: 0.4rem;
+}
+
+.cn-paste {
+  margin: 0 0 0.75rem;
 }

@@ -25,6 +25,7 @@ import {
 } from "../logic/projectEdit";
 import { ConnectorPartSelect } from "../components/ConnectorPartSelect";
 import { GoesToInput } from "../components/GoesToInput";
+import { PasteConnectorPinout } from "../components/PasteConnectorPinout";
 import { terminatesAt } from "../logic/sheets";
 
 /**
@@ -176,6 +177,7 @@ export default function Connectors({ project, setProject, library, selection, on
           onDelete={() => remove(connector)}
           onDuplicate={() => duplicate(connector)}
           notice={notice}
+          say={setNotice}
         />
       ) : (
         <div className="cn-main">
@@ -187,7 +189,7 @@ export default function Connectors({ project, setProject, library, selection, on
   );
 }
 
-function ConnectorEditor({ project, library, connector: c, report, destinations, gauges, selection, onSelect, setProject, apply, onDelete, onDuplicate, notice }: {
+function ConnectorEditor({ project, library, connector: c, report, destinations, gauges, selection, onSelect, setProject, apply, onDelete, onDuplicate, notice, say }: {
   project: ProjectData;
   library: Library;
   connector: ConnectorInstance;
@@ -201,7 +203,10 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
   onDelete: () => void;
   onDuplicate: () => void;
   notice: string | null;
+  /** Un aviso arriba del pinout (ej. lo que hizo un pegado). */
+  say: (message: string) => void;
 }) {
+  const [pasting, setPasting] = useState(false);
   const set = (patch: Partial<ConnectorInstance>) => setProject(patchItem(project, "connector_instances", c.id, patch));
   const setCavity = (cavityId: number, patch: Partial<CavityAssignment>) =>
     set({ cavities: c.cavities.map((cav) => (cav.id === cavityId ? { ...cav, ...patch } : cav)) });
@@ -285,13 +290,29 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
             {c.is_interconnect && <input value={c.mates_with ?? ""} onChange={(e) => set({ mates_with: e.currentTarget.value || null })} placeholder="mates with…" />}
           </span>
         </div>
-        <button className="cn-duplicate" onClick={onDuplicate} title="New connector with the same part and pinout">Duplicate</button>
+        <button className="cn-duplicate" onClick={() => setPasting(!pasting)} aria-pressed={pasting} title="Paste this connector's pinout from an Excel or PDF table">Paste pinout…</button>
+        <button className="cn-header-button" onClick={onDuplicate} title="New connector with the same part and pinout">Duplicate</button>
         <button className="icon-button cn-delete" onClick={onDelete} title="Delete connector" aria-label="Delete connector">
           <TrashIcon />
         </button>
       </section>
 
       {notice && <p className="diagram-notice">{notice}</p>}
+
+      {pasting && (
+        <PasteConnectorPinout
+          project={project}
+          library={library}
+          gauges={gauges}
+          connector={c}
+          onCancel={() => setPasting(false)}
+          onApply={(next, summary) => {
+            setProject(next);
+            say(summary);
+            setPasting(false);
+          }}
+        />
+      )}
 
       <div className="cn-table-box">
         <table className="cn-pinout">
