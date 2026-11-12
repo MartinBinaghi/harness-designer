@@ -1,6 +1,6 @@
 // Chequeo de la vista esquemática pin a pin. Uso: pnpm test (todos) o node tests/<archivo>
 import assert from "node:assert/strict";
-import { anchorY, buildSchematic, matchWires } from "../src/logic/schematicLayout.ts";
+import { anchorY, buildSchematic, endSides, matchWires, schematicLegend } from "../src/logic/schematicLayout.ts";
 import type { Library } from "../src/model/library.ts";
 import type { ProjectData } from "../src/model/project.ts";
 
@@ -63,9 +63,20 @@ assert.deepEqual([...matchWires(project, { signal_types: [{ id: 7, name: "GND", 
 assert.deepEqual([...matchWires(project, { signal_types: [{ id: 7, name: "GND", default_color: "black" }] } as unknown as Library, "gnd", null)!], [1]);
 assert.equal(matchWires(project, library, "  ", null), null);
 // Un bloque acomodado va donde lo dejó el usuario; los demás, donde los pone el automático.
-project.project.schematic_layout = { c3: [900, -50] };
+project.project.schematic_layout = { c3: { x: 900, y: -50, side: "L" } };
 const placed = buildSchematic(project, library, false).blocks;
-assert.deepEqual([placed.find((x) => x.key === "c3")!.x, placed.find((x) => x.key === "c3")!.y], [900, -50]);
+const c3 = placed.find((x) => x.key === "c3")!;
+assert.deepEqual([c3.x, c3.y, c3.side], [900, -50, "L"]);
+assert.equal(placed.find((x) => x.key === "c2")!.side, null);
 assert.equal(placed.find((x) => x.key === "c2")!.y, b("c2").y);
+
+// Lado de salida: el elegido manda; si no, el que mira al otro bloque; en la misma columna, los dos a la derecha.
+assert.deepEqual(endSides(0, 760, null, null), ["R", "L"]);
+assert.deepEqual(endSides(760, 0, null, null), ["L", "R"]);
+assert.deepEqual(endSides(760, 760, null, null), ["R", "R"]);
+assert.deepEqual(endSides(0, 760, "L", null), ["L", "L"]);
+// Leyenda: por color, con sus tipos de señal, los más usados primero.
+const legendLib = { signal_types: [{ id: 7, name: "GND", default_color: "black" }] } as unknown as Library;
+assert.deepEqual(schematicLegend(project, legendLib, links), [{ color: "violet", count: 4, types: ["GND"] }]);
 
 console.log("schematic: ok");

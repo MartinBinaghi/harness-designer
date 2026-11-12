@@ -1,10 +1,11 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ReactFlow,
   Background,
   BackgroundVariant,
   Controls,
+  Panel,
   Handle,
   Position,
   BaseEdge,
@@ -20,10 +21,10 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { GaugeFacts } from "../model/calc";
-import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, matchWires, type SchematicBlock, type SchematicPin } from "../logic/schematicLayout";
+import { BLOCK_HEADER, BLOCK_WIDTH, PIN_ROW, buildSchematic, endSides, matchWires, schematicLegend, type SchematicBlock, type SchematicPin } from "../logic/schematicLayout";
 import { BLANK_END, addWire } from "../logic/projectEdit";
-import { wireColors } from "../logic/sheets";
-import type { ProjectData, Selection, WireEnd } from "../model/project";
+import { colorWord, swatchBackground, wireColors } from "../logic/sheets";
+import type { ProjectData, SchematicPlace, Selection, WireEnd } from "../model/project";
 import type { Library } from "../model/library";
 
 /**
@@ -33,7 +34,9 @@ import type { Library } from "../model/library";
  * (el mismo registro que la tabla de Wires). El acomodo es automático hasta que
  * el usuario mueve un bloque: ahí se guarda con el proyecto (`schematic_layout`)
  * la posición de todos, y "Re-arrange" vuelve al automático. Un filtro (texto o
- * tipo de señal) deja solo esos cables, sin mover nada.
+ * tipo de señal) deja solo esos cables. Elegir un bloque o un cable apaga los
+ * cables que no son suyos (foco); el botón del encabezado de un bloque elige por
+ * qué lado salen sus cables; la leyenda lista los colores a la vista.
  */
 
 // Ids de handle: "cav:<cavityAssignmentId>:L|R" para pines, "blk:<key>:L|R" para puntos de unión.
@@ -71,6 +74,20 @@ function PinRow({ pin, index }: { pin: SchematicPin; index: number }) {
   );
 }
 
+/** Cambia el lado por el que salen los cables de un bloque (automático → derecha → izquierda). */
+const SideContext = createContext<(key: string) => void>(() => {});
+const SIDE_LABEL = { L: "←", R: "→" } as const;
+
+function SideButton({ block }: { block: SchematicBlock }) {
+  const cycle = useContext(SideContext);
+  const now = block.side === null ? "automatically (facing the other block)" : block.side === "R" ? "on the right" : "on the left";
+  return (
+    <button type="button" className="sc-side nodrag" title={`Wires leave ${now} · click to change`} onClick={(e) => { e.stopPropagation(); cycle(block.key); }}>
+      {block.side ? SIDE_LABEL[block.side] : "⇄"}
+    </button>
+  );
+}
+
 function BlockNode({ data }: NodeProps<FlowNode<BlockData>>) {
   const b = data.block;
   if (b.kind !== "connector") {
@@ -80,12 +97,14 @@ function BlockNode({ data }: NodeProps<FlowNode<BlockData>>) {
         <Handle id={blockHandle(b.key, "R")} type="source" position={Position.Right} className="sc-handle" />
         <span className="sc-junction-dot" />
         <span className="sc-junction-label">{b.title}</span>
+        <SideButton block={b} />
       </div>
     );
   }
   return (
     <div className={`sc-block${data.selected ? " sc-selected" : ""}`} style={{ width: BLOCK_WIDTH }}>
       <div className="sc-block-head">
+        <SideButton block={b} />
         <span className="sc-block-id">{b.title}</span>
         <span className="sc-block-name">{b.subtitle}</span>
       </div>
@@ -100,7 +119,8 @@ function BlockNode({ data }: NodeProps<FlowNode<BlockData>>) {
 
 interface WireData extends Record<string, unknown> {
   color: string | null;
-  highlight: "none" | "net" | "wire";
+  /** "dim": hay algo elegido y este cable no es suyo (foco). */
+  highlight: "none" | "net" | "wire" | "dim";
   label: string;
 }
 
@@ -115,7 +135,7 @@ function WireEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targ
   const width = d.highlight === "wire" ? 4 : d.highlight === "net" ? 3 : 2;
   const [base, stripe] = wireColors(d.color);
   return (
-    <>
+    <g opacity={d.highlight === "dim" ? 0.12 : 1}>
       <BaseEdge
         id={`${id}-under`}
         path={path}
@@ -126,7 +146,7 @@ function WireEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targ
         <title>{d.label}</title>
       </path>
       {stripe && <path d={path} fill="none" stroke={stripe} strokeWidth={width} strokeDasharray="6 6" pointerEvents="none" />}
-    </>
+    </g>
   );
 }
 
@@ -210,14 +230,19 @@ export default function Schematic({ project, setProject, library, selection, onS
   // Por qué lado sale cada punta de cada cable: el que mira al otro bloque; en la misma columna, ambas por la
   // derecha. Mientras se arrastra un bloque, esto cambia solo cuando cruza a otro bloque, así que la lista de
   // cables (y los que no tocan al bloque arrastrado) no se rehace en cada cuadro.
+  // Un bloque con el lado elegido a mano saca todos sus cables por ese lado.
   const xOf = new Map(nodes.map((n) => [n.id, n.position.x]));
+  const chosen = new Map(model?.blocks.map((b) => [b.key, b.side]) ?? []);
   const sides = (model?.links ?? [])
     .map((l) => {
-      const ax = xOf.get(l.from.block) ?? 0;
-      const bx = xOf.get(l.to.block) ?? 0;
-      return ax < bx ? "RL" : ax > bx ? "LR" : "RR";
+      const [a, b] = endSides(xOf.get(l.from.block) ?? 0, xOf.get(l.to.block) ?? 0, chosen.get(l.from.block) ?? null, chosen.get(l.to.block) ?? null);
+      return a + b;
     })
     .join("");
+
+  // Foco: con un bloque elegido, sus cables se resaltan y el resto se apaga; con un cable, su net.
+  const focus = selection?.kind === "connector" ? `c${selection.id}` : selection?.kind === "splice" ? `s${selection.id}` : selection?.kind === "ground" ? `g${selection.id}` : null;
+  const focusing = focus !== null || selection?.kind === "wire";
 
   // Bloque que se está arrastrando: sus cables van en una capa propia (ver `.sc-wire-moving` en schematic.css).
   // Cambia solo al empezar y al terminar el arrastre, así que la lista de cables se rehace esas dos veces.
@@ -228,7 +253,14 @@ export default function Schematic({ project, setProject, library, selection, onS
     return model.links.map((l, i) => {
       const [sa, sb] = [sides[2 * i] as "L" | "R", sides[2 * i + 1] as "L" | "R"];
       const handle = (end: typeof l.from, side: "L" | "R") => (end.cavityId !== null ? pinHandle(end.cavityId, side) : blockHandle(end.block, side));
-      const highlight = selection?.kind === "wire" && selection.id === l.wireId ? "wire" : netWires.has(l.wireId) ? "net" : "none";
+      const highlight =
+        selection?.kind === "wire" && selection.id === l.wireId
+          ? "wire"
+          : netWires.has(l.wireId) || l.from.block === focus || l.to.block === focus
+            ? "net"
+            : focusing
+              ? "dim"
+              : "none";
       const moving = dragging !== null && (l.from.block === dragging || l.to.block === dragging);
       return {
         id: `w${l.wireId}`,
@@ -240,10 +272,23 @@ export default function Schematic({ project, setProject, library, selection, onS
         data: { color: l.color, highlight, label: l.label },
         className: moving ? "sc-wire-moving" : undefined,
         // Los que se mueven van encima de todos: así ningún cable quieto les queda arriba y tiene que redibujarse con ellos.
-        zIndex: moving ? 2 : highlight === "none" ? 0 : 1,
+        zIndex: moving ? 2 : highlight === "none" || highlight === "dim" ? 0 : 1,
       };
     });
-  }, [model, sides, selection, netWires, dragging]);
+  }, [model, sides, selection, netWires, dragging, focus, focusing]);
+
+  // Leyenda: los colores de los cables a la vista, con sus tipos de señal y cuántos son.
+  const legend = useMemo(() => (project && model ? schematicLegend(project, library, model.links) : []), [project, model, library]);
+
+  // Lado de salida elegido a mano: se guarda como un arrastre (ver saveLayout).
+  const cycleSide = useRef((_key: string) => {});
+  cycleSide.current = (key: string) => {
+    const n = nodes.find((x) => x.id === key);
+    if (!n) return;
+    const side = n.data.block.side;
+    saveLayout([n], { [key]: side === null ? "R" : side === "R" ? "L" : undefined });
+  };
+  const onCycleSide = useCallback((key: string) => cycleSide.current(key), []);
 
   if (!project || !model) {
     return <p>Open or load a project first (Topology tab).</p>;
@@ -263,9 +308,17 @@ export default function Schematic({ project, setProject, library, selection, onS
   // Al soltar un bloque en el esquema completo se guarda dónde está cada uno, así ninguno se mueve solo
   // después cuando cambian los datos. Con filtro, solo el que se movió: los demás están acomodados para
   // ese filtro, no para el esquema completo. Redondeado: un píxel de lienzo no se nota.
-  function saveLayout(dragged: FlowNode<BlockData>[]) {
-    const at = (ns: FlowNode<BlockData>[]) => Object.fromEntries(ns.map((n): [string, [number, number]] => [n.id, [Math.round(n.position.x), Math.round(n.position.y)]]));
-    const layout = { ...(keep ? project!.project.schematic_layout : at(nodes)), ...at(dragged) };
+  // El lado elegido de cada bloque se conserva; `sides` lo cambia para los que nombra.
+  function saveLayout(moved: FlowNode<BlockData>[], sides: Record<string, "L" | "R" | undefined> = {}) {
+    const saved = project!.project.schematic_layout ?? {};
+    const at = (ns: FlowNode<BlockData>[]) =>
+      Object.fromEntries(
+        ns.map((n): [string, SchematicPlace] => {
+          const side = n.id in sides ? sides[n.id] : saved[n.id]?.side;
+          return [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y), ...(side ? { side } : {}) }];
+        }),
+      );
+    const layout = { ...(keep ? saved : at(nodes)), ...at(moved) };
     setProject({ ...project!, project: { ...project!.project, schematic_layout: layout } });
   }
 
@@ -304,6 +357,7 @@ export default function Schematic({ project, setProject, library, selection, onS
         {model.blocks.length === 0 ? (
           <p className="hint" style={{ padding: "1rem" }}>No connectors yet.</p>
         ) : (
+          <SideContext.Provider value={onCycleSide}>
           <ReactFlow
             className="sc-flow"
             nodes={nodes}
@@ -325,7 +379,23 @@ export default function Schematic({ project, setProject, library, selection, onS
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
             <Controls showInteractive={false} />
+            {legend.length > 0 && (
+              <Panel position="bottom-right">
+                <details className="sc-legend" open>
+                  <summary>Colors</summary>
+                  {legend.map(({ color, count, types }) => (
+                    <button key={color} type="button" onClick={() => setSearch(color)} title={color ? `Show only the ${colorWord(color)} wires` : undefined} disabled={!color}>
+                      <span className="sc-legend-swatch" style={{ background: swatchBackground(color || null) }} />
+                      <span>{color ? colorWord(color) : "no color"}</span>
+                      <span className="sc-legend-types">{types.join(", ")}</span>
+                      <span className="sc-legend-count">{count}</span>
+                    </button>
+                  ))}
+                </details>
+              </Panel>
+            )}
           </ReactFlow>
+          </SideContext.Provider>
         )}
       </div>
     </div>

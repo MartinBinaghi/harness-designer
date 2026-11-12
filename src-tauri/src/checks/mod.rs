@@ -5,6 +5,7 @@
 mod connectors;
 mod coverings;
 mod loops;
+mod names;
 mod splices;
 #[cfg(test)]
 mod test_fixtures;
@@ -20,6 +21,7 @@ use coverings::{
     check_t_mold_assigned_does_not_fit,
 };
 use loops::check_topology_has_no_loops;
+use names::{check_missing_signal_types, check_mistyped_names, check_wires_without_name};
 use splices::{check_gauge_within_splice_range, check_splices_within_capacity};
 use wires::{
     check_bought_cables, check_cut_margin_below_twist_minimum, check_same_net_different_function,
@@ -128,6 +130,12 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
         (
             "Same net, different names",
             check_same_net_different_function(data),
+        ),
+        ("Name looks mistyped", check_mistyped_names(data)),
+        ("Wires without a name", check_wires_without_name(data)),
+        (
+            "Missing signal type",
+            check_missing_signal_types(data, library),
         ),
         (
             "Cut margin below twist minimum",

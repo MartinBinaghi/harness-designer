@@ -763,9 +763,14 @@ mod tests {
         let mut conn = open_project(&path).unwrap();
         let mut data = project::load(&conn).unwrap();
         assert!(data.project.schematic_layout.is_empty());
+        let place = |x, y, side: Option<&str>| project::SchematicPlace {
+            x,
+            y,
+            side: side.map(str::to_string),
+        };
         data.project.schematic_layout = [
-            ("c1".to_string(), [12.5, -40.0]),
-            ("s2".to_string(), [400.0, 80.0]),
+            ("c1".to_string(), place(12.5, -40.0, Some("L"))),
+            ("s2".to_string(), place(400.0, 80.0, None)),
         ]
         .into();
         project::save(&mut conn, &data).unwrap();

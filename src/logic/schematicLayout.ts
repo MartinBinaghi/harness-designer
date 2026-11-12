@@ -42,6 +42,8 @@ export interface SchematicBlock {
   hiddenPins: number;
   x: number;
   y: number;
+  /** Lado por el que salen sus cables, si el usuario lo eligió; si no, el que mira al otro bloque. */
+  side: "L" | "R" | null;
 }
 
 export interface SchematicLink {
@@ -148,11 +150,12 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
         hiddenPins: keep ? 0 : c.cavities.length - pins.length,
         x: 0,
         y: 0,
+        side: null,
       };
     }),
-    ...project.splice_instances.map((s): SchematicBlock => ({ key: `s${s.id}`, kind: "splice", refId: s.id, title: s.short_id, subtitle: s.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
-    ...project.ground_points.map((g): SchematicBlock => ({ key: `g${g.id}`, kind: "ground", refId: g.id, title: g.short_id, subtitle: g.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
-    ...project.component_instances.map((r): SchematicBlock => ({ key: `r${r.id}`, kind: "component", refId: r.id, title: r.short_id, subtitle: r.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0 })),
+    ...project.splice_instances.map((s): SchematicBlock => ({ key: `s${s.id}`, kind: "splice", refId: s.id, title: s.short_id, subtitle: s.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0, side: null })),
+    ...project.ground_points.map((g): SchematicBlock => ({ key: `g${g.id}`, kind: "ground", refId: g.id, title: g.short_id, subtitle: g.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0, side: null })),
+    ...project.component_instances.map((r): SchematicBlock => ({ key: `r${r.id}`, kind: "component", refId: r.id, title: r.short_id, subtitle: r.name, column: 1, pins: [], hiddenPins: 0, x: 0, y: 0, side: null })),
   ];
   // Un punto de unión sin cables no aporta nada al esquema; con filtro, tampoco un conector sin esos cables.
   const linkedBlocks = new Set(links.flatMap((l) => [l.from.block, l.to.block]));
@@ -184,6 +187,33 @@ export function buildSchematic(project: ProjectData, library: Library, showAllPi
     }
   }
   const saved = project.project.schematic_layout ?? {};
-  for (const b of shown) [b.x, b.y] = saved[b.key] ?? [b.x, b.y];
+  for (const b of shown) {
+    const place = saved[b.key];
+    if (place) [b.x, b.y, b.side] = [place.x, place.y, place.side ?? null];
+  }
   return { blocks: shown, links };
+}
+
+/**
+ * Por qué lado sale cada punta de un cable: el elegido para su bloque o, si no,
+ * el que mira al otro bloque (en la misma columna, ambas por la derecha).
+ */
+export function endSides(ax: number, bx: number, chosenA: "L" | "R" | null, chosenB: "L" | "R" | null): ["L" | "R", "L" | "R"] {
+  const auto = ax < bx ? ["R", "L"] : ax > bx ? ["L", "R"] : ["R", "R"];
+  return [chosenA ?? (auto[0] as "L" | "R"), chosenB ?? (auto[1] as "L" | "R")];
+}
+
+/** Leyenda: cada color de los cables dados, con sus tipos de señal y cuántos son (los más usados primero). */
+export function schematicLegend(project: ProjectData, library: Library, links: SchematicLink[]): { color: string; count: number; types: string[] }[] {
+  const wire = new Map(project.wire_instances.map((w) => [w.id, w]));
+  const typeName = new Map(library.signal_types.map((t) => [t.id, t.name]));
+  const byColor = new Map<string, { count: number; types: Set<string> }>();
+  for (const l of links) {
+    const entry = byColor.get(l.color ?? "") ?? { count: 0, types: new Set<string>() };
+    entry.count++;
+    const t = wire.get(l.wireId)?.signal_type_id;
+    if (t != null && typeName.has(t)) entry.types.add(typeName.get(t)!);
+    byColor.set(l.color ?? "", entry);
+  }
+  return [...byColor.entries()].map(([color, e]) => ({ color, count: e.count, types: [...e.types] })).sort((a, b) => b.count - a.count);
 }

@@ -40,7 +40,17 @@ pub struct Project {
     /// Posición de cada bloque del esquema que el usuario acomodó (clave "c12", "s3"…);
     /// los que no están van donde los pone el acomodo automático.
     #[serde(default)]
-    pub schematic_layout: BTreeMap<String, [f64; 2]>,
+    pub schematic_layout: BTreeMap<String, SchematicPlace>,
+}
+
+/// Dónde dejó el usuario un bloque del esquema y, si lo eligió, por qué lado
+/// salen sus cables ("L" o "R"; sin elegir, el que mira al otro bloque).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SchematicPlace {
+    pub x: f64,
+    pub y: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

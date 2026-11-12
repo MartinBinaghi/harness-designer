@@ -19,7 +19,14 @@ export interface Project {
   /** Largos de corte redondeados hacia arriba a este múltiplo (mm); null = sin redondeo. */
   cut_round_mm: number | null;
   /** Dónde dejó el usuario cada bloque del esquema ("c12", "s3"…: [x, y]); sin entrada = acomodo automático. */
-  schematic_layout: Record<string, [number, number]>;
+  schematic_layout: Record<string, SchematicPlace>;
+}
+
+/** Dónde dejó el usuario un bloque del esquema y, si lo eligió, por qué lado salen sus cables. */
+export interface SchematicPlace {
+  x: number;
+  y: number;
+  side?: "L" | "R";
 }
 
 export interface Node {

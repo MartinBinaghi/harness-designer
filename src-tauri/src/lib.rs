@@ -9,6 +9,7 @@ mod db;
 mod demo;
 mod gauge;
 mod model;
+mod recovery;
 mod settings;
 mod state;
 mod topology;
@@ -206,7 +207,7 @@ fn current_project(state: State<AppState>) -> Option<CurrentProject> {
 }
 
 #[tauri::command]
-fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
+fn save_project(path: String, app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let mut guard = state.project.lock().unwrap();
     let history = guard.as_mut().ok_or("no hay proyecto cargado")?;
     let dangling = model::project::dangling_references(history.get());
@@ -227,7 +228,51 @@ fn save_project(path: String, state: State<AppState>) -> Result<(), String> {
     model::project::save(&mut conn, history.get()).map_err(|e| e.to_string())?;
     history.mark_saved();
     *state.project_path.lock().unwrap() = Some(path);
+    recovery::discard(&app);
     Ok(())
+}
+
+/// Lo que dejó sin guardar una sesión que terminó de golpe (ver `recovery.rs`).
+#[derive(Serialize)]
+struct PendingRecovery {
+    name: String,
+    path: Option<String>,
+    saved_at_ms: u64,
+}
+
+#[tauri::command]
+fn pending_recovery(app: AppHandle) -> Option<PendingRecovery> {
+    recovery::pending(&app).map(|r| PendingRecovery {
+        name: r.project.project.name,
+        path: r.path,
+        saved_at_ms: r.saved_at_ms,
+    })
+}
+
+/// Abre la copia de recuperación como el proyecto actual, con cambios sin guardar
+/// respecto de su archivo: deshacer vuelve a lo que está en el archivo.
+#[tauri::command]
+fn recover_project(app: AppHandle, state: State<AppState>) -> Result<CurrentProject, String> {
+    let r = recovery::pending(&app).ok_or("there's nothing to recover")?;
+    let in_file = r
+        .path
+        .as_deref()
+        .and_then(|p| db::open_project(p).ok())
+        .and_then(|conn| model::project::load(&conn).ok());
+    let mut history = History::new(in_file.unwrap_or_else(ProjectData::empty));
+    history.edit(r.project.clone());
+    *state.project.lock().unwrap() = Some(history);
+    *state.project_path.lock().unwrap() = r.path.clone();
+    recovery::adopt();
+    Ok(CurrentProject {
+        project: r.project,
+        path: r.path,
+    })
+}
+
+#[tauri::command]
+fn discard_recovery(app: AppHandle) {
+    recovery::discard(&app);
 }
 
 #[tauri::command]
@@ -501,6 +546,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             startup_library,
             current_project,
+            pending_recovery,
+            recover_project,
+            discard_recovery,
             open_library,
             save_library,
             open_project,
@@ -525,6 +573,15 @@ pub fn run() {
             set_connector_image,
             write_text_file
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .setup(|app| {
+            recovery::start(app.handle().clone());
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                recovery::on_exit(app);
+            }
+        });
 }

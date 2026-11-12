@@ -10,6 +10,8 @@ import { useConnectorImage } from "../platform/connectorImages";
 import { usedCavities } from "../logic/projectEdit";
 import { AssemblyOverview, BranchFan, branchesWithSheet, WholeHarness } from "../components/AssemblyBranches";
 import { fileName, pickFileToSave } from "../platform/fileDialogs";
+import { SchematicDrawing } from "../components/SchematicDrawing";
+import { matchWires } from "../logic/schematicLayout";
 
 /**
  * Etapa 6: hojas para imprimir o guardar como PDF (diálogo de impresión del
@@ -17,11 +19,12 @@ import { fileName, pickFileToSave } from "../platform/fileDialogs";
  * impresas; el resto de la ventana se oculta al imprimir (styles, @media print).
  */
 
-type Doc = "cut" | "pinout" | "assembly" | "labels";
+type Doc = "cut" | "pinout" | "assembly" | "schematic" | "labels";
 const DOCS: [Doc, string, string][] = [
   ["cut", "Cut list", "One row per wire, divided by connector, with metres per wire type, heat-shrink pieces and boots."],
   ["pinout", "Pinout sheets", "Workshop format: one block per connector with its pins, where each one ends, and its front view."],
   ["assembly", "Assembly drawing", "The harness diagram with its lengths, for the table: fitted to one sheet (A3 for big harnesses)."],
+  ["schematic", "Schematic", "Pin to pin, as arranged in the Schematic tab; only some wires if you want (e.g. the 12V+ ones, to check them with the tester)."],
   ["labels", "Label list", "Harness, connectors and labelled wires, for the label printer."],
 ];
 const CUT_GROUPINGS: [CutGrouping, string][] = [
@@ -70,6 +73,12 @@ export default function Print({ project, setProject, library, report, destinatio
   const [assemblyLayout, setAssemblyLayout] = useState<"branches" | "whole">("branches");
   const [showDistances, setShowDistances] = useState(true);
   const [distances, setDistances] = useState<Record<string, number> | null>(null);
+  // Esquema: qué cables (el mismo filtro que la pestaña Schematic).
+  const [schematicSearch, setSchematicSearch] = useState("");
+  const [schematicType, setSchematicType] = useState<number | null>(null);
+  // Compacto (acomodo automático de esos cables) o como quedó en la pestaña Schematic: con un filtro,
+  // los bloques ubicados a mano quedan separados como en el esquema completo y en la hoja no se leen.
+  const [schematicArranged, setSchematicArranged] = useState(false);
 
 
   // Distancia acumulada desde el conector principal (hoja de armado, plan 10.2).
@@ -257,6 +266,20 @@ export default function Print({ project, setProject, library, report, destinatio
         ))}
       </>
     );
+  } else if (doc === "schematic") {
+    const filter = [library.signal_types.find((t) => t.id === schematicType)?.name, schematicSearch.trim() && `"${schematicSearch.trim()}"`].filter(Boolean).join(" · ");
+    sheets = (
+      <section className="sheet" style={{ width: sheetWidth }}>
+        <SheetHeader project={project} title={filter ? `Schematic · ${filter}` : "Schematic"} />
+        {/* Alto de la hoja menos márgenes, encabezado y leyenda. */}
+        <SchematicDrawing
+          project={schematicArranged ? project : { ...project, project: { ...project.project, schematic_layout: {} } }}
+          library={library}
+          keep={matchWires(project, library, schematicSearch, schematicType)}
+          maxHeightMm={(landscape ? w : h) - 50}
+        />
+      </section>
+    );
   } else if (doc === "assembly") {
     sheets = (
       <section className="sheet" style={{ width: sheetWidth }}>
@@ -301,7 +324,7 @@ export default function Print({ project, setProject, library, report, destinatio
                 checked={doc === key}
                 onChange={() => {
                   setDoc(key);
-                  setLandscape(key === "pinout" || key === "assembly"); // pinout del taller y diagrama, apaisados
+                  setLandscape(key === "pinout" || key === "assembly" || key === "schematic"); // pinout del taller y dibujos, apaisados
                 }}
               />
               <span>
@@ -359,6 +382,31 @@ export default function Print({ project, setProject, library, report, destinatio
               <input type="checkbox" checked={showDistances} onChange={(e) => setShowDistances(e.currentTarget.checked)} disabled={mainNode === undefined} />
               Distance from the main connector
             </label>
+          </fieldset>
+        )}
+
+        {doc === "schematic" && (
+          <fieldset>
+            <legend className="field-label">Wires</legend>
+            <label className="print-field">
+              <span className="field-label">Signal type</span>
+              <select value={schematicType ?? ""} onChange={(e) => setSchematicType(e.currentTarget.value ? Number(e.currentTarget.value) : null)}>
+                <option value="">All</option>
+                {library.signal_types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </label>
+            <label className="print-field">
+              <span className="field-label">Name, ID or color contains</span>
+              <input type="search" value={schematicSearch} onChange={(e) => setSchematicSearch(e.currentTarget.value)} placeholder="5V, W012, red…" />
+            </label>
+            <label className="print-field">
+              <span className="field-label">Arrangement</span>
+              <select value={schematicArranged ? "arranged" : "compact"} onChange={(e) => setSchematicArranged(e.currentTarget.value === "arranged")}>
+                <option value="compact">Compact (automatic)</option>
+                <option value="arranged">As arranged in the Schematic tab</option>
+              </select>
+            </label>
+            <p className="hint">The whole harness on one sheet can be too small to read: print it by function, or on A3.</p>
           </fieldset>
         )}
 

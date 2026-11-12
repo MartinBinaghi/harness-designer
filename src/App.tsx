@@ -17,6 +17,7 @@ import Inspector from "./panels/Inspector";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./components/icons";
 import { UpdateStatus } from "./components/UpdateStatus";
 import { useBackedState } from "./platform/useBackedState";
+import { fileName } from "./platform/fileDialogs";
 import type { CalcResults } from "./model/calc";
 import { reloadConnectorImages } from "./platform/connectorImages";
 import type { Finding, HistoryStatus, ProjectData, ProjectStatus, Selection } from "./model/project";
@@ -150,13 +151,37 @@ export default function App() {
   }, [libraryHistory, refreshLibraryStatus, noteLibrarySave]);
 
   // Si la ventana se recargó, el proyecto sigue en el núcleo: se recupera,
-  // con su archivo, sin perder lo que no se había guardado.
+  // con su archivo, sin perder lo que no se había guardado. Si no, y la sesión
+  // anterior terminó de golpe con cambios sin guardar, se ofrece su copia de
+  // recuperación (recovery.rs).
   useEffect(() => {
-    void invoke<{ project: ProjectData; path: string | null } | null>("current_project").then((current) => {
-      if (!current) return;
-      loadProject(current.project);
-      setProjectPath(current.path ?? "");
-    });
+    type Current = { project: ProjectData; path: string | null };
+    void (async () => {
+      const current = await invoke<Current | null>("current_project");
+      if (current) {
+        loadProject(current.project);
+        setProjectPath(current.path ?? "");
+        return;
+      }
+      const pending = await invoke<{ name: string; path: string | null; saved_at_ms: number } | null>("pending_recovery");
+      if (!pending) return;
+      const where = pending.path ? fileName(pending.path) : "never saved";
+      const when = new Date(pending.saved_at_ms).toLocaleString();
+      const recover = await ask(`Harness Designer closed without saving the changes to "${pending.name}" (${where}). A copy from ${when} was kept. Recover it?`, {
+        title: "Harness Designer",
+        kind: "warning",
+        okLabel: "Recover",
+        cancelLabel: "Discard",
+      });
+      if (!recover) return void invoke("discard_recovery");
+      try {
+        const recovered = await invoke<Current>("recover_project");
+        loadProject(recovered.project);
+        setProjectPath(recovered.path ?? "");
+      } catch (err) {
+        setAppNotice(`Couldn't recover the project: ${err}`);
+      }
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Al abrir el programa: la última biblioteca usada (la primera vez, la que
