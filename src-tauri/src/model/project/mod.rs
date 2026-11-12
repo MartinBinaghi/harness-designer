@@ -8,7 +8,7 @@ mod dangling;
 mod load;
 mod save;
 #[cfg(test)]
-mod test_fixtures;
+pub(crate) mod test_fixtures;
 
 pub use dangling::{dangling_references, DanglingItem};
 pub use load::load;

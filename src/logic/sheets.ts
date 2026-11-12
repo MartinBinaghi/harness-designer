@@ -73,7 +73,8 @@ export function wireFunction(library: Library, wire: WireInstance): string {
   return wire.specific_name || library.signal_types.find((t) => t.id === wire.signal_type_id)?.name || "—";
 }
 
-function wireType(library: Library, wire: WireInstance): string {
+/** "22 AWG M22759/32" (o el número de parte si no es un cable de la biblioteca). */
+export function wireType(library: Library, wire: WireInstance): string {
   const def = library.wire_defs.find((d) => d.part_id === wire.library_part_id);
   if (!def) return library.parts.find((p) => p.id === wire.library_part_id)?.part_number ?? "—";
   return def.spec ? `${def.gauge} ${def.spec}` : def.gauge;

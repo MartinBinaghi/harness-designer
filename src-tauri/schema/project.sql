@@ -179,3 +179,15 @@ CREATE TABLE IF NOT EXISTS twist_group_wires (
     wire_instance_id     INTEGER NOT NULL REFERENCES wire_instances(id) ON DELETE CASCADE,
     PRIMARY KEY (twist_group_id, wire_instance_id)
 );
+
+-- Revisiones congeladas (plan 4.2, Revision; formato 6): cada una es una copia
+-- entera del proyecto tal como estaba, guardada como un archivo de proyecto
+-- (SQLite) dentro de este, en el formato del programa que la congeló; al leerla
+-- se pone al día en memoria, sin reescribirla. Guardar el proyecto no las toca.
+CREATE TABLE IF NOT EXISTS revisions (
+    id              INTEGER PRIMARY KEY,
+    label           TEXT NOT NULL UNIQUE,
+    frozen_at_ms    INTEGER NOT NULL,
+    notes           TEXT NOT NULL DEFAULT '',
+    snapshot        BLOB NOT NULL
+);

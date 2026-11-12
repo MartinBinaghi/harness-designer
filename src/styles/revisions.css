@@ -1,0 +1,158 @@
+/* Pestaña Revisions: congelar revisiones y ver qué cambió entre dos estados. */
+
+.rv-freeze,
+.rv-compare {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.rv-freeze label,
+.rv-compare label {
+  display: flex;
+  flex-direction: column;
+}
+
+.rv-notes {
+  flex: 1 1 22rem;
+  max-width: 40rem;
+}
+
+.rv-freeze .hint {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+}
+
+.rv-freeze input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.rv-compare {
+  margin-bottom: 0.4rem;
+}
+
+.rv-arrow {
+  padding-bottom: 0.35rem;
+  color: var(--text-muted);
+}
+
+.rv-list td {
+  vertical-align: middle;
+}
+
+.rv-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.rv-actions button + button {
+  margin-left: 0.3rem;
+}
+
+.rv-error {
+  color: var(--error);
+}
+
+.rv-summary {
+  margin: 0.6rem 0 1rem;
+}
+
+.rv-section {
+  margin-bottom: 1.2rem;
+}
+
+.rv-section h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+}
+
+.rv-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.rv-item {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.rv-item:last-child {
+  border-bottom: none;
+}
+
+.rv-item-head {
+  font-weight: 600;
+}
+
+.rv-badge {
+  display: inline-block;
+  min-width: 4.6rem;
+  margin-right: 0.3rem;
+  padding: 0 0.35rem;
+  border-radius: 2px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  vertical-align: 1px;
+}
+
+/* El texto dice qué pasó; el color solo ayuda a recorrer la lista. */
+.rv-added .rv-badge {
+  background: #e3f4e8;
+  color: #1d6b38;
+}
+
+.rv-removed .rv-badge {
+  background: #fbe5e2;
+  color: var(--error);
+}
+
+.rv-changed .rv-badge {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+/* Campo · antes → después: texto corrido, no una planilla (sin el estilo general de las tablas). */
+.rv-changes {
+  width: auto;
+  max-width: calc(100% - 5.2rem);
+  margin: 0.3rem 0 0.1rem 5.2rem;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  background: none;
+  border: 0;
+}
+
+.rv-changes td {
+  padding: 0.1rem 0.6rem 0.1rem 0;
+  border: 0;
+  vertical-align: top;
+}
+
+.rv-before,
+.rv-after {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.rv-field {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.rv-before {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-muted) 50%, transparent);
+}
+
+.rv-to {
+  color: var(--text-muted);
+}

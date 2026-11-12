@@ -10,6 +10,7 @@ mod demo;
 mod gauge;
 mod model;
 mod recovery;
+mod revisions;
 mod settings;
 mod state;
 mod topology;
@@ -210,26 +211,134 @@ fn current_project(state: State<AppState>) -> Option<CurrentProject> {
 fn save_project(path: String, app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let mut guard = state.project.lock().unwrap();
     let history = guard.as_mut().ok_or("no hay proyecto cargado")?;
-    let dangling = model::project::dangling_references(history.get());
-    if !dangling.is_empty() {
-        let list: Vec<String> = dangling.into_iter().map(|d| d.message).collect();
-        return Err(format!(
-            "the project has broken references (see Checks): {}",
-            list.join("; ")
-        ));
+    save_to(&app, &state, history, &path)
+}
+
+/// Un proyecto con referencias colgadas no se guarda (Checks lo muestra como error).
+fn check_savable(project: &ProjectData) -> Result<(), String> {
+    let dangling = model::project::dangling_references(project);
+    if dangling.is_empty() {
+        return Ok(());
     }
+    let list: Vec<String> = dangling.into_iter().map(|d| d.message).collect();
+    Err(format!(
+        "the project has broken references (see Checks): {}",
+        list.join("; ")
+    ))
+}
+
+/// Guarda el proyecto del historial en `path`, que pasa a ser su archivo.
+fn save_to(
+    app: &AppHandle,
+    state: &AppState,
+    history: &mut History<ProjectData>,
+    path: &str,
+) -> Result<(), String> {
+    check_savable(history.get())?;
     // Lo que había en el archivo queda como "<archivo>.bak" (una versión atrás),
     // por si se guardó algo que no se quería.
-    if std::path::Path::new(&path).is_file() {
-        std::fs::copy(&path, format!("{path}.bak"))
+    if std::path::Path::new(path).is_file() {
+        std::fs::copy(path, format!("{path}.bak"))
             .map_err(|e| format!("couldn't make the backup copy before saving: {e}"))?;
     }
-    let mut conn = db::project_for_saving(&path)?;
+    let mut conn = db::project_for_saving(path)?;
     model::project::save(&mut conn, history.get()).map_err(|e| e.to_string())?;
+    // "Save as" a otro archivo: las revisiones congeladas viajan con el arnés.
+    let previous = state.project_path.lock().unwrap().clone();
+    if previous.as_deref() != Some(path) {
+        let source = match previous.filter(|p| std::path::Path::new(p).is_file()) {
+            Some(p) => Some(db::open_project(&p)?),
+            None => None,
+        };
+        revisions::replace_all(source.as_ref(), &mut conn)
+            .map_err(|e| format!("the harness was written, but not its revisions: {e}"))?;
+    }
     history.mark_saved();
-    *state.project_path.lock().unwrap() = Some(path);
-    recovery::discard(&app);
+    *state.project_path.lock().unwrap() = Some(path.to_string());
+    recovery::discard(app);
     Ok(())
+}
+
+/// Archivo del proyecto abierto, para las revisiones (viven adentro).
+fn revisions_file(state: &AppState) -> Result<String, String> {
+    state
+        .project_path
+        .lock()
+        .unwrap()
+        .clone()
+        .filter(|p| std::path::Path::new(p).is_file())
+        .ok_or_else(|| {
+            "Save the harness to a file first: its revisions are kept inside it.".to_string()
+        })
+}
+
+/// Las revisiones congeladas del archivo abierto (ninguna si todavía no tiene archivo).
+#[tauri::command]
+fn list_revisions(state: State<AppState>) -> Result<Vec<revisions::RevisionInfo>, String> {
+    match revisions_file(&state) {
+        Ok(path) => revisions::list(&db::open_project(&path)?),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+/// Congela el arnés como la revisión `label`: su campo "revisión" pasa a ese
+/// nombre, se guarda (si tenía cambios, también) y la copia queda en el archivo.
+/// Devuelve el proyecto (cambió su revisión).
+#[tauri::command]
+fn freeze_revision(
+    label: String,
+    notes: String,
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<ProjectData, String> {
+    let label = label.trim().to_string();
+    if label.is_empty() {
+        return Err("the revision needs a name (A, B, 2…)".into());
+    }
+    let path = revisions_file(&state)?;
+    if revisions::label_taken(&db::open_project(&path)?, &label)? {
+        return Err(format!("there's already a revision {label} in this file"));
+    }
+    let mut guard = state.project.lock().unwrap();
+    let history = guard.as_mut().ok_or("no hay proyecto cargado")?;
+    // Antes de tocar el proyecto: si no se puede guardar, no queda el cambio de revisión a medias.
+    check_savable(history.get())?;
+    if history.get().project.revision.as_deref() != Some(label.as_str()) {
+        let mut next = history.get().clone();
+        next.project.revision = Some(label.clone());
+        history.edit(next);
+    }
+    save_to(&app, &state, history, &path)?;
+    revisions::freeze(&db::open_project(&path)?, &label, &notes, history.get())?;
+    Ok(history.get().clone())
+}
+
+/// El arnés tal como quedó en una revisión (para comparar).
+#[tauri::command]
+fn revision_project(id: i64, state: State<AppState>) -> Result<ProjectData, String> {
+    revisions::load(&db::open_project(&revisions_file(&state)?)?, id)
+}
+
+/// Una revisión como archivo de proyecto suelto (para mandarla).
+#[tauri::command]
+fn export_revision(id: i64, path: String, state: State<AppState>) -> Result<(), String> {
+    let file = revisions_file(&state)?;
+    if std::path::Path::new(&path) == std::path::Path::new(&file) {
+        return Err("choose another file: that one is the open harness".into());
+    }
+    let (_, bytes) = revisions::snapshot(&db::open_project(&file)?, id)?;
+    std::fs::write(&path, bytes).map_err(|e| format!("Couldn't write {path}: {e}"))
+}
+
+#[tauri::command]
+fn delete_revision(id: i64, state: State<AppState>) -> Result<(), String> {
+    revisions::delete(&db::open_project(&revisions_file(&state)?)?, id)
+}
+
+/// Otro arnés, solo para comparar: el archivo no se toca (ni se migra).
+#[tauri::command]
+fn read_other_project(path: String) -> Result<ProjectData, String> {
+    model::project::load(&db::read_project_file(&path)?).map_err(|e| e.to_string())
 }
 
 /// Lo que dejó sin guardar una sesión que terminó de golpe (ver `recovery.rs`).
@@ -553,6 +662,12 @@ pub fn run() {
             save_library,
             open_project,
             save_project,
+            list_revisions,
+            freeze_revision,
+            revision_project,
+            export_revision,
+            delete_revision,
+            read_other_project,
             new_project,
             sample_project,
             edit_project,

@@ -3,7 +3,7 @@
 use super::load::wire_end;
 use super::*;
 
-pub(super) fn sample() -> ProjectData {
+pub(crate) fn sample() -> ProjectData {
     ProjectData {
         project: Project {
             name: "Cableado Motor".into(),

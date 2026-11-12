@@ -51,6 +51,7 @@ pub const PROJECT: Format = Format {
         project_v2_to_v3,
         project_v3_to_v4,
         project_v4_to_v5,
+        project_v5_to_v6,
     ],
 };
 
@@ -188,6 +189,21 @@ fn project_v4_to_v5(tx: &Transaction) -> rusqlite::Result<()> {
     tx.execute_batch("ALTER TABLE project ADD COLUMN schematic_layout TEXT NOT NULL DEFAULT '{}';")
 }
 
+/// Pedido de Martin del 2026-11-12: **revisiones congeladas** dentro del mismo
+/// archivo (Rev A, Rev B…, con fecha y notas), para comparar qué cambió entre
+/// una y otra. Cada una es una copia entera del proyecto (ver `revisions.rs`).
+fn project_v5_to_v6(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE revisions (
+             id              INTEGER PRIMARY KEY,
+             label           TEXT NOT NULL UNIQUE,
+             frozen_at_ms    INTEGER NOT NULL,
+             notes           TEXT NOT NULL DEFAULT '',
+             snapshot        BLOB NOT NULL
+         );",
+    )
+}
+
 /// Ver `project_v0_to_v1`. Los grupos de pines de dispositivos se sacaron el
 /// 8/10 (el mismo nombre en dos vías ya indica pines en paralelo).
 fn library_v0_to_v1(tx: &Transaction) -> rusqlite::Result<()> {
@@ -257,7 +273,7 @@ pub fn open_project(path: &str) -> Result<Connection, String> {
     let mut conn = open_existing(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
     check_kind(&conn, path, &PROJECT, &LIBRARY)?;
     require_project_row(&conn, path)?;
-    upgrade(&mut conn, path, &PROJECT)?;
+    upgrade(&mut conn, path, &PROJECT, Backup::Yes)?;
     Ok(conn)
 }
 
@@ -265,8 +281,50 @@ pub fn open_project(path: &str) -> Result<Connection, String> {
 pub fn open_library(path: &str) -> Result<Connection, String> {
     let mut conn = open_existing(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
     check_kind(&conn, path, &LIBRARY, &PROJECT)?;
-    upgrade(&mut conn, path, &LIBRARY)?;
+    upgrade(&mut conn, path, &LIBRARY, Backup::Yes)?;
     Ok(conn)
+}
+
+/// Otro proyecto, solo para leerlo (comparar con el abierto): se trabaja sobre
+/// una copia en memoria, así que el archivo no cambia aunque sea de una versión
+/// anterior (no se migra ni se le hace copia de respaldo).
+pub fn read_project_file(path: &str) -> Result<Connection, String> {
+    if !Path::new(path).is_file() {
+        return Err(format!("File not found: {path}"));
+    }
+    let bytes = std::fs::read(path).map_err(|e| format!("Can't read {}: {e}", file_name(path)))?;
+    project_from_bytes(&bytes, &file_name(path))
+}
+
+/// Un proyecto guardado como bytes (una revisión congelada, `revisions.rs`), en
+/// memoria y puesto al día con las mismas migraciones que un archivo. `name` es
+/// para los mensajes ("Rev A").
+pub fn project_from_bytes(bytes: &[u8], name: &str) -> Result<Connection, String> {
+    let mut conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
+    conn.deserialize_read_exact(rusqlite::MAIN_DB, bytes, bytes.len(), false)
+        .map_err(|e| format!("{name} isn't a Harness Designer file: {e}"))?;
+    prepare_connection(&conn)?;
+    check_kind(&conn, name, &PROJECT, &LIBRARY)?;
+    require_project_row(&conn, name)?;
+    upgrade(&mut conn, name, &PROJECT, Backup::No)?;
+    Ok(conn)
+}
+
+/// Un proyecto como los bytes de un archivo de proyecto en la versión actual
+/// (para congelarlo como revisión).
+pub fn project_to_bytes(data: &crate::model::project::ProjectData) -> Result<Vec<u8>, String> {
+    let mut conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
+    prepare_connection(&conn)?;
+    conn.execute_batch(PROJECT.schema)
+        .map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "user_version", PROJECT.version())
+        .map_err(|e| e.to_string())?;
+    crate::model::project::save(&mut conn, data).map_err(|e| e.to_string())?;
+    let bytes = conn
+        .serialize(rusqlite::MAIN_DB)
+        .map_err(|e| e.to_string())?
+        .to_vec();
+    Ok(bytes)
 }
 
 /// Un proyecto que viene con el programa (el arnés de ejemplo): solo lectura.
@@ -312,7 +370,7 @@ fn for_saving(path: &str, format: &Format, other: &Format) -> Result<Connection,
         return Ok(conn);
     }
     check_kind(&conn, path, format, other)?;
-    upgrade(&mut conn, path, format)?;
+    upgrade(&mut conn, path, format, Backup::Yes)?;
     Ok(conn)
 }
 
@@ -385,8 +443,21 @@ fn require_project_row(conn: &Connection, path: &str) -> Result<(), String> {
     }
 }
 
-/// Lleva el archivo a la versión actual (con copia de respaldo antes) y verifica su esquema.
-fn upgrade(conn: &mut Connection, path: &str, format: &Format) -> Result<(), String> {
+/// Antes de migrar un archivo, copiarlo a `<archivo>.v<N>.bak`; una copia en memoria no lo necesita.
+#[derive(PartialEq)]
+enum Backup {
+    Yes,
+    No,
+}
+
+/// Lleva el archivo a la versión actual (con copia de respaldo antes, si es un
+/// archivo) y verifica su esquema.
+fn upgrade(
+    conn: &mut Connection,
+    path: &str,
+    format: &Format,
+    backup: Backup,
+) -> Result<(), String> {
     let found = user_version(conn)?;
     let current = format.version();
     if found > current {
@@ -396,13 +467,14 @@ fn upgrade(conn: &mut Connection, path: &str, format: &Format) -> Result<(), Str
         ));
     }
     if found < current {
-        let backup = format!("{path}.v{found}.bak");
-        std::fs::copy(path, &backup).map_err(|e| {
-            format!(
-                "Couldn't back up {} before updating its format: {e}",
-                file_name(path)
-            )
-        })?;
+        if backup == Backup::Yes {
+            std::fs::copy(path, format!("{path}.v{found}.bak")).map_err(|e| {
+                format!(
+                    "Couldn't back up {} before updating its format: {e}",
+                    file_name(path)
+                )
+            })?;
+        }
         // Las migraciones que rehacen una tabla (para cambiarle un CHECK) la
         // borran y la renombran: con las claves foráneas activas, borrarla
         // borraría en cascada las filas que la referencian. Se apagan durante
@@ -545,6 +617,8 @@ mod tests {
     const PROJECT_SCHEMA_V3: &str = include_str!("../schema/history/project.v3.sql");
     /// Esquema de los proyectos en el formato 4, tal cual salió (0.1.7).
     const PROJECT_SCHEMA_V4: &str = include_str!("../schema/history/project.v4.sql");
+    /// Esquema de los proyectos en el formato 5 (sin release: el esquema guardado, 2026-11-12).
+    const PROJECT_SCHEMA_V5: &str = include_str!("../schema/history/project.v5.sql");
 
     /// Un proyecto como los que había antes del versionado: el esquema de
     /// octubre (con `format_version`, sin nombre de splice ni redondeo) y versión 0.
@@ -781,6 +855,59 @@ mod tests {
     }
 
     #[test]
+    fn a_v5_project_gets_an_empty_list_of_revisions() {
+        let path = temp_path("v5.harness.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V5).unwrap();
+        conn.execute_batch(
+            "INSERT INTO project (id, name, harness_code) VALUES (1, 'Motor', 'MOT-01');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 5).unwrap();
+        drop(conn);
+
+        let conn = open_project(&path).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), PROJECT.version());
+        let revisions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM revisions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(revisions, 0);
+        drop(conn);
+        let _ = std::fs::remove_file(format!("{path}.v5.bak"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Leer otro arnés para comparar no lo cambia, aunque sea de una versión vieja.
+    #[test]
+    fn reading_an_old_project_to_compare_leaves_the_file_as_it_was() {
+        let path = temp_path("compare-old.harness.db");
+        old_project_file(&path);
+        let before = std::fs::read(&path).unwrap();
+        let conn = read_project_file(&path).unwrap();
+        assert_eq!(project::load(&conn).unwrap().project.name, "Motor");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(!Path::new(&format!("{path}.v0.bak")).exists());
+        // Una biblioteca no es un arnés para comparar.
+        let library = temp_path("compare-library.db");
+        drop(library_for_saving(&library).unwrap());
+        assert!(read_project_file(&library)
+            .unwrap_err()
+            .contains("parts library"));
+        for p in [path, library] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[test]
+    fn a_project_survives_a_round_trip_through_bytes() {
+        let data = project::test_fixtures::sample();
+        let bytes = project_to_bytes(&data).unwrap();
+        let conn = project_from_bytes(&bytes, "Rev A").unwrap();
+        assert_eq!(project::load(&conn).unwrap(), data);
+        assert!(project_from_bytes(b"not a database", "Rev X").is_err());
+    }
+
+    #[test]
     fn a_file_from_a_newer_program_is_left_untouched() {
         let path = temp_path("newer.harness.db");
         let mut conn = project_for_saving(&path).unwrap();
@@ -936,6 +1063,10 @@ mod tests {
             (format!("{root}/../examples/engine-demo.harness.db"), true),
             (format!("{root}/../examples/engine-demo-library.db"), false),
         ] {
+            if !Path::new(&path).is_file() {
+                println!("{path}: not here, skipped");
+                continue;
+            }
             let conn = if is_project {
                 open_project(&path)
             } else {

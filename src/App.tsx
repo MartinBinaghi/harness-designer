@@ -12,6 +12,7 @@ import Splices from "./screens/Splices";
 import Checks from "./screens/Checks";
 import Costs from "./screens/Costs";
 import Print from "./screens/Print";
+import Revisions from "./screens/Revisions";
 import Tree from "./panels/TreePanel";
 import Inspector from "./panels/Inspector";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, PanelIcon, RedoIcon, UndoIcon } from "./components/icons";
@@ -31,7 +32,7 @@ interface LibraryChange {
 import { emptyLibrary } from "./model/library";
 import "./styles/index.css";
 
-const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Splices", "Checks", "Costs", "Print"] as const;
+const SECTIONS = ["Library", "Topology", "Diagram", "Schematic", "Connectors", "Wires", "Splices", "Checks", "Costs", "Print", "Revisions"] as const;
 type Section = (typeof SECTIONS)[number];
 
 export default function App() {
@@ -70,6 +71,14 @@ export default function App() {
     [projectHistory, refreshProjectStatus],
   );
   const cancelProjectEdits = projectHistory.cancel;
+  // Congelar una revisión cambia el campo "revisión" y guarda: el núcleo ya lo tiene.
+  const afterFreeze = useCallback(
+    (next: ProjectData) => {
+      projectHistory.reset(next);
+      void refreshProjectStatus();
+    },
+    [projectHistory, refreshProjectStatus],
+  );
 
   // Antes de cerrar o de reemplazar el proyecto (New, Open, Load sample): si
   // tiene cambios sin guardar, se pregunta. Devuelve si se puede seguir.
@@ -273,7 +282,7 @@ export default function App() {
     localStorage.setItem("inspectorOpen", String(inspectorOpen));
   }, [treeOpen, inspectorOpen]);
 
-  const showPanels = section !== "Library" && section !== "Print";
+  const showPanels = section !== "Library" && section !== "Print" && section !== "Revisions";
   const errorCount = findings.filter((f) => f.severity === "error").length;
   const warningCount = findings.filter((f) => f.severity === "warning").length;
   const canUndo = section === "Library" ? libraryStatus.can_undo : projectStatus.can_undo;
@@ -439,6 +448,13 @@ export default function App() {
               topology
             )}
           </Pane>
+          <Pane name="Revisions" active={section === "Revisions"} visited={visited}>
+            {project ? (
+              <Revisions project={project} library={library} filePath={projectPath} unsaved={projectStatus.unsaved} flushProjectEdits={projectHistory.flush} onFrozen={afterFreeze} />
+            ) : (
+              topology
+            )}
+          </Pane>
         {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} report={report} projectRevision={projectStatus.revision} />}
       </div>
 
@@ -456,7 +472,7 @@ export default function App() {
             onClick={() => {
               setSelection({ kind: "project", id: 0 });
               setInspectorOpen(true);
-              if (section === "Library" || section === "Print") setSection("Topology");
+              if (!showPanels) setSection("Topology");
             }}
             title={projectStatus.unsaved ? "Unsaved changes (Topology → Save) · click to edit the harness data" : "Click to edit the harness data"}
           >
