@@ -18,6 +18,7 @@ import {
   type EdgeProps,
   type NodeChange,
   type Connection,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { GaugeFacts } from "../model/calc";
@@ -186,6 +187,15 @@ export default function Schematic({ project, setProject, library, selection, onS
   const keep = useMemo(() => (project ? matchWires(project, library, search, signalType, color) : null), [project, library, search, signalType, color]);
   const model = useMemo(() => (project ? buildSchematic(project, library, showAllPins, keep) : null), [project, library, showAllPins, keep]);
   const [nodes, setNodes] = useState<FlowNode<BlockData>[]>([]);
+
+  // Al cambiar el filtro, la vista se ajusta a lo que queda (si no, unos pocos cables quedaban chiquitos en una
+  // esquina, con el zoom del esquema completo). Después de que se dibujan los bloques nuevos, como en el diagrama;
+  // sin agrandar más que el tamaño real, para que pocos bloques no queden gigantes.
+  const [flow, setFlow] = useState<ReactFlowInstance<FlowNode<BlockData>, Edge<WireData>> | null>(null);
+  useEffect(() => {
+    const t = window.setTimeout(() => void flow?.fitView({ duration: 200, maxZoom: 1 }), 80);
+    return () => window.clearTimeout(t);
+  }, [keep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!notice) return;
@@ -387,6 +397,7 @@ export default function Schematic({ project, setProject, library, selection, onS
             elementsSelectable={false}
             zoomOnDoubleClick={false}
             fitView
+            onInit={setFlow}
             proOptions={{ hideAttribution: true }}
             minZoom={0.1}
           >
