@@ -62,6 +62,15 @@ project.wire_instances[0].signal_type_id = 7;
 assert.deepEqual([...matchWires(project, { signal_types: [{ id: 7, name: "GND", default_color: "black" }] } as unknown as Library, "", 7)!], [1]);
 assert.deepEqual([...matchWires(project, { signal_types: [{ id: 7, name: "GND", default_color: "black" }] } as unknown as Library, "gnd", null)!], [1]);
 assert.equal(matchWires(project, library, "  ", null), null);
+// Color de la leyenda: exactamente ese ("red" no trae "red/white"), junto con el resto del filtro.
+const legendLibrary = { signal_types: [] } as unknown as Library;
+const colored = structuredClone(project);
+colored.wire_instances[0].color = "red";
+colored.wire_instances[1].color = "red/white";
+assert.deepEqual([...matchWires(colored, legendLibrary, "", null, "red")!], [1]);
+assert.deepEqual([...matchWires(colored, legendLibrary, "", null, "red/white")!], [2]);
+assert.equal(matchWires(colored, legendLibrary, "", null, null), null);
+assert.deepEqual([...matchWires(colored, { signal_types: [{ id: 7, name: "GND", default_color: "black" }] } as unknown as Library, "", 7, "violet")!], []);
 // Un bloque acomodado va donde lo dejó el usuario; los demás, donde los pone el automático.
 project.project.schematic_layout = { c3: { x: 900, y: -50, side: "L" } };
 const placed = buildSchematic(project, library, false).blocks;

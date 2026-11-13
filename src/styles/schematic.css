@@ -191,16 +191,31 @@
   align-items: center;
   width: 100%;
   min-width: 11rem;
-  padding: 0.1rem 0;
+  padding: 0.1rem 0.25rem;
   border: none;
+  border-radius: 3px;
   background: none;
   text-align: left;
   font-size: inherit;
   cursor: pointer;
 }
 
-.sc-legend button:disabled {
-  cursor: default;
+.sc-legend button:hover {
+  background: var(--surface-2);
+}
+
+/* El color elegido: los demás siguen en la lista para pasar a otro con un clic. */
+.sc-legend button.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* El color elegido también arriba, junto a los filtros, para sacarlo con un clic. */
+.sc-color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .sc-legend-swatch {

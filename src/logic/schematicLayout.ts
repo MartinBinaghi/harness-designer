@@ -68,15 +68,17 @@ export function anchorY(b: SchematicBlock, cavityId: number | null): number {
 /**
  * Cables que pasan el filtro del esquema: el texto (sin distinguir mayúsculas)
  * en el ID, el nombre, la etiqueta, el color o el tipo de señal, y si se eligió
- * un tipo de señal, ese. Sin filtro, `null` (se ven todos).
+ * un tipo de señal, ese; si se eligió un color de la leyenda, exactamente ese
+ * ("red" no trae los "red/white"; "" = sin color). Sin filtro, `null` (se ven todos).
  */
-export function matchWires(project: ProjectData, library: Library, text: string, signalTypeId: number | null): Set<number> | null {
+export function matchWires(project: ProjectData, library: Library, text: string, signalTypeId: number | null, color: string | null = null): Set<number> | null {
   const q = text.trim().toLowerCase();
-  if (!q && signalTypeId === null) return null;
+  if (!q && signalTypeId === null && color === null) return null;
   const typeName = new Map(library.signal_types.map((t) => [t.id, t.name]));
   return new Set(
     project.wire_instances
       .filter((w) => signalTypeId === null || w.signal_type_id === signalTypeId)
+      .filter((w) => color === null || (w.color ?? "") === color)
       .filter((w) => !q || [w.short_id, w.specific_name, w.label, w.color, w.signal_type_id !== null ? typeName.get(w.signal_type_id) : null].some((f) => f?.toLowerCase().includes(q)))
       .map((w) => w.id),
   );
