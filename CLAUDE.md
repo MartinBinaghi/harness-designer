@@ -324,6 +324,7 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 - **Panel derecho (inspector)**: detalle de lo seleccionado en cualquier pantalla (acá vive la consulta de pin)
 - **Barra inferior**: contador de errores/advertencias siempre visible
 - Cada pestaña **recuerda dónde estaba** (scroll, conector elegido, zoom del diagrama…): al salir queda abierta pero oculta y congelada, y al volver se pone al día con el proyecto.
+- **Nada "rebota"** al desplazarse más allá del borde (el rebote elástico de WebView2 con un touchpad de precisión dejaba franjas en blanco), y llegar al final de un panel no sigue desplazando el de afuera: `overscroll-behavior: none` en `styles/base.css`.
 
 ### 7.3 Pantallas
 - **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Dispositivos: lista + ficha; cada conector del dispositivo (A, B…) con su carcasa del arnés y **todas sus vías listadas** para escribir nombre y función, la cara dibujada con el nombre de cada pin (clic en una vía va a su fila) y **pegado de la tabla del cliente** con elección de columnas y aviso de las filas que no corresponden a ninguna vía.
