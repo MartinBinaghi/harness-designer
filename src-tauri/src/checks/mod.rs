@@ -1,9 +1,8 @@
 //! Chequeos automáticos (DRC) sobre un proyecto. Ver ../../../CLAUDE.md sección 12.
-//! Primer subconjunto: lo que se puede validar con el modelo actual, sin
-//! calibres numéricos ni cálculos de la etapa 3/4 todavía.
 
 mod connectors;
 mod coverings;
+mod electrical;
 mod loops;
 mod names;
 mod splices;
@@ -19,6 +18,10 @@ use connectors::{
 use coverings::{
     check_boot_assigned_does_not_fit, check_breakout_boot, check_covering_fit,
     check_t_mold_assigned_does_not_fit,
+};
+use electrical::{
+    check_contact_current, check_missing_electrical_data, check_splice_currents,
+    check_voltage_drop, check_wire_current,
 };
 use loops::check_topology_has_no_loops;
 use names::{check_missing_signal_types, check_mistyped_names, check_wires_without_name};
@@ -155,6 +158,14 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
         (
             "Wire gauge vs contact",
             check_gauge_within_contact_range(data, library),
+        ),
+        ("Wire current", check_wire_current(data, library)),
+        ("Contact current", check_contact_current(data, library)),
+        ("Voltage drop", check_voltage_drop(data, library)),
+        ("Currents at splices", check_splice_currents(data, library)),
+        (
+            "Electrical data missing",
+            check_missing_electrical_data(data, library),
         ),
     ];
     groups

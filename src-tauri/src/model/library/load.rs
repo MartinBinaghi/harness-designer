@@ -107,7 +107,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
     }
 
     let mut contact_defs_stmt = conn
-        .prepare("SELECT part_id, gender, contact_size, gauge_min, gauge_max FROM contact_defs")?;
+        .prepare("SELECT part_id, gender, contact_size, gauge_min, gauge_max, max_current_a FROM contact_defs")?;
     let contact_defs = contact_defs_stmt
         .query_map([], |row| {
             Ok(ContactDef {
@@ -116,6 +116,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 contact_size: row.get(2)?,
                 gauge_min: row.get(3)?,
                 gauge_max: row.get(4)?,
+                max_current_a: row.get(5)?,
             })
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -132,7 +133,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut wire_defs_stmt = conn.prepare(
-        "SELECT part_id, gauge, spec, color, outer_diameter_mm, default_cut_margin_pct FROM wire_defs",
+        "SELECT part_id, gauge, spec, color, outer_diameter_mm, default_cut_margin_pct, max_current_a, resistance_mohm_per_m FROM wire_defs",
     )?;
     let mut wire_defs = wire_defs_stmt
         .query_map([], |row| {
@@ -143,6 +144,8 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 color: row.get(3)?,
                 outer_diameter_mm: row.get(4)?,
                 default_cut_margin_pct: row.get(5)?,
+                max_current_a: row.get(6)?,
+                resistance_mohm_per_m: row.get(7)?,
                 conductors: Vec::new(),
             })
         })?

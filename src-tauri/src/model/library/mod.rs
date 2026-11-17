@@ -107,6 +107,9 @@ pub struct ContactDef {
     pub contact_size: String,
     pub gauge_min: Option<String>,
     pub gauge_max: Option<String>,
+    /// Corriente máxima continua (A), del fabricante.
+    #[serde(default)]
+    pub max_current_a: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,6 +135,12 @@ pub struct WireDef {
     pub color: Option<String>,
     pub outer_diameter_mm: f64,
     pub default_cut_margin_pct: Option<f64>,
+    /// Por conductor: corriente máxima continua en un mazo (A).
+    #[serde(default)]
+    pub max_current_a: Option<f64>,
+    /// Por conductor: resistencia a 20 °C (mΩ por metro).
+    #[serde(default)]
+    pub resistance_mohm_per_m: Option<f64>,
     pub conductors: Vec<WireDefConductor>,
 }
 

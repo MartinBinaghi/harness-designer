@@ -70,6 +70,28 @@ pub fn merge_base_library(library: &Library) -> Library {
             existing.counterpart_id = def.counterpart_id.map(|c| id_map[&c]);
         }
     }
+    // Datos eléctricos (corriente máxima, resistencia) de partes que ya estaban,
+    // cargadas antes de que la base los tuviera: se completan si están vacíos.
+    for def in &base.contact_defs {
+        if let Some(existing) = merged
+            .contact_defs
+            .iter_mut()
+            .find(|d| d.part_id == id_map[&def.part_id])
+        {
+            existing.max_current_a = existing.max_current_a.or(def.max_current_a);
+        }
+    }
+    for def in &base.wire_defs {
+        if let Some(existing) = merged
+            .wire_defs
+            .iter_mut()
+            .find(|d| d.part_id == id_map[&def.part_id])
+        {
+            existing.max_current_a = existing.max_current_a.or(def.max_current_a);
+            existing.resistance_mohm_per_m =
+                existing.resistance_mohm_per_m.or(def.resistance_mohm_per_m);
+        }
+    }
     let new_id = |part_id: i64| added.contains(&part_id).then(|| id_map[&part_id]);
     for def in &base.contact_defs {
         if let Some(part_id) = new_id(def.part_id) {
@@ -257,6 +279,55 @@ mod tests {
     }
 
     #[test]
+    fn merging_fills_electrical_data_left_empty_and_keeps_what_was_loaded() {
+        // Una biblioteca de antes de la carga eléctrica: el 22 AWG y el socket
+        // DTM sin datos; el 20 AWG con una capacidad que puso el usuario.
+        let older = merge_base_library(&Library::default());
+        let mut library = older.clone();
+        let id = |pn: &str| {
+            library
+                .parts
+                .iter()
+                .find(|p| p.part_number == pn)
+                .unwrap()
+                .id
+        };
+        let (w22, w20, socket) = (id("M22759/32-22"), id("M22759/32-20"), id("0462-201-20141"));
+        for d in &mut library.wire_defs {
+            d.max_current_a = None;
+            d.resistance_mohm_per_m = None;
+            if d.part_id == w20 {
+                d.max_current_a = Some(6.0);
+            }
+        }
+        for d in &mut library.contact_defs {
+            d.max_current_a = None;
+        }
+
+        let merged = merge_base_library(&library);
+        let wire = |pid: i64| merged.wire_defs.iter().find(|d| d.part_id == pid).unwrap();
+        assert_eq!(wire(w22).max_current_a, Some(5.0));
+        assert_eq!(wire(w22).resistance_mohm_per_m, Some(53.15));
+        assert_eq!(
+            wire(w20).max_current_a,
+            Some(6.0),
+            "lo cargado por el usuario no se pisa"
+        );
+        assert_eq!(wire(w20).resistance_mohm_per_m, Some(32.41));
+        let contact = merged
+            .contact_defs
+            .iter()
+            .find(|d| d.part_id == socket)
+            .unwrap();
+        assert_eq!(contact.max_current_a, Some(7.5));
+        assert_eq!(
+            merged.parts.len(),
+            older.parts.len(),
+            "no suma partes repetidas"
+        );
+    }
+
+    #[test]
     fn merged_ethernet_pair_gets_conductor_ids_not_already_used() {
         // Como la biblioteca de Martin: el CAN ya usa los conductores 3 y 4.
         let mut old = Library::default();
@@ -278,6 +349,8 @@ mod tests {
             color: None,
             outer_diameter_mm: 2.2,
             default_cut_margin_pct: None,
+            max_current_a: None,
+            resistance_mohm_per_m: None,
             conductors: [3, 4]
                 .map(|id| WireDefConductor {
                     id,

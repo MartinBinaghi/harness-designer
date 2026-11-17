@@ -21,6 +21,8 @@ pub(super) struct FamilyContacts {
     pub(super) kind: &'static str,
     pub(super) gauge_min: &'static str,
     pub(super) gauge_max: &'static str,
+    /// Corriente máxima continua (A), del fabricante.
+    pub(super) max_current_a: Option<f64>,
 }
 
 pub(super) const FAMILIES: &[Family] = &[
@@ -45,6 +47,7 @@ pub(super) const FAMILIES: &[Family] = &[
             kind: "solid",
             gauge_min: "20 AWG",
             gauge_max: "16 AWG",
+            max_current_a: Some(13.0),
         }),
         seal_plug: Some("0413-217-1605"),
     },
@@ -69,6 +72,7 @@ pub(super) const FAMILIES: &[Family] = &[
             kind: "solid",
             gauge_min: "24 AWG",
             gauge_max: "20 AWG",
+            max_current_a: Some(7.5),
         }),
         seal_plug: Some("0413-204-2005"),
     },
@@ -86,6 +90,7 @@ pub(super) const FAMILIES: &[Family] = &[
             kind: "solid",
             gauge_min: "14 AWG",
             gauge_max: "12 AWG",
+            max_current_a: Some(25.0),
         }),
         seal_plug: Some("0413-003-1205"),
     },
@@ -110,6 +115,7 @@ pub(super) const FAMILIES: &[Family] = &[
             kind: "stamped",
             gauge_min: "22 AWG",
             gauge_max: "20 AWG",
+            max_current_a: Some(14.0),
         }),
         seal_plug: None,
     },
@@ -162,6 +168,9 @@ pub(super) struct Contact {
     pub(super) description: &'static str,
     pub(super) gauge_min: &'static str,
     pub(super) gauge_max: &'static str,
+    /// Corriente máxima continua (A), del fabricante; `None` si no se encontró
+    /// para estos terminales (el dato de la familia es para el cable más grueso).
+    pub(super) max_current_a: Option<f64>,
 }
 
 const MIL_20_PIN: &[Contact] = &[Contact {
@@ -170,6 +179,7 @@ const MIL_20_PIN: &[Contact] = &[Contact {
     description: "Size 20 crimp pin contact, 24–20 AWG (MIL-DTL-26482 Series 2)",
     gauge_min: "24 AWG",
     gauge_max: "20 AWG",
+    max_current_a: Some(7.5),
 }];
 
 const MIL_20_SOCKET: &[Contact] = &[Contact {
@@ -178,6 +188,7 @@ const MIL_20_SOCKET: &[Contact] = &[Contact {
     description: "Size 20 crimp socket contact, 24–20 AWG (MIL-DTL-26482 Series 2)",
     gauge_min: "24 AWG",
     gauge_max: "20 AWG",
+    max_current_a: Some(7.5),
 }];
 
 /// Terminales hembra sellados de GT 150 (catálogo Delphi "GT Series", pág. 1.6).
@@ -189,6 +200,7 @@ const GT150_SEALED_SOCKETS: &[Contact] = &[
         description: "GT 150 sealed female terminal, 0.35–0.5 mm²",
         gauge_min: "0.35 mm²",
         gauge_max: "0.5 mm²",
+        max_current_a: Some(15.0),
     },
     Contact {
         part_number: "12191819",
@@ -196,6 +208,7 @@ const GT150_SEALED_SOCKETS: &[Contact] = &[
         description: "GT 150 sealed female terminal, 0.75–1.0 mm²",
         gauge_min: "0.75 mm²",
         gauge_max: "1.0 mm²",
+        max_current_a: Some(15.0),
     },
 ];
 
@@ -209,6 +222,7 @@ const JPT_SEALED_SOCKETS: &[Contact] = &[
         description: "Junior Power Timer 2.8 receptacle contact, single wire seal, 0.22–0.5 mm²",
         gauge_min: "0.22 mm²",
         gauge_max: "0.5 mm²",
+        max_current_a: None,
     },
     Contact {
         part_number: "929930-1",
@@ -216,6 +230,7 @@ const JPT_SEALED_SOCKETS: &[Contact] = &[
         description: "Junior Power Timer 2.8 receptacle contact, single wire seal, 0.5–1.0 mm²",
         gauge_min: "0.5 mm²",
         gauge_max: "1.0 mm²",
+        max_current_a: None,
     },
 ];
 
@@ -227,6 +242,7 @@ const MCP_15K_SEALED_SOCKETS: &[Contact] = &[
         description: "MCP 1.5K receptacle contact, single wire seal, 0.20–0.35 mm²",
         gauge_min: "0.2 mm²",
         gauge_max: "0.35 mm²",
+        max_current_a: None,
     },
     Contact {
         part_number: "1241381-1",
@@ -234,6 +250,7 @@ const MCP_15K_SEALED_SOCKETS: &[Contact] = &[
         description: "MCP 1.5K receptacle contact, single wire seal, 0.5–1.0 mm²",
         gauge_min: "0.5 mm²",
         gauge_max: "1.0 mm²",
+        max_current_a: None,
     },
 ];
 
@@ -503,17 +520,26 @@ pub(super) const BOOTS: &[Boot] = &[
     },
 ];
 
-/// M22759/32 (Raychem Spec 55, ETFE liviano, 150 °C, 600 V): calibre AWG y
-/// diámetro exterior nominal en pulgadas, de la hoja de la norma.
-pub(super) const M22759_32: &[(u32, f64)] = &[
-    (26, 0.032),
-    (24, 0.037),
-    (22, 0.043),
-    (20, 0.050),
-    (18, 0.060),
-    (16, 0.068),
-    (14, 0.085),
-    (12, 0.103),
+/// Cable M22759/32 (Raychem Spec 55, ETFE, 150 °C, cobre estañado), por calibre:
+/// diámetro exterior nominal (pulgadas, de la hoja de la norma), corriente
+/// máxima continua en un mazo (A) y
+/// resistencia del conductor a 20 °C (mΩ por metro).
+///
+/// Corriente y resistencia: FAA AC 43.13-1B, tabla 11-9 (cobre, columna de
+/// 150 °C; resistencia de conductor estañado, convertida de Ω cada 1000 ft). La
+/// tabla supone 70 °C de ambiente y mazos de 33 cables o más: valores
+/// conservadores, que coinciden con la tabla de ProWire para M22759/32 en mazo
+/// (+35 °C). El 26 AWG no está en la tabla: resistencia de la hoja de Glenair
+/// para M22759/32 (41,3 Ω cada 1000 ft) y corriente sin dato.
+pub(super) const M22759_32: &[(u32, f64, Option<f64>, f64)] = &[
+    (26, 0.032, None, 135.50),
+    (24, 0.037, Some(4.0), 93.18),
+    (22, 0.043, Some(5.0), 53.15),
+    (20, 0.050, Some(7.0), 32.41),
+    (18, 0.060, Some(9.0), 20.44),
+    (16, 0.068, Some(11.0), 15.78),
+    (14, 0.085, Some(14.0), 10.04),
+    (12, 0.103, Some(19.0), 6.63),
 ];
 
 /// Raychem DR-25 (2:1, sin adhesivo): medida nominal, suministrado mín.,

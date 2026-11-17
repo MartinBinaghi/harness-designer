@@ -222,6 +222,7 @@ mod tests {
             contact_size: size.into(),
             gauge_min: Some(min.into()),
             gauge_max: Some(max.into()),
+            max_current_a: None,
         }
     }
 
@@ -269,6 +270,8 @@ mod tests {
             color: None,
             outer_diameter_mm: 1.0,
             default_cut_margin_pct: None,
+            max_current_a: None,
+            resistance_mohm_per_m: None,
             conductors: vec![],
         });
         // X1 pasa a ser el DTM de 3 vías: la vía 1 con un cable del calibre pedido, 2 y 3 sin cable.
@@ -294,6 +297,8 @@ mod tests {
             manual_length_mm: None,
             label: None,
             cable_instance_id: None,
+            load_current_a: None,
+            protection_current_a: None,
             end_a: WireEnd {
                 kind: "cavity".into(),
                 cavity_assignment_id: Some(900),

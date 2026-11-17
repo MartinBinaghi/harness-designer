@@ -132,6 +132,7 @@ export function compareProjects(before: ProjectData, after: ProjectData, library
     ["Labor hours", a.labor_hours, b.labor_hours],
     ["Labor rate (USD/h)", a.labor_rate_usd, b.labor_rate_usd],
     ["Markup %", a.markup_pct, b.markup_pct],
+    ["Max. voltage drop (V)", a.voltage_drop_limit_v, b.voltage_drop_limit_v],
     ["Materials cost on", a.cost_on_purchased ? "purchased" : "used", b.cost_on_purchased ? "purchased" : "used"],
     ["Spare", spares(before), spares(after)],
   ]);
@@ -197,6 +198,8 @@ export function compareProjects(before: ProjectData, after: ProjectData, library
         ["Color", x.color, y.color],
         ["Length by hand (mm)", x.manual_length_mm, y.manual_length_mm],
         ["Cut margin %", x.manual_cut_margin_pct, y.manual_cut_margin_pct],
+        ["Load (A)", x.load_current_a, y.load_current_a],
+        ["Protection (A)", x.protection_current_a, y.protection_current_a],
         ["Label", x.label, y.label],
         ["Bought cable", cableOf(before, x), cableOf(after, y)],
         ["Twist group", twistOf(before, x), twistOf(after, y)],

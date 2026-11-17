@@ -27,8 +27,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     let p = &data.project;
     tx.execute(
-        "INSERT INTO project (id, name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm, schematic_layout)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        "INSERT INTO project (id, name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm, schematic_layout, voltage_drop_limit_v)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             p.name,
             p.harness_code,
@@ -45,6 +45,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
             serde_json::to_string(&p.spare_pcts).expect("un mapa de números siempre se serializa"),
             p.cut_round_mm,
             serde_json::to_string(&p.schematic_layout).expect("un mapa de números siempre se serializa"),
+            p.voltage_drop_limit_v,
         ],
     )?;
 
@@ -149,10 +150,10 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     for w in &data.wire_instances {
         tx.execute(
-            "INSERT INTO wire_instances (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
+            "INSERT INTO wire_instances (id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id, load_current_a, protection_current_a,
                                           end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id, end_a_node_id,
                                           end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id, end_b_node_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
             params![
                 w.id,
                 w.short_id,
@@ -164,6 +165,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
                 w.manual_length_mm,
                 w.label,
                 w.cable_instance_id,
+                w.load_current_a,
+                w.protection_current_a,
                 w.end_a.kind,
                 w.end_a.cavity_assignment_id,
                 w.end_a.splice_id,

@@ -76,7 +76,9 @@ CREATE TABLE IF NOT EXISTS contact_defs (
     gender          TEXT NOT NULL CHECK (gender IN ('male', 'female')),
     contact_size    TEXT NOT NULL,
     gauge_min       TEXT,
-    gauge_max       TEXT
+    gauge_max       TEXT,
+    -- corriente máxima continua del contacto (A), del fabricante
+    max_current_a   REAL CHECK (max_current_a > 0)
 );
 
 CREATE TABLE IF NOT EXISTS seal_plug_defs (
@@ -90,7 +92,11 @@ CREATE TABLE IF NOT EXISTS wire_defs (
     spec                    TEXT,
     color                   TEXT,
     outer_diameter_mm       REAL NOT NULL,
-    default_cut_margin_pct  REAL
+    default_cut_margin_pct  REAL,
+    -- por conductor: corriente máxima continua en un mazo (A) y resistencia a
+    -- 20 °C (mΩ por metro), para la carga eléctrica
+    max_current_a           REAL CHECK (max_current_a > 0),
+    resistance_mohm_per_m   REAL CHECK (resistance_mohm_per_m > 0)
 );
 
 -- Conductores internos de un cable multiconductor comprado (par trenzado, apantallado).

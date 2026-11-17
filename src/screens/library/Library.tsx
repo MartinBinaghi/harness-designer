@@ -77,8 +77,16 @@ export default function LibraryScreen({ library, setLibrary, loadLibrary, cancel
   async function addBaseParts() {
     const merged = await invoke<Library>("merge_base_library", { library });
     const added = merged.parts.length - library.parts.length;
+    // Además de sumar partes, completa datos vacíos de las que ya estaban (contacto, tapón, corriente…).
+    const completed = added === 0 && JSON.stringify(merged) !== JSON.stringify(library);
     setLibrary(merged);
-    setStatus(added > 0 ? `Added ${added} standard parts (unverified — check each datasheet).` : "Standard parts already in the library.");
+    setStatus(
+      added > 0
+        ? `Added ${added} standard parts (unverified — check each datasheet).`
+        : completed
+          ? "Filled in missing data of standard parts already in the library (unverified — check each datasheet)."
+          : "Standard parts already in the library.",
+    );
   }
 
   function partById(partId: number): Part | undefined {

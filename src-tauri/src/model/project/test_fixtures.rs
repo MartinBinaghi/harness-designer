@@ -29,6 +29,7 @@ pub(crate) fn sample() -> ProjectData {
                 },
             )]
             .into(),
+            voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
         },
         nodes: vec![
             Node {
@@ -129,6 +130,8 @@ pub(crate) fn sample() -> ProjectData {
                 manual_length_mm: None,
                 label: None,
                 cable_instance_id: Some(1),
+                load_current_a: None,
+                protection_current_a: None,
                 end_a: wire_end("cavity".into(), Some(1), None, None, None, None),
                 end_b: wire_end("splice".into(), None, Some(1), None, None, None),
             },
@@ -144,6 +147,8 @@ pub(crate) fn sample() -> ProjectData {
                 manual_length_mm: None,
                 label: None,
                 cable_instance_id: None,
+                load_current_a: None,
+                protection_current_a: None,
                 end_a: wire_end("cavity".into(), Some(1), None, None, None, None),
                 end_b: wire_end("loose".into(), None, None, None, None, Some(3)),
             },

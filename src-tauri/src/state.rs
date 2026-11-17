@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use crate::calc::CostReport;
+use crate::calc::{CostReport, ElectricalReport};
 use crate::checks::Finding;
 use crate::contacts::GaugeFacts;
 use crate::model::{library::Library, project::ProjectData};
@@ -25,6 +25,8 @@ pub struct CalcResults {
     pub destinations: Vec<PinDestinations>,
     /// Calibres ya interpretados, para elegir el tipo de un cable nuevo.
     pub gauges: GaugeFacts,
+    /// Corriente, caída de tensión y contactos (pestaña Wires, Inspector).
+    pub electrical: ElectricalReport,
 }
 
 pub struct AppState {

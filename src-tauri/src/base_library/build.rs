@@ -58,6 +58,7 @@ pub fn base_library() -> Library {
                     "unit",
                 );
                 library.contact_defs.push(ContactDef {
+                    max_current_a: c.max_current_a,
                     part_id: id,
                     gender: gender.into(),
                     contact_size: family.contact_size.into(),
@@ -156,6 +157,7 @@ pub fn base_library() -> Library {
                 contact_size: "1.0".into(),
                 gauge_min: Some(gauge_min.into()),
                 gauge_max: Some(gauge_max.into()),
+                max_current_a: None,
             });
             id
         })
@@ -226,6 +228,7 @@ pub fn base_library() -> Library {
                     "unit",
                 );
                 library.contact_defs.push(ContactDef {
+                    max_current_a: c.max_current_a,
                     part_id: id,
                     gender: h.gender.into(),
                     contact_size: h.contact_size.into(),
@@ -371,7 +374,7 @@ pub fn base_library() -> Library {
                 .collect(),
         });
     }
-    for &(awg, od_in) in M22759_32 {
+    for &(awg, od_in, max_current_a, resistance_mohm_per_m) in M22759_32 {
         let id = library.parts.len() as i64 + 1;
         library.parts.push(Part {
             id,
@@ -387,6 +390,8 @@ pub fn base_library() -> Library {
             price_date: None,
         });
         library.wire_defs.push(WireDef {
+            max_current_a,
+            resistance_mohm_per_m: Some(resistance_mohm_per_m),
             part_id: id,
             gauge: format!("{awg} AWG"),
             spec: Some("M22759/32".into()),
@@ -417,6 +422,8 @@ pub fn base_library() -> Library {
         color: None,
         outer_diameter_mm: 2.0,
         default_cut_margin_pct: None,
+        max_current_a: None,
+        resistance_mohm_per_m: None,
         conductors: (1..=2)
             .map(|id| WireDefConductor {
                 id,

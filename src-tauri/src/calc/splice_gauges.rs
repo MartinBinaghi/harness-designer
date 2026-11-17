@@ -109,6 +109,8 @@ mod tests {
                 manual_length_mm: None,
                 label: None,
                 cable_instance_id: None,
+                load_current_a: None,
+                protection_current_a: None,
                 end_a: splice_end(1),
                 end_b: splice_end(1),
             })
@@ -123,6 +125,8 @@ mod tests {
                     color: None,
                     outer_diameter_mm: 2.3,
                     default_cut_margin_pct: None,
+                    max_current_a: None,
+                    resistance_mohm_per_m: None,
                     conductors: vec![],
                 },
                 WireDef {
@@ -132,6 +136,8 @@ mod tests {
                     color: None,
                     outer_diameter_mm: 3.0,
                     default_cut_margin_pct: None,
+                    max_current_a: None,
+                    resistance_mohm_per_m: None,
                     conductors: vec![],
                 },
                 WireDef {
@@ -141,6 +147,8 @@ mod tests {
                     color: None,
                     outer_diameter_mm: 3.5,
                     default_cut_margin_pct: None,
+                    max_current_a: None,
+                    resistance_mohm_per_m: None,
                     conductors: vec![],
                 },
             ],

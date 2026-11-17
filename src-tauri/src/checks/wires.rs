@@ -180,6 +180,8 @@ mod tests {
             manual_length_mm: None,
             label: None,
             cable_instance_id: None,
+            load_current_a: None,
+            protection_current_a: None,
             end_a: end("cavity", None, None, None, None), // never picked in the UI
             end_b: end("ground", None, None, Some(1), None),
         }];
@@ -220,6 +222,8 @@ mod tests {
                 manual_length_mm: None,
                 label: None,
                 cable_instance_id: None,
+                load_current_a: None,
+                protection_current_a: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
             },
@@ -234,6 +238,8 @@ mod tests {
                 manual_length_mm: None,
                 label: None,
                 cable_instance_id: None,
+                load_current_a: None,
+                protection_current_a: None,
                 end_a: end("splice", None, Some(1), None, None),
                 end_b: end("splice", None, Some(1), None, None),
             },
@@ -260,6 +266,8 @@ mod tests {
             color: None,
             outer_diameter_mm: 2.0,
             default_cut_margin_pct: None,
+            max_current_a: None,
+            resistance_mohm_per_m: None,
             conductors: vec![conductor(1), conductor(2)],
         });
         data.cable_instances.push(CableInstance {

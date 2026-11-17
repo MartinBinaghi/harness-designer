@@ -3,6 +3,7 @@ import type { AccessoryDef, AccessoryDefConnectorMatch, ComponentDef, ContactDef
 import { TrashIcon } from "../../components/icons";
 import { addPart, removePart, updatePart, updateSubtype } from "../../logic/libraryEdit";
 import { FilterBar, matchesSearch, PartFields, type TabProps } from "./shared";
+import { OptionalNumberInput } from "../../components/OptionalNumberInput";
 
 /**
  * Pestañas de la biblioteca que son una tabla editable por tipo de parte:
@@ -31,7 +32,7 @@ export function ContactDefsTab({ library, setLibrary, partById }: TabProps) {
       </FilterBar>
       <table>
         <thead>
-          <tr><th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gender</th><th>Contact size</th><th>Min. gauge</th><th>Max. gauge</th><th></th></tr>
+          <tr><th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gender</th><th>Contact size</th><th>Min. gauge</th><th>Max. gauge</th><th title="Maximum continuous current of the contact, from the manufacturer">Max. A</th><th></th></tr>
         </thead>
         <tbody>
           {visible.map((cd) => {
@@ -50,6 +51,9 @@ export function ContactDefsTab({ library, setLibrary, partById }: TabProps) {
                 <td><input value={cd.gauge_min ?? ""} onChange={(e) => setLibrary(updateSubtype<"contact_defs", ContactDef>(library, "contact_defs", cd.part_id, { gauge_min: e.currentTarget.value || null }))} /></td>
                 <td><input value={cd.gauge_max ?? ""} onChange={(e) => setLibrary(updateSubtype<"contact_defs", ContactDef>(library, "contact_defs", cd.part_id, { gauge_max: e.currentTarget.value || null }))} /></td>
                 <td>
+                  <OptionalNumberInput value={cd.max_current_a} positive placeholder="—" onCommit={(v) => setLibrary(updateSubtype<"contact_defs", ContactDef>(library, "contact_defs", cd.part_id, { max_current_a: v }))} />
+                </td>
+                <td>
                   <button className="icon-button" onClick={() => setLibrary(removePart(library, "contact_defs", cd.part_id))} title="Delete" aria-label="Delete contact">
                     <TrashIcon />
                   </button>
@@ -59,7 +63,7 @@ export function ContactDefsTab({ library, setLibrary, partById }: TabProps) {
           })}
         </tbody>
       </table>
-      <button className="button-ghost-accent" onClick={() => setLibrary(addPart(library, "contact", "contact_defs", (partId) => ({ part_id: partId, gender: "male", contact_size: "", gauge_min: null, gauge_max: null })))}>+ New</button>
+      <button className="button-ghost-accent" onClick={() => setLibrary(addPart(library, "contact", "contact_defs", (partId) => ({ part_id: partId, gender: "male", contact_size: "", gauge_min: null, gauge_max: null, max_current_a: null })))}>+ New</button>
     </section>
   );
 }
@@ -138,6 +142,8 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
         <thead>
           <tr>
             <th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gauge</th><th>Spec</th><th>Color</th><th>OD (mm)</th><th>Cut margin %</th>
+            <th title="Maximum continuous current per conductor inside a bundle (the base library uses FAA AC 43.13-1B, table 11-9: conservative)">Max. A</th>
+            <th title="Conductor resistance at 20 °C, per conductor">mΩ/m</th>
             <th title="More than 1: a bought multi-conductor cable (twisted pair, multicore). In the harness its conductors are the wires of one cable (WC), cut and bought once; OD is the whole cable's.">Conductors</th>
             <th></th>
           </tr>
@@ -168,6 +174,12 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
                   />
                 </td>
                 <td>
+                  <OptionalNumberInput value={wd.max_current_a} positive placeholder="—" onCommit={(v) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { max_current_a: v }))} />
+                </td>
+                <td>
+                  <OptionalNumberInput value={wd.resistance_mohm_per_m} positive placeholder="—" onCommit={(v) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { resistance_mohm_per_m: v }))} />
+                </td>
+                <td>
                   <input
                     type="number"
                     min={1}
@@ -196,6 +208,8 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
               color: null,
               outer_diameter_mm: 1,
               default_cut_margin_pct: null,
+              max_current_a: null,
+              resistance_mohm_per_m: null,
               conductors: [],
             })),
           )

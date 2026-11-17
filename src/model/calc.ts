@@ -138,10 +138,52 @@ export interface GaugeFacts {
   contact_ranges: Record<string, Record<string, ([number, number] | null)[]>>;
 }
 
+/** Carga eléctrica de un cable (ver `calc/electrical.rs`). */
+export interface WireElectrical {
+  wire_id: number;
+  /** Consumo (A): el cargado, o el deducido en un splice. */
+  load_a: number | null;
+  /** Si el consumo se dedujo: el splice donde es la suma de los otros cables. */
+  load_from_splice_id: number | null;
+  /** Límite de la protección que lo alimenta (A): el cargado o el de su circuito. */
+  protection_a: number | null;
+  protection_from_circuit: boolean;
+  max_current_a: number | null;
+  resistance_mohm_per_m: number | null;
+  /** Caída en este cable (V). */
+  drop_v: number | null;
+  /** Caída desde la fuente del circuito hasta la punta de este cable (V). */
+  circuit_drop_v: number | null;
+  /** Su punta es donde se consume (no alimenta a otro splice). */
+  ends_at_load: boolean;
+}
+
+export interface CavityElectrical {
+  cavity_assignment_id: number;
+  connector_instance_id: number;
+  load_a: number | null;
+  protection_a: number | null;
+  contact_part_id: number | null;
+  max_current_a: number | null;
+}
+
+/** Splice donde no se sabe qué cables lo alimentan (Checks lo explica). */
+export type SpliceIssue =
+  | { kind: "missing_loads"; splice_id: number; wire_ids: number[] }
+  | { kind: "unbalanced"; splice_id: number }
+  | { kind: "unknown_feed"; splice_id: number };
+
+export interface ElectricalReport {
+  wires: WireElectrical[];
+  cavities: CavityElectrical[];
+  splice_issues: SpliceIssue[];
+}
+
 /** Todo lo que el núcleo calcula para una revisión (comando `calc_results`). */
 export interface CalcResults {
   report: CostReport;
   findings: import("./project").Finding[];
   destinations: PinDestinations[];
   gauges: GaugeFacts;
+  electrical: ElectricalReport;
 }

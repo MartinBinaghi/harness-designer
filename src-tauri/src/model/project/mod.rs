@@ -41,6 +41,16 @@ pub struct Project {
     /// los que no están van donde los pone el acomodo automático.
     #[serde(default)]
     pub schematic_layout: BTreeMap<String, SchematicPlace>,
+    /// Caída de tensión máxima de un circuito (V) antes de que Checks avise.
+    #[serde(default = "default_voltage_drop_limit_v")]
+    pub voltage_drop_limit_v: f64,
+}
+
+/// 0,5 V: lo que admite la FAA AC 43.13-1B (tabla 11-6) para 14 V con carga continua.
+pub const DEFAULT_VOLTAGE_DROP_LIMIT_V: f64 = 0.5;
+
+fn default_voltage_drop_limit_v() -> f64 {
+    DEFAULT_VOLTAGE_DROP_LIMIT_V
 }
 
 /// Dónde dejó el usuario un bloque del esquema y, si lo eligió, por qué lado
@@ -182,6 +192,14 @@ pub struct WireInstance {
     pub label: Option<String>,
     /// Conductor de un cable comprado (`CableInstance`): su tipo de cable es el del cable.
     pub cable_instance_id: Option<i64>,
+    /// Consumo real de lo que alimenta (A), para la caída de tensión. Sin cargar,
+    /// en un splice se deduce de los otros cables (ver `calc::electrical`).
+    #[serde(default)]
+    pub load_current_a: Option<f64>,
+    /// Límite de la protección que lo alimenta (canal del PDM, fusible; A): el
+    /// cable y el contacto lo tienen que aguantar. Sin cargar, vale el de su circuito.
+    #[serde(default)]
+    pub protection_current_a: Option<f64>,
     pub end_a: WireEnd,
     pub end_b: WireEnd,
 }
@@ -241,6 +259,7 @@ impl ProjectData {
                 spare_pcts: BTreeMap::new(),
                 cut_round_mm: None,
                 schematic_layout: Default::default(),
+                voltage_drop_limit_v: DEFAULT_VOLTAGE_DROP_LIMIT_V,
             },
             nodes: vec![],
             segments: vec![],

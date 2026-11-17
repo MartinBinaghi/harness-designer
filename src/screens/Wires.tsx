@@ -1,10 +1,13 @@
 import { useState } from "react";
 import type { ProjectData, Selection, WireInstance } from "../model/project";
+import type { ElectricalReport, WireElectrical } from "../model/calc";
 import { partLabel, type Library } from "../model/library";
 import { TrashIcon } from "../components/icons";
 import { swatchBackground } from "../logic/sheets";
-import { BLANK_END, deleteWire, endChoices, endLabel, nextId, parseEnd, setWireType, wireCategoryPatch } from "../logic/projectEdit";
+import { BLANK_END, deleteWire, endChoices, endLabel, newWire, parseEnd, setWireType, wireCategoryPatch } from "../logic/projectEdit";
 import { GoesToInput } from "../components/GoesToInput";
+import { OptionalNumberInput } from "../components/OptionalNumberInput";
+import { formatVolts } from "../logic/electrical";
 
 /** A cavity end's parent connector, if any — used by the connector filter. */
 function cavityConnectorShortId(project: ProjectData, cavityAssignmentId: number | null): string | null {
@@ -23,9 +26,11 @@ interface Props {
   library: Library;
   selection: Selection;
   onSelect: (s: Selection) => void;
+  /** Corriente y caída de tensión que calcula el núcleo; null mientras no llegan. */
+  electrical: ElectricalReport | null;
 }
 
-export default function Wires({ project, setProject, library, selection, onSelect }: Props) {
+export default function Wires({ project, setProject, library, selection, onSelect, electrical }: Props) {
   const [search, setSearch] = useState("");
   const [connectorFilter, setConnectorFilter] = useState("");
   const [gaugeFilter, setGaugeFilter] = useState("");
@@ -51,22 +56,7 @@ export default function Wires({ project, setProject, library, selection, onSelec
       alert("Add at least one wire in Library → Wires before adding one here.");
       return;
     }
-    const id = nextId(project.wire_instances.map((w) => w.id));
-    const newWire: WireInstance = {
-      id,
-      short_id: `W${String(id).padStart(3, "0")}`,
-      library_part_id: library.wire_defs[0].part_id,
-      color: null,
-      signal_type_id: null,
-      specific_name: null,
-      manual_cut_margin_pct: null,
-      manual_length_mm: null,
-      label: null,
-      cable_instance_id: null,
-      end_a: BLANK_END,
-      end_b: BLANK_END,
-    };
-    setProject({ ...project, wire_instances: [...project.wire_instances, newWire] });
+    setProject({ ...project, wire_instances: [...project.wire_instances, newWire(project, library.wire_defs[0].part_id)] });
   }
 
   function gaugeOf(wire: WireInstance): string | null {
@@ -81,6 +71,17 @@ export default function Wires({ project, setProject, library, selection, onSelec
   }
 
   const gauges = Array.from(new Set(library.wire_defs.map((wd) => wd.gauge))).sort();
+  const electricalOf = new Map((electrical?.wires ?? []).map((e) => [e.wire_id, e]));
+  const spliceId = (id: number) => project.splice_instances.find((s) => s.id === id)?.short_id ?? `SP${id}`;
+
+  /** Lo deducido por el núcleo, en gris dentro del campo vacío: la suma en un splice, la protección del circuito. */
+  function loadPlaceholder(e: WireElectrical | undefined): string {
+    return e?.load_a != null && e.load_from_splice_id != null ? `${e.load_a.toFixed(1)} (${spliceId(e.load_from_splice_id)})` : "—";
+  }
+  function protectionPlaceholder(e: WireElectrical | undefined): string {
+    return e?.protection_a != null && e.protection_from_circuit ? `${e.protection_a.toFixed(1)} (circuit)` : "—";
+  }
+  const limit = project.project.voltage_drop_limit_v;
 
   const visibleWires = project.wire_instances.filter((wire) => {
     if (connectorFilter && !wireTouchesConnector(wire, connectorFilter)) return false;
@@ -139,7 +140,13 @@ export default function Wires({ project, setProject, library, selection, onSelec
 
       <table>
         <thead>
-          <tr><th>ID</th><th>Type</th><th>Cable</th><th>Color</th><th>Category</th><th>Name</th><th>From</th><th>To</th><th></th></tr>
+          <tr>
+            <th>ID</th><th>Type</th><th>Cable</th><th>Color</th><th>Category</th><th>Name</th><th>From</th><th>To</th>
+            <th title="What the load it feeds draws (A), for the voltage drop. Empty at a splice: the sum of the other wires.">Load A</th>
+            <th title="Limit of the protection feeding it: PDM channel or fuse (A). The wire and its contacts must take it. Empty: the one of its circuit.">Protection A</th>
+            <th title={`Voltage drop from the source of the circuit to this wire's end (limit ${limit.toFixed(2)} V, set in the harness data)`}>Drop</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody>
           {visibleWires.map((wire) => (
@@ -171,6 +178,15 @@ export default function Wires({ project, setProject, library, selection, onSelec
               <td><input value={wire.specific_name ?? ""} onChange={(e) => update(wire.id, { specific_name: e.currentTarget.value || null })} /></td>
               <td>{endInput(wire, "end_a")}</td>
               <td>{endInput(wire, "end_b")}</td>
+              <td>
+                <OptionalNumberInput value={wire.load_current_a} placeholder={loadPlaceholder(electricalOf.get(wire.id))} onCommit={(v) => update(wire.id, { load_current_a: v })} />
+              </td>
+              <td>
+                <OptionalNumberInput value={wire.protection_current_a} positive placeholder={protectionPlaceholder(electricalOf.get(wire.id))} onCommit={(v) => update(wire.id, { protection_current_a: v })} />
+              </td>
+              <td className={(electricalOf.get(wire.id)?.circuit_drop_v ?? 0) > limit ? "over-limit" : undefined}>
+                {formatVolts(electricalOf.get(wire.id)?.circuit_drop_v ?? null)}
+              </td>
               <td>
                 <button className="icon-button" onClick={() => remove(wire.id)} title="Delete wire" aria-label="Delete wire">
                   <TrashIcon />

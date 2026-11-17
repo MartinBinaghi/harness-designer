@@ -40,6 +40,7 @@ pub(super) fn empty_project() -> ProjectData {
             spare_pcts: Default::default(),
             cut_round_mm: None,
             schematic_layout: Default::default(),
+            voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
         },
         nodes: vec![],
         segments: vec![],
@@ -143,6 +144,8 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
         manual_length_mm: None,
         label: None,
         cable_instance_id: None,
+        load_current_a: None,
+        protection_current_a: None,
         end_a: end("cavity", Some(1), None, None, None),
         end_b: end("cavity", Some(2), None, None, None),
     }];
@@ -182,6 +185,8 @@ pub(super) fn library_with_wire_def(outer_diameter_mm: f64) -> Library {
         color: None,
         outer_diameter_mm,
         default_cut_margin_pct: None,
+        max_current_a: None,
+        resistance_mohm_per_m: None,
         conductors: vec![],
     }];
     library

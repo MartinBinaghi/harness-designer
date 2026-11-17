@@ -7,12 +7,12 @@ import type { Library } from "../src/model/library.ts";
 const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null as string | null });
 const conn = (id: number, short_id: string, name: string, node_id: number, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name, library_part_id: 1, device_connector_id: null, node_id, termination: null, termination_library_part_id: null, backshell_library_part_id: null, status: "complete", is_interconnect: false, mates_with: null, cavities });
 const blank = { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null, node_id: null };
-const wire = (id: number, short_id: string, name: string, a: object, b: object) => ({ id, short_id, library_part_id: 10, color: "red", signal_type_id: 5, specific_name: name, manual_cut_margin_pct: null, manual_length_mm: null, label: null, cable_instance_id: null, end_a: { ...blank, ...a }, end_b: { ...blank, ...b } });
+const wire = (id: number, short_id: string, name: string, a: object, b: object) => ({ id, short_id, library_part_id: 10, color: "red", signal_type_id: 5, specific_name: name, manual_cut_margin_pct: null, manual_length_mm: null, label: null, cable_instance_id: null, load_current_a: null as number | null, protection_current_a: null as number | null, end_a: { ...blank, ...a }, end_b: { ...blank, ...b } });
 const node = (id: number, kind: string) => ({ id, kind, termination: null, termination_library_part_id: null, termination_segment_ids: [], diagram_x: 0, diagram_y: 0, adhesive_heatshrink_length_mm: null });
 
 // X1 ECU (1, 2) — breakout 3 — X3 MOTOR (EE, FF); SP4 en el breakout.
 const revA = {
-  project: { name: "Motor", harness_code: "MOT-01", client: null, revision: "A", main_connector_instance_id: 1, markup_pct: 0, default_cut_margin_pct: 10, default_twist_pitch_factor: 8, fill_factor: 0.75, labor_hours: 0, labor_rate_usd: 0, cost_on_purchased: false, spare_pcts: {}, cut_round_mm: null, schematic_layout: {} },
+  project: { name: "Motor", harness_code: "MOT-01", client: null, revision: "A", main_connector_instance_id: 1, markup_pct: 0, default_cut_margin_pct: 10, default_twist_pitch_factor: 8, fill_factor: 0.75, labor_hours: 0, labor_rate_usd: 0, cost_on_purchased: false, spare_pcts: {}, cut_round_mm: null, schematic_layout: {}, voltage_drop_limit_v: 0.5 },
   nodes: [node(1, "connector_end"), node(2, "connector_end"), node(3, "breakout")],
   segments: [
     { id: 1, node_a_id: 1, node_b_id: 3, length_mm: 300, twist_pitch_mm: null, covering_library_part_id: null, leaves_backward: false },
@@ -80,5 +80,17 @@ assert.deepEqual(topology, [{ kind: "changed", label: "S2 · SP4 ↔ X3", change
 // Al revés: lo agregado aparece como sacado.
 const back = compareProjects(revB, revA, library);
 assert.deepEqual(back.find((s) => s.title === "Wires")!.items.map((w) => [w.kind, w.label]), [["changed", "W002 · TPS"], ["removed", "W003 · Lambda"]]);
+
+// La carga eléctrica: la corriente de un cable y la caída máxima del arnés cuentan como cambios.
+const revC = structuredClone(revA);
+revC.wire_instances[0].load_current_a = 4.2;
+revC.wire_instances[0].protection_current_a = 15;
+revC.project.voltage_drop_limit_v = 0.6;
+const electrical = compareProjects(revA, revC, library);
+assert.deepEqual(electrical.find((s) => s.title === "Harness")!.items[0].changes, [{ field: "Max. voltage drop (V)", before: "0.5", after: "0.6" }]);
+assert.deepEqual(electrical.find((s) => s.title === "Wires")!.items[0].changes, [
+  { field: "Load (A)", before: "—", after: "4.2" },
+  { field: "Protection (A)", before: "—", after: "15" },
+]);
 
 console.log("revision diff: ok");

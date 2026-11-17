@@ -22,9 +22,12 @@ CREATE TABLE IF NOT EXISTS project (
     spare_pcts                  TEXT NOT NULL DEFAULT '{}',
     -- largos de corte redondeados hacia arriba a este múltiplo (mm); NULL = sin redondeo
     cut_round_mm                REAL,
-    -- dónde dejó el usuario cada bloque del esquema, JSON {"c12": [x, y], ...}
-    -- (c conector, s splice, g masa, r componente); sin entrada = acomodo automático
-    schematic_layout            TEXT NOT NULL DEFAULT '{}'
+    -- dónde dejó el usuario cada bloque del esquema, JSON {"c12": {"x": …, "y": …, "side": "L"}, ...}
+    -- (c conector, s splice, g masa, r componente; side opcional); sin entrada = acomodo automático
+    schematic_layout            TEXT NOT NULL DEFAULT '{}',
+    -- caída de tensión máxima de un circuito (V) antes de que Checks avise;
+    -- 0,5 V para 14 V con carga continua (FAA AC 43.13-1B, tabla 11-6)
+    voltage_drop_limit_v        REAL NOT NULL DEFAULT 0.5 CHECK (voltage_drop_limit_v > 0)
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
@@ -151,6 +154,11 @@ CREATE TABLE IF NOT EXISTS wire_instances (
     manual_length_mm                 REAL,   -- largo de corte a mano: manda sobre el calculado
     label                            TEXT,
     cable_instance_id                INTEGER REFERENCES cable_instances(id),   -- conductor de un cable comprado
+    -- carga eléctrica (A): consumo real de lo que alimenta (caída de tensión) y
+    -- límite de la protección que lo alimenta (canal del PDM, fusible), para
+    -- chequear que el cable y el contacto lo aguanten
+    load_current_a                   REAL CHECK (load_current_a >= 0),
+    protection_current_a             REAL CHECK (protection_current_a > 0),
 
     end_a_kind                       TEXT NOT NULL CHECK (end_a_kind IN ('cavity', 'splice', 'ground', 'component', 'loose')),
     end_a_cavity_assignment_id       INTEGER REFERENCES cavity_assignments(id),

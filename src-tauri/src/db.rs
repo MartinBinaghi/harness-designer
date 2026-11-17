@@ -52,6 +52,7 @@ pub const PROJECT: Format = Format {
         project_v3_to_v4,
         project_v4_to_v5,
         project_v5_to_v6,
+        project_v6_to_v7,
     ],
 };
 
@@ -59,7 +60,12 @@ pub const LIBRARY: Format = Format {
     noun: "parts library",
     schema: LIBRARY_SCHEMA,
     marker_table: "parts",
-    migrations: &[library_v0_to_v1, library_v1_to_v2, library_v2_to_v3],
+    migrations: &[
+        library_v0_to_v1,
+        library_v1_to_v2,
+        library_v2_to_v3,
+        library_v3_to_v4,
+    ],
 };
 
 // --- Migraciones -------------------------------------------------------------
@@ -204,6 +210,18 @@ fn project_v5_to_v6(tx: &Transaction) -> rusqlite::Result<()> {
     )
 }
 
+/// Carga eléctrica (pedido de Martin del 2026-11-16): la corriente de cada cable
+/// (consumo y límite de la protección que lo alimenta) y la caída de tensión
+/// máxima de un circuito antes de que Checks avise (0,5 V: FAA AC 43.13-1B, tabla
+/// 11-6, 14 V con carga continua).
+fn project_v6_to_v7(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "ALTER TABLE wire_instances ADD COLUMN load_current_a REAL CHECK (load_current_a >= 0);
+         ALTER TABLE wire_instances ADD COLUMN protection_current_a REAL CHECK (protection_current_a > 0);
+         ALTER TABLE project ADD COLUMN voltage_drop_limit_v REAL NOT NULL DEFAULT 0.5 CHECK (voltage_drop_limit_v > 0);",
+    )
+}
+
 /// Ver `project_v0_to_v1`. Los grupos de pines de dispositivos se sacaron el
 /// 8/10 (el mismo nombre en dos vías ya indica pines en paralelo).
 fn library_v0_to_v1(tx: &Transaction) -> rusqlite::Result<()> {
@@ -247,6 +265,16 @@ fn library_v1_to_v2(tx: &Transaction) -> rusqlite::Result<()> {
 fn library_v2_to_v3(tx: &Transaction) -> rusqlite::Result<()> {
     tx.execute_batch(
         "ALTER TABLE connector_defs ADD COLUMN without_contacts INTEGER NOT NULL DEFAULT 0 CHECK (without_contacts IN (0, 1));",
+    )
+}
+
+/// Carga eléctrica: corriente máxima de cada contacto, y de cada tipo de cable
+/// su corriente máxima en un mazo y su resistencia (ver `project_v6_to_v7`).
+fn library_v3_to_v4(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "ALTER TABLE contact_defs ADD COLUMN max_current_a REAL CHECK (max_current_a > 0);
+         ALTER TABLE wire_defs ADD COLUMN max_current_a REAL CHECK (max_current_a > 0);
+         ALTER TABLE wire_defs ADD COLUMN resistance_mohm_per_m REAL CHECK (resistance_mohm_per_m > 0);",
     )
 }
 
@@ -619,6 +647,8 @@ mod tests {
     const PROJECT_SCHEMA_V4: &str = include_str!("../schema/history/project.v4.sql");
     /// Esquema de los proyectos en el formato 5 (sin release: el esquema guardado, 2026-11-12).
     const PROJECT_SCHEMA_V5: &str = include_str!("../schema/history/project.v5.sql");
+    const PROJECT_SCHEMA_V6: &str = include_str!("../schema/history/project.v6.sql");
+    const LIBRARY_SCHEMA_V3: &str = include_str!("../schema/history/library.v3.sql");
 
     /// Un proyecto como los que había antes del versionado: el esquema de
     /// octubre (con `format_version`, sin nombre de splice ni redondeo) y versión 0.
@@ -979,6 +1009,60 @@ mod tests {
         assert!(crate::model::library::load(&conn).is_ok());
         assert!(!table_names(&path).contains("device_def_pin_groups"));
         for p in [path.clone(), format!("{path}.v0.bak")] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[test]
+    fn a_v6_project_keeps_its_wires_with_no_current_and_the_default_drop_limit() {
+        let path = temp_path("v6.harness.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V6).unwrap();
+        conn.execute_batch(
+            "INSERT INTO project (id, name, harness_code) VALUES (1, 'Motor', 'MOT-01');
+             INSERT INTO wire_instances (id, short_id, library_part_id, end_a_kind, end_b_kind)
+                 VALUES (1, 'W001', 7, 'loose', 'loose');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 6).unwrap();
+        drop(conn);
+
+        let conn = open_project(&path).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), PROJECT.version());
+        let data = project::load(&conn).unwrap();
+        assert_eq!(data.project.voltage_drop_limit_v, 0.5);
+        assert_eq!(data.wire_instances.len(), 1);
+        assert_eq!(data.wire_instances[0].load_current_a, None);
+        assert_eq!(data.wire_instances[0].protection_current_a, None);
+        drop(conn);
+        for p in [format!("{path}.v6.bak"), path] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[test]
+    fn a_v3_library_gets_empty_electrical_data() {
+        let path = temp_path("v3-library.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(LIBRARY_SCHEMA_V3).unwrap();
+        conn.execute_batch(
+            "INSERT INTO parts (id, part_number, category, purchase_unit) VALUES (1, 'M22759/32-22', 'wire', 'meter');
+             INSERT INTO parts (id, part_number, category, purchase_unit) VALUES (2, '0462-201-20141', 'contact', 'unit');
+             INSERT INTO wire_defs (part_id, gauge, outer_diameter_mm) VALUES (1, '22 AWG', 1.09);
+             INSERT INTO contact_defs (part_id, gender, contact_size) VALUES (2, 'female', '20');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        drop(conn);
+
+        let conn = open_library(&path).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), LIBRARY.version());
+        let library = crate::model::library::load(&conn).unwrap();
+        assert_eq!(library.wire_defs[0].max_current_a, None);
+        assert_eq!(library.wire_defs[0].resistance_mohm_per_m, None);
+        assert_eq!(library.contact_defs[0].max_current_a, None);
+        drop(conn);
+        for p in [format!("{path}.v3.bak"), path] {
             let _ = std::fs::remove_file(p);
         }
     }

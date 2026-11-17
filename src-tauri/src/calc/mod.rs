@@ -10,6 +10,7 @@ mod bom;
 mod covering_cuts;
 mod cut_length;
 mod diameter;
+mod electrical;
 mod fits;
 mod splice_gauges;
 #[cfg(test)]
@@ -19,6 +20,7 @@ pub use bom::*;
 pub use covering_cuts::*;
 pub use cut_length::*;
 pub use diameter::*;
+pub use electrical::*;
 pub use fits::*;
 pub use splice_gauges::*;
 
@@ -35,6 +37,7 @@ use std::collections::{HashMap, HashSet};
 struct PassCache {
     bundle: HashMap<i64, f64>,
     elements_in_segment: Option<HashMap<i64, usize>>,
+    electrical: Option<ElectricalReport>,
 }
 
 thread_local! {

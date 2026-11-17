@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CostReport, WireCutLength } from "../model/calc";
+import type { CostReport, ElectricalReport, WireCutLength } from "../model/calc";
 import { swatchBackground } from "../logic/sheets";
 import { changeConnectorPart, nextCableShortId, nextId, patchItem, setLeavesBackward, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
 import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "../model/project";
@@ -9,6 +9,7 @@ import { EndEditor } from "../components/EndEditor";
 import { ConnectorViews } from "../components/ConnectorViews";
 import { ConnectorPartSelect } from "../components/ConnectorPartSelect";
 import { NODE_KINDS, NODE_KIND_LABELS, NODE_TERMINATIONS, NODE_TERMINATION_LABELS, nodeLabel } from "../logic/nodeLabels";
+import { formatAmps, formatVolts } from "../logic/electrical";
 
 type Placed = Pick<SpliceInstance, "node_id" | "segment_id" | "offset_from_end_mm" | "offset_from_node_id">;
 
@@ -43,19 +44,21 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
 /**
  * Número: confirma con Enter o al salir del campo (un solo paso de undo), Esc
  * vuelve al valor guardado. `nullable` permite dejarlo vacío (= valor por
- * defecto); si no, un vacío o un valor fuera de rango se descarta.
+ * defecto); si no, un vacío o un valor fuera de rango se descarta. `positive`:
+ * tiene que ser mayor que cero (no alcanza con `min = 0`).
  */
-function NumberInput({ value, onCommit, unit, nullable, placeholder, min = 0 }: {
+function NumberInput({ value, onCommit, unit, nullable, placeholder, min = 0, positive = false }: {
   value: number | null;
   onCommit: (v: number | null) => void;
   unit?: string;
   nullable?: boolean;
   placeholder?: string;
   min?: number;
+  positive?: boolean;
 }) {
   const commit = (text: string) => {
     const next = numOrNull(text);
-    if (next === null ? !nullable : !(next >= min)) return;
+    if (next === null ? !nullable : !(next >= min) || (positive && next <= 0)) return;
     if (next !== value) onCommit(next);
   };
   return (
@@ -143,6 +146,54 @@ function WireLength({ project, wire, report, projectRevision }: { project: Proje
   );
 }
 
+/** Consumo deducido por el núcleo (la suma en un splice), para mostrar en el campo vacío. */
+function wireLoadHint(project: ProjectData, electrical: ElectricalReport | null, wireId: number): string {
+  const e = electrical?.wires.find((x) => x.wire_id === wireId);
+  if (e?.load_a == null || e.load_from_splice_id === null) return "what it feeds draws";
+  const splice = project.splice_instances.find((s) => s.id === e.load_from_splice_id)?.short_id ?? `SP${e.load_from_splice_id}`;
+  return `${e.load_a.toFixed(1)}: sum at ${splice}`;
+}
+
+/** Protección que le llega de su circuito, para mostrar en el campo vacío. */
+function wireProtectionHint(electrical: ElectricalReport | null, wireId: number): string {
+  const e = electrical?.wires.find((x) => x.wire_id === wireId);
+  return e?.protection_a != null && e.protection_from_circuit ? `${e.protection_a.toFixed(1)}: from its circuit` : "PDM channel or fuse";
+}
+
+/**
+ * Lo que calcula el núcleo de la carga eléctrica de un cable: la capacidad de su
+ * tipo de cable y la caída de tensión (la suya y desde la fuente del circuito).
+ */
+function WireElectricalInfo({ project, library, wireId, electrical }: { project: ProjectData; library: Library; wireId: number; electrical: ElectricalReport | null }) {
+  const e = electrical?.wires.find((x) => x.wire_id === wireId);
+  if (!e) return <span className="hint">…</span>;
+  const wire = project.wire_instances.find((w) => w.id === wireId);
+  const typeName = wire ? partLabel(library, wire.library_part_id) : "";
+  const current = Math.max(e.load_a ?? 0, e.protection_a ?? 0);
+  const limit = project.project.voltage_drop_limit_v;
+  return (
+    <div className="inspector-length">
+      <span className={e.max_current_a !== null && current > e.max_current_a ? "over-limit" : undefined}>
+        {e.max_current_a === null ? `${typeName}: no max current in the library` : `${typeName} takes ${formatAmps(e.max_current_a)} in a bundle`}
+      </span>
+      {e.load_a !== null &&
+        (e.drop_v === null ? (
+          <span className="hint">No drop: {e.resistance_mohm_per_m === null ? "the wire type has no resistance in the library" : "no cut length yet"}.</span>
+        ) : (
+          <span>
+            Drop {formatVolts(e.drop_v)} in this wire
+            {e.circuit_drop_v !== null && (
+              <>
+                {" · "}
+                <span className={e.circuit_drop_v > limit ? "over-limit" : undefined}>{formatVolts(e.circuit_drop_v)} from the source</span> (limit {formatVolts(limit)})
+              </>
+            )}
+          </span>
+        ))}
+    </div>
+  );
+}
+
 /** Diámetro del segmento (bundle y con coberturas) y el termo que sugiere el cálculo. */
 function SegmentDiameter({ library, segmentId, report }: { library: Library; segmentId: number; report: CostReport | null }) {
   if (!report) return <span className="hint">…</span>;
@@ -224,11 +275,13 @@ interface Props {
   findings: Finding[];
   /** Costos de la revisión actual, o null mientras se calculan. */
   report: CostReport | null;
+  /** Carga eléctrica de la revisión actual, o null mientras se calcula. */
+  electrical: ElectricalReport | null;
   /** Revisión del proyecto en el backend: el recorrido del cable se rehace cuando cambia. */
   projectRevision: number;
 }
 
-export default function Inspector({ project, setProject, library, selection, onSelect, findings, report, projectRevision }: Props) {
+export default function Inspector({ project, setProject, library, selection, onSelect, findings, report, electrical, projectRevision }: Props) {
   if (!project || !selection) {
     return (
       <div className="inspector-panel">
@@ -274,6 +327,10 @@ export default function Inspector({ project, setProject, library, selection, onS
         <Field label="Labor"><NumberInput value={p.labor_hours} unit="h" onCommit={(v) => v !== null && set({ labor_hours: v })} /></Field>
         <Field label="Labor rate"><NumberInput value={p.labor_rate_usd} unit="USD/h" onCommit={(v) => v !== null && set({ labor_rate_usd: v })} /></Field>
         <Field label="Markup"><NumberInput value={p.markup_pct} unit="%" onCommit={(v) => v !== null && set({ markup_pct: v })} /></Field>
+        <Field label="Max. voltage drop">
+          <NumberInput value={p.voltage_drop_limit_v} positive unit="V" onCommit={(v) => v !== null && set({ voltage_drop_limit_v: v })} />
+          <span className="hint">From the source to each load. 0.5 V is what FAA AC 43.13-1B allows on 14 V with a continuous load.</span>
+        </Field>
         <Field label="Materials cost">
           <Select
             value={p.cost_on_purchased ? "purchased" : "used"}
@@ -588,6 +645,13 @@ export default function Inspector({ project, setProject, library, selection, onS
           <Field label="Cut margin">
             <NumberInput value={w.manual_cut_margin_pct} nullable unit="%" placeholder="default" onCommit={(v) => set({ manual_cut_margin_pct: v })} />
           </Field>
+          <Field label="Load">
+            <NumberInput value={w.load_current_a} nullable unit="A" placeholder={wireLoadHint(project, electrical, w.id)} onCommit={(v) => set({ load_current_a: v })} />
+          </Field>
+          <Field label="Protection">
+            <NumberInput value={w.protection_current_a} nullable positive unit="A" placeholder={wireProtectionHint(electrical, w.id)} onCommit={(v) => set({ protection_current_a: v })} />
+          </Field>
+          <Field label="Electrical"><WireElectricalInfo project={project} library={library} wireId={w.id} electrical={electrical} /></Field>
           <Field label="Twist group">
             <Select
               value={project.twist_groups.find((g) => g.wire_instance_ids.includes(w.id))?.id ?? null}

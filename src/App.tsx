@@ -258,6 +258,7 @@ export default function App() {
   const findings = calc?.findings ?? NO_FINDINGS;
   const report = calc?.report ?? null;
   const gauges = calc?.gauges ?? null;
+  const electrical = calc?.electrical ?? null;
   const destinations = useMemo(() => new Map((calc?.destinations ?? []).map((d) => [d.cavity_assignment_id, d])), [calc]);
 
   // Undo/Redo por teclado, apuntando al documento de la pantalla activa (el
@@ -415,7 +416,7 @@ export default function App() {
           </Pane>
           <Pane name="Wires" active={section === "Wires"} visited={visited}>
             {project ? (
-              <Wires project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} />
+              <Wires project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} electrical={electrical} />
             ) : (
               topology
             )}
@@ -455,7 +456,7 @@ export default function App() {
               topology
             )}
           </Pane>
-        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} report={report} projectRevision={projectStatus.revision} />}
+        {showPanels && inspectorOpen && <Inspector project={project} setProject={setProject} library={library} selection={selection} onSelect={setSelection} findings={findings} report={report} electrical={electrical} projectRevision={projectStatus.revision} />}
       </div>
 
       <div className="status-bar">

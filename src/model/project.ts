@@ -18,8 +18,10 @@ export interface Project {
   spare_pcts: Record<string, number>;
   /** Largos de corte redondeados hacia arriba a este múltiplo (mm); null = sin redondeo. */
   cut_round_mm: number | null;
-  /** Dónde dejó el usuario cada bloque del esquema ("c12", "s3"…: [x, y]); sin entrada = acomodo automático. */
+  /** Dónde dejó el usuario cada bloque del esquema ("c12", "s3"…); sin entrada = acomodo automático. */
   schematic_layout: Record<string, SchematicPlace>;
+  /** Caída de tensión máxima de un circuito (V) antes de que Checks avise; 0,5 por defecto. */
+  voltage_drop_limit_v: number;
 }
 
 /** Dónde dejó el usuario un bloque del esquema y, si lo eligió, por qué lado salen sus cables. */
@@ -137,6 +139,10 @@ export interface WireInstance {
   label: string | null;
   /** Conductor de un cable comprado (`CableInstance`): su tipo de cable es el del cable. */
   cable_instance_id: number | null;
+  /** Consumo de lo que alimenta (A), para la caída de tensión; sin cargar, en un splice lo deduce el núcleo. */
+  load_current_a: number | null;
+  /** Límite de la protección que lo alimenta (canal del PDM, fusible; A); sin cargar, vale el de su circuito. */
+  protection_current_a: number | null;
   end_a: WireEnd;
   end_b: WireEnd;
 }

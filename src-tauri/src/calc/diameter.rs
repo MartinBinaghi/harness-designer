@@ -154,6 +154,8 @@ mod tests {
             manual_length_mm: None,
             label: None,
             cable_instance_id: None,
+            load_current_a: None,
+            protection_current_a: None,
             end_a: cavity_end(1),
             end_b: cavity_end(2),
         });

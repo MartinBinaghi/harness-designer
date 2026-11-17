@@ -277,6 +277,8 @@ pub fn sample_project(library: &Library) -> ProjectData {
                 cable_instance_id: cable,
                 end_a,
                 end_b,
+                load_current_a: None,
+                protection_current_a: None,
             },
         )
         .collect();

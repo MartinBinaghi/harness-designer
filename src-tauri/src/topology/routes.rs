@@ -202,6 +202,8 @@ mod tests {
             manual_length_mm: None,
             label: None,
             cable_instance_id: None,
+            load_current_a: None,
+            protection_current_a: None,
             end_a: wire_end("cavity", Some(100), None, None, None),
             end_b: wire_end("cavity", Some(101), None, None, None),
         }];
@@ -233,6 +235,8 @@ mod tests {
             manual_length_mm: None,
             label: None,
             cable_instance_id: None,
+            load_current_a: None,
+            protection_current_a: None,
             end_a: wire_end("cavity", Some(100), None, None, None),
             end_b: wire_end("component", None, None, None, Some(1)),
         }];
@@ -264,6 +268,8 @@ mod tests {
             manual_length_mm: None,
             label: None,
             cable_instance_id: None,
+            load_current_a: None,
+            protection_current_a: None,
             end_a: wire_end("cavity", Some(100), None, None, None),
             end_b: wire_end("component", None, None, None, Some(1)),
         }];

@@ -214,13 +214,14 @@ fn write_parts(tx: &Transaction, library: &Library, only: Option<&HashSet<i64>>)
             continue;
         }
         tx.execute(
-            "INSERT INTO contact_defs (part_id, gender, contact_size, gauge_min, gauge_max) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO contact_defs (part_id, gender, contact_size, gauge_min, gauge_max, max_current_a) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 contact_def.part_id,
                 contact_def.gender,
                 contact_def.contact_size,
                 contact_def.gauge_min,
                 contact_def.gauge_max,
+                contact_def.max_current_a,
             ],
         )?;
     }
@@ -240,7 +241,7 @@ fn write_parts(tx: &Transaction, library: &Library, only: Option<&HashSet<i64>>)
             continue;
         }
         tx.execute(
-            "INSERT INTO wire_defs (part_id, gauge, spec, color, outer_diameter_mm, default_cut_margin_pct) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO wire_defs (part_id, gauge, spec, color, outer_diameter_mm, default_cut_margin_pct, max_current_a, resistance_mohm_per_m) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 wire_def.part_id,
                 wire_def.gauge,
@@ -248,6 +249,8 @@ fn write_parts(tx: &Transaction, library: &Library, only: Option<&HashSet<i64>>)
                 wire_def.color,
                 wire_def.outer_diameter_mm,
                 wire_def.default_cut_margin_pct,
+                wire_def.max_current_a,
+                wire_def.resistance_mohm_per_m,
             ],
         )?;
         for conductor in &wire_def.conductors {
@@ -490,6 +493,8 @@ mod tests {
                 color: None,
                 outer_diameter_mm: 2.3,
                 default_cut_margin_pct: Some(15.0),
+                max_current_a: None,
+                resistance_mohm_per_m: None,
                 conductors: vec![
                     WireDefConductor {
                         id: 1,

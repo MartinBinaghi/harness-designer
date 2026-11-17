@@ -76,6 +76,8 @@ export interface ContactDef {
   contact_size: string;
   gauge_min: string | null;
   gauge_max: string | null;
+  /** Corriente máxima continua (A), del fabricante. */
+  max_current_a: number | null;
 }
 
 export interface SealPlugDef {
@@ -98,6 +100,10 @@ export interface WireDef {
   color: string | null;
   outer_diameter_mm: number;
   default_cut_margin_pct: number | null;
+  /** Por conductor: corriente máxima continua en un mazo (A). */
+  max_current_a: number | null;
+  /** Por conductor: resistencia a 20 °C (mΩ por metro). */
+  resistance_mohm_per_m: number | null;
   conductors: WireDefConductor[];
 }
 

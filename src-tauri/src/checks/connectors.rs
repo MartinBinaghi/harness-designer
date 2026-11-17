@@ -253,6 +253,7 @@ mod tests {
             contact_size: "20".into(),
             gauge_min: Some("24 AWG".into()),
             gauge_max: Some("20 AWG".into()),
+            max_current_a: None,
         }];
         assert!(check_gauge_within_contact_range(&data, &library).is_empty());
     }
@@ -271,6 +272,7 @@ mod tests {
             contact_size: "12".into(),
             gauge_min: Some("14 AWG".into()), // mucho más grueso que el cable real
             gauge_max: Some("10 AWG".into()),
+            max_current_a: None,
         }];
         let findings = check_gauge_within_contact_range(&data, &library);
         // El cable llega a X1 y a X2, los dos con ese contacto: un error en cada punta.

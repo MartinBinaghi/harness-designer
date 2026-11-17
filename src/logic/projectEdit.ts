@@ -38,6 +38,27 @@ export function newSegment(id: number, a: number, b: number, lengthMm = DEFAULT_
   return { id, node_a_id: a, node_b_id: b, length_mm: lengthMm, twist_pitch_mm: null, covering_library_part_id: null, leaves_backward: false };
 }
 
+/** Cable nuevo del tipo `partId` entre dos extremos, con el próximo ID y sin nada más cargado. */
+export function newWire(project: ProjectData, partId: number, endA: WireEnd = BLANK_END, endB: WireEnd = BLANK_END): WireInstance {
+  const id = nextId(project.wire_instances.map((w) => w.id));
+  return {
+    id,
+    short_id: `W${String(id).padStart(3, "0")}`,
+    library_part_id: partId,
+    color: null,
+    signal_type_id: null,
+    specific_name: null,
+    manual_cut_margin_pct: null,
+    manual_length_mm: null,
+    label: null,
+    cable_instance_id: null,
+    load_current_a: null,
+    protection_current_a: null,
+    end_a: endA,
+    end_b: endB,
+  };
+}
+
 /** ¿Están `a` y `b` en la misma rama del árbol (unidos por segmentos)? */
 function connected(project: ProjectData, a: number, b: number): boolean {
   const seen = new Set([a]);
@@ -298,22 +319,8 @@ export function addWire(project: ProjectData, library: Library, gauges: GaugeFac
   const byGauge = [...library.wire_defs].sort((a, b) => (mm2(a.part_id) ?? 0) - (mm2(b.part_id) ?? 0)).map((d) => d.part_id);
   const partId = [mostUsed, ...byGauge].find((id) => id !== undefined && fits(id)) ?? mostUsed ?? library.wire_defs[0]?.part_id;
   if (partId === undefined) return "Add at least one wire type in Library → Wires first.";
-  const id = nextId(project.wire_instances.map((w) => w.id));
-  const wire: WireInstance = {
-    id,
-    short_id: `W${String(id).padStart(3, "0")}`,
-    library_part_id: partId,
-    color: null,
-    signal_type_id: null,
-    specific_name: null,
-    manual_cut_margin_pct: null,
-    manual_length_mm: null,
-    label: null,
-    cable_instance_id: null,
-    end_a: endA,
-    end_b: endB,
-  };
-  return { project: { ...project, wire_instances: [...project.wire_instances, wire] }, wireId: id };
+  const wire = newWire(project, partId, endA, endB);
+  return { project: { ...project, wire_instances: [...project.wire_instances, wire] }, wireId: wire.id };
 }
 
 /** Rangos (mm²) de los contactos que puede llevar la vía de un extremo, según el núcleo; null si no aplica. */

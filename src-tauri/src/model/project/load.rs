@@ -27,7 +27,7 @@ pub(super) fn wire_end(
 
 pub fn load(conn: &Connection) -> Result<ProjectData> {
     let project = conn.query_row(
-        "SELECT name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm, schematic_layout
+        "SELECT name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm, schematic_layout, voltage_drop_limit_v
          FROM project WHERE id = 1",
         [],
         |row| {
@@ -50,6 +50,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 cut_round_mm: row.get(13)?,
                 schematic_layout: serde_json::from_str(&row.get::<_, String>(14)?)
                     .map_err(|e| rusqlite::Error::FromSqlConversionFailure(14, rusqlite::types::Type::Text, Box::new(e)))?,
+                voltage_drop_limit_v: row.get(15)?,
             })
         },
     )?;
@@ -184,7 +185,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut wire_instances_stmt = conn.prepare(
-        "SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id,
+        "SELECT id, short_id, library_part_id, color, signal_type_id, specific_name, manual_cut_margin_pct, manual_length_mm, label, cable_instance_id, load_current_a, protection_current_a,
                 end_a_kind, end_a_cavity_assignment_id, end_a_splice_id, end_a_ground_point_id, end_a_component_instance_id, end_a_node_id,
                 end_b_kind, end_b_cavity_assignment_id, end_b_splice_id, end_b_ground_point_id, end_b_component_instance_id, end_b_node_id
          FROM wire_instances",
@@ -202,21 +203,23 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                 manual_length_mm: row.get(7)?,
                 label: row.get(8)?,
                 cable_instance_id: row.get(9)?,
+                load_current_a: row.get(10)?,
+                protection_current_a: row.get(11)?,
                 end_a: wire_end(
-                    row.get(10)?,
-                    row.get(11)?,
                     row.get(12)?,
                     row.get(13)?,
                     row.get(14)?,
                     row.get(15)?,
-                ),
-                end_b: wire_end(
                     row.get(16)?,
                     row.get(17)?,
+                ),
+                end_b: wire_end(
                     row.get(18)?,
                     row.get(19)?,
                     row.get(20)?,
                     row.get(21)?,
+                    row.get(22)?,
+                    row.get(23)?,
                 ),
             })
         })?

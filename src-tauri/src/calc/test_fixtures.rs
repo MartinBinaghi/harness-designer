@@ -17,6 +17,8 @@ pub(super) fn wire_def(
         color: None,
         outer_diameter_mm,
         default_cut_margin_pct,
+        max_current_a: None,
+        resistance_mohm_per_m: None,
         conductors: vec![],
     }
 }
@@ -90,6 +92,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
             spare_pcts: Default::default(),
             cut_round_mm: None,
             schematic_layout: Default::default(),
+            voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
         },
         nodes: vec![
             Node {
@@ -176,6 +179,8 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
             manual_length_mm: None,
             label: None,
             cable_instance_id: None,
+            load_current_a: None,
+            protection_current_a: None,
             end_a: cavity_end(1),
             end_b: cavity_end(2),
         }],

@@ -105,6 +105,7 @@ Cada tipo de parte extiende `Part`:
 **ContactDef**
 - género, tamaño de contacto
 - rango de calibre (mín./máx.) — se usa para validar la sección total cuando hay varios cables en un mismo contacto
+- **corriente máxima** (A, opcional; ver 5.5)
 
 **SealPlugDef** (tapón de cavidad)
 - tamaño de contacto que cubre
@@ -113,6 +114,7 @@ Cada tipo de parte extiende `Part`:
 - calibre (mm² o AWG), norma/tipo (ej. M22759/32), color
 - **diámetro exterior** (indispensable para diámetros y trenzado)
 - margen de corte por defecto de este tipo de cable (opcional; ej. ethernet con más margen)
+- **corriente máxima en un mazo** (A, por conductor) y **resistencia del conductor** (mΩ/m a 20 °C), opcionales (ver 5.5)
 - conductores: 1 para cable simple; para multiconductor comprado (par trenzado, apantallado), lista de conductores internos + malla/drenaje. En la biblioteca se carga la cantidad de conductores; el diámetro exterior es el del cable entero
 
 **SpliceDef**
@@ -141,6 +143,7 @@ Cada tipo de parte extiende `Part`:
 - **conector principal**: donde va la etiqueta del arnés (nombre + código)
 - configuración: markup, margen de corte global (por defecto 10%), paso de trenzado por defecto, factor de llenado, **repuesto por categoría de parte** (%) y costo de materiales **sobre lo usado o sobre lo comprado**. Se edita en el Inspector haciendo clic en el nombre del arnés en el árbol; un proyecto nuevo arranca con los valores por defecto
 - mano de obra: horas estimadas × valor hora
+- **caída de tensión máxima** desde la fuente hasta cada carga (V; 0,5 por defecto, ver 5.5)
 
 
 **Node** — punto de la topología
@@ -182,6 +185,7 @@ Cada tipo de parte extiende `Part`:
   - **tipo de señal** (SignalType): define el color sugerido
   - **nombre específico** (ej. "Damper FL", "Brake Press Rear")
 - margen de corte manual (opcional)
+- **consumo** (A) de lo que alimenta y **límite de la protección** (A) que lo alimenta (canal del PDM, fusible), los dos opcionales (ver 5.5)
 - **largo de corte a mano** (opcional): manda sobre el calculado, sin margen y aunque el cable no tenga recorrido (ej. un destino que no está dibujado en la topología); en las hojas se marca "by hand"
 - etiqueta individual (opcional)
 
@@ -210,6 +214,7 @@ Cada tipo de parte extiende `Part`:
 - **Largo de corte** de cada cable (ver 5.1).
 - **Diámetro estimado del bundle** por segmento.
 - **BOM, lista de corte, costo total, lista de etiquetas.**
+- **Carga eléctrica** (5.5): corriente de cada cable y de cada contacto, protección de cada circuito y caída de tensión.
 
 ---
 
@@ -285,6 +290,17 @@ Si el usuario no lo usa, trenza como prefiera. Si lo usa, el programa recomienda
 - Todo en **USD**, sin conversión a pesos.
 - Detalle en la sección 8.
 
+### 5.5 Carga eléctrica
+
+Decidido con Martin el 2026-11-16 (fuentes en la bitácora). Lógica en `calc/electrical.rs`.
+
+- **Dos corrientes por cable**, cargadas a mano y opcionales: el **consumo** de lo que alimenta (para la caída de tensión) y el **límite de la protección** que lo alimenta (PDM o fusible: el cable y el contacto lo tienen que aguantar).
+- **Splice:** si un solo cable queda sin consumo, toma la suma de los otros y es el que alimenta (sigue por splices encadenados). Con todos cargados, lo alimenta el grupo de cables que lleva lo mismo que el resto: uno solo, o varios **en paralelo** (una salida del PDM en dos pines; el reparto entre ellos se carga a mano, en partes iguales si son iguales). Si cierran varios grupos, el de menos cables y, con empate, el que tiene la protección cargada a mano. Lo que no se puede saber se avisa y no se adivina.
+- **Protección:** un cable sin la suya toma la mayor de su circuito (cables unidos por splices o por compartir una vía; las masas y los componentes no unen circuitos).
+- **Caída de tensión** = consumo × resistencia × largo de corte; en cada carga, la suma de los cables desde la fuente (con varios en paralelo, el peor camino). Límite por arnés, **0,5 V por defecto** (FAA AC 43.13-1B para 14 V continuo).
+- **Contacto:** su corriente es la suma de los cables de su vía; su protección, la mayor.
+- **Valores de la base:** M22759/32 de la FAA AC 43.13-1B, tabla 11-9 (en mazo, conservador); contactos de las hojas del fabricante. Sin dato confiable, quedan vacíos y Checks lo avisa.
+
 ---
 
 ## 6. Nomenclatura
@@ -329,10 +345,10 @@ El orden no es obligatorio: un cable hacia un conector inexistente queda marcado
 - **Biblioteca**: una pestaña por tipo de parte y una para dispositivos. Conectores: lista compacta (buscador, filtro por serie y por datos faltantes) + ficha del elegido (parte, contraparte en los dos sentidos, terminación, vías con la cara dibujada, imágenes, dónde se usa en el proyecto abierto). Generador de cavidades ("1 a 35, contacto tamaño 22") con edición individual. Carga de imágenes de vistas. Dispositivos: lista + ficha; cada conector del dispositivo (A, B…) con su carcasa del arnés y **todas sus vías listadas** para escribir nombre y función, la cara dibujada con el nombre de cada pin (clic en una vía va a su fila) y **pegado de la tabla del cliente** con elección de columnas y aviso de las filas que no corresponden a ninguna vía.
 - **Topología**: tabla de segmentos (segmento, nodo desde, nodo hasta, largo, paso de trenzado, coberturas) + vista de árbol en texto (ramas indentadas). Rechaza lazos.
 - **Conectores** (carga principal del arnés, conector por conector): lista de conectores a la izquierda (pines usados, pendientes) y, del elegido, sus datos (ID, nombre, pieza o conector de dispositivo, nodo, estado, terminación, interconexión) y su **pinout editable**: una fila por vía — Función · Categoría (color sugerido) · Goes to · Tipo de cable · Color · Largo. Escribir en un pin vacío crea el cable; "Goes to" acepta `X4:2`, `SP1`, `G1` o el nombre de pin de un dispositivo (`PDM30 OUT11`), con una lista propia que muestra los destinos que contienen lo escrito en cualquier parte, por código o por nombre (`X3:r` o `motor:r` → `X3 · MOTOR:r`; la vía con la misma mayúscula primero); los splices y masas también por su nombre (`SP1 · Bobinas pin 2`: se busca escribiendo parte del nombre). **Un pin puede tener varios cables** (sub-filas). **Duplicate** copia el conector elegido con su pinout (bobinas, inyectores iguales): los cables a splices, masas y componentes siguen ahí; los que van a un pin de otro conector quedan sin destino, para completarlos. **"↓ next"** en un cable copia la fila tal cual a la próxima vía libre del mismo conector (función, categoría, tipo de cable, color y destino, salvo que el destino sea una vía), para cargar rápido cables iguales y corregir a mano lo que cambia ("INY Cil 1" → "INY Cil 2"; subir el número solo adivinaba mal). Un cable es uno solo: aparece en el pinout de sus dos puntas. El largo sale del recorrido ("auto") o se pone a mano desde el Inspector ("manual"). **Paste pinout…** pega la tabla de un conector desde un Excel o un PDF (una fila por vía): se elige qué es cada columna — Pin, Función, Categoría, Goes to, Tipo de cable, Color o se ignora; con encabezado se reconocen solas —, la vista previa dice qué vía toma cada fila ("new wire", "already wired", lo que no se reconoció) y cada fila hace lo mismo que escribirla a mano (la categoría trae su color sugerido; una celda vacía o "n/c" no cambia nada). Las vías que ya tienen cable no se tocan, salvo con "Replace what's already there" (cambia su primer cable). Por vía también se carga la referencia externa (en conectores de interconexión) y se ve el nombre de pin si es el conector de un dispositivo. **Hoja de pinout con el mismo formato que las hojas actuales del taller** (pestaña Print): hoja apaisada, una tabla con un bloque por conector — Nombre · Pin · Función · Termina en (calculado) · Conector · Vista delantera (la vista lateral queda para más adelante) —, "n/c" en las vías sin cable, y "falta pinout y conector" en los pendientes (debajo del dibujo, si la pieza ya está elegida). Sin huecos entre conectores: cada uno arranca a continuación del anterior y usa lo que queda de la hoja (pasa a la siguiente solo si ahí no entran ni 8 renglones); el que no entra (el de motor, 61 vías) se parte en tramos, cada continuación en hoja nueva, y cada tramo repite nombre ("X1 (cont.)"), conector y vista, centrados. Los conectores de **25 vías o más** (ECU, motor, interconexión), cuyo dibujo en la columna no se lee, llevan además **al final de todo una hoja con sus vistas en grande**: delantera (lado de acople) y trasera (lado cables), una al lado de la otra (o una debajo de la otra si el conector es apaisado), con las vías con cable resaltadas; en su bloque, la nota "vistas en grande: al final". Calibre, color y largo van en la lista de corte.
-- **Cables (wire list / TO-FROM)**: lista global (la carga principal es por conector, ver Conectores); tabla editable estilo planilla (ID, desde, hasta, tipo de señal, nombre, WireDef, color, recorrido calculado, largo con trenzado, margen, largo de corte). Extremos por texto con autocompletado: `X1:12`, `SP3`, `G1`, o por nombre de pin de dispositivo (`PDM OUT11`).
+- **Cables (wire list / TO-FROM)**: lista global (la carga principal es por conector, ver Conectores); tabla editable estilo planilla (ID, desde, hasta, tipo de señal, nombre, WireDef, color, recorrido calculado, largo con trenzado, margen, largo de corte, **consumo, protección y caída de tensión**; vacío muestra en gris lo deducido: "4.2 (SP1)", "15.0 (circuit)"). Extremos por texto con autocompletado: `X1:12`, `SP3`, `G1`, o por nombre de pin de dispositivo (`PDM OUT11`).
 - **Splices**: lista con tipo, ubicación y cables que une. Incluye masas y componentes. Acá se crean (con el próximo ID y la primera parte de la biblioteca de su tipo) y se borran (sus cables quedan con ese extremo vacío); el resto se edita en el Inspector.
 - **Inspector**: muestra **y edita** lo seleccionado (el arnés, nodo, segmento, conector, masa, splice, componente, cable) con los mismos campos que las tablas; como edita el mismo proyecto, el resto de las vistas se actualiza solo. Las referencias externas de las vías se editan en la pantalla de Conectores.
-  - cable seleccionado → recorrido por segmentos con sus largos, largo con trenzado + margen = largo de corte, **largo a mano**, grupo de trenzado.
+  - cable seleccionado → recorrido por segmentos con sus largos, largo con trenzado + margen = largo de corte, **largo a mano**, grupo de trenzado, **consumo, protección, capacidad de su tipo de cable y caída** (la suya y desde la fuente, contra el límite del arnés).
   - pin seleccionado → función, cable(s), extremo opuesto, recorrido por segmentos, **net completa**, referencia externa si sale del arnés. Todo clickeable para navegar.
   - segmento seleccionado → cables que pasan, largo, diámetro estimado (bundle y final con coberturas) y termo sugerido.
   - al final, **los errores y advertencias de Checks de lo seleccionado** (conector, segmento, splice, masa, cable, nodo).
@@ -466,6 +482,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Splice con más cables o calibre fuera de lo que admite su SpliceDef.
 - Cables sin extremo o sin recorrido posible.
 - Pines duplicados.
+- Consumo mayor que la corriente máxima del cable o del contacto (5.5).
 - Intento de crear un lazo en la topología (se rechaza).
 
 **Advertencias**
@@ -479,6 +496,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Arnés con conectores pero sin **conector principal** elegido (las hojas de armado no saben dónde arranca ni miden distancias).
 - Ningún termo, boot o molde de la biblioteca sirve para un segmento, conector o breakout; boot recto de breakout sin tramos elegidos para su punta chica.
 - Conector con termo con adhesivo sin diámetro trasero cargado en el ConnectorDef.
+- **Carga eléctrica** (5.5): protección mayor que la capacidad del cable o del contacto; caída de tensión en una carga mayor que el límite del arnés; corrientes que no cierran en un splice, o splice donde no se sabe qué cables lo alimentan; parte de la biblioteca sin corriente máxima o resistencia cuando hace falta para chequear (un aviso por parte).
 
 ---
 
@@ -518,6 +536,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 | Concéntrico | Opcional, con y sin fillers. |
 | Precios desactualizados | Sin umbral automático por días: se muestra la fecha del precio y Martin decide cuándo recotizar. |
 | Revisiones | Dentro del archivo del arnés (copia entera por revisión, formato 6), con comparación contra una revisión, el arnés abierto u otro archivo; solo en pantalla por ahora. Elegido por Martin el 2026-11-12 sobre "un archivo por revisión". |
+| Carga eléctrica | Consumo y protección por cable, la suma en los splices la hace el programa, capacidades por defecto investigadas (FAA AC 43.13-1B y hojas de fabricante), caída máxima 0,5 V configurable por arnés. Decidido con Martin el 2026-11-16. |
 | Calibre mínimo de salida de un splice | Suma de la sección (mm²) de los cables que entran, redondeada al calibre más fino del catálogo de cables que la cubre (no una fórmula AWG abstracta: solo calibres que existen en la biblioteca). |
 
 ---

@@ -550,6 +550,7 @@ fn calc_results(state: State<AppState>) -> Result<CalcResults, String> {
         findings: checks::run_checks(project.get(), library.get()),
         destinations: topology::pin_destinations(project.get()),
         gauges: contacts::gauge_facts(library.get()),
+        electrical: calc::electrical_report(project.get(), library.get()),
     });
     *cached = Some((key, results.clone()));
     Ok(results)

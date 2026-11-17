@@ -34,6 +34,12 @@
   color: var(--text-muted);
 }
 
+/* Un valor calculado que pasa su límite (caída de tensión, corriente). */
+.over-limit {
+  color: var(--warning);
+  font-weight: 600;
+}
+
 .swatch {
   display: inline-block;
   width: 1rem;

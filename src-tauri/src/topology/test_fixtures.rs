@@ -40,6 +40,7 @@ pub(super) fn empty_project() -> Project {
         spare_pcts: Default::default(),
         cut_round_mm: None,
         schematic_layout: Default::default(),
+        voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
     }
 }
 
@@ -224,6 +225,8 @@ pub(super) fn wire(id: i64, end_a: WireEnd, end_b: WireEnd) -> WireInstance {
         cable_instance_id: None,
         end_a,
         end_b,
+        load_current_a: None,
+        protection_current_a: None,
     }
 }
 

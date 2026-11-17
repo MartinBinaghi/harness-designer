@@ -217,6 +217,7 @@ mod tests {
                 contact_size: "20".into(),
                 gauge_min: None,
                 gauge_max: None,
+                max_current_a: None,
             });
         library.parts = vec![
             part(10, "connector", 1.0, Some(5.0)),
@@ -317,6 +318,7 @@ mod tests {
             spare_pcts: Default::default(),
             cut_round_mm: None,
             schematic_layout: Default::default(),
+            voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
         };
         let bom = vec![BomRow {
             library_part_id: 1,
