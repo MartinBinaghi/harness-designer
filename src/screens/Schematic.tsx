@@ -18,6 +18,7 @@ import {
   type EdgeProps,
   type NodeChange,
   type Connection,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { GaugeFacts } from "../model/calc";
@@ -181,9 +182,20 @@ export default function Schematic({ project, setProject, library, selection, onS
 
   const [search, setSearch] = useState("");
   const [signalType, setSignalType] = useState<number | null>(null);
-  const keep = useMemo(() => (project ? matchWires(project, library, search, signalType) : null), [project, library, search, signalType]);
+  // Color elegido en la leyenda: un filtro aparte del texto, para poder pasar de un color a otro con un clic.
+  const [color, setColor] = useState<string | null>(null);
+  const keep = useMemo(() => (project ? matchWires(project, library, search, signalType, color) : null), [project, library, search, signalType, color]);
   const model = useMemo(() => (project ? buildSchematic(project, library, showAllPins, keep) : null), [project, library, showAllPins, keep]);
   const [nodes, setNodes] = useState<FlowNode<BlockData>[]>([]);
+
+  // Al cambiar el filtro, la vista se ajusta a lo que queda (si no, unos pocos cables quedaban chiquitos en una
+  // esquina, con el zoom del esquema completo). Después de que se dibujan los bloques nuevos, como en el diagrama;
+  // sin agrandar más que el tamaño real, para que pocos bloques no queden gigantes.
+  const [flow, setFlow] = useState<ReactFlowInstance<FlowNode<BlockData>, Edge<WireData>> | null>(null);
+  useEffect(() => {
+    const t = window.setTimeout(() => void flow?.fitView({ duration: 200, maxZoom: 1 }), 80);
+    return () => window.clearTimeout(t);
+  }, [keep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!notice) return;
@@ -277,8 +289,13 @@ export default function Schematic({ project, setProject, library, selection, onS
     });
   }, [model, sides, selection, netWires, dragging, focus, focusing]);
 
-  // Leyenda: los colores de los cables a la vista, con sus tipos de señal y cuántos son.
-  const legend = useMemo(() => (project && model ? schematicLegend(project, library, model.links) : []), [project, model, library]);
+  // Leyenda: los colores de los cables que deja el resto del filtro (texto y tipo de señal), con sus tipos de
+  // señal y cuántos son. Con un color elegido siguen todos en la lista, para cambiar a otro sin borrar nada.
+  const legend = useMemo(() => {
+    if (!project || !model) return [];
+    const links = color === null ? model.links : buildSchematic(project, library, false, matchWires(project, library, search, signalType)).links;
+    return schematicLegend(project, library, links);
+  }, [project, model, library, color, search, signalType]);
 
   // Lado de salida elegido a mano: se guarda como un arrastre (ver saveLayout).
   const cycleSide = useRef((_key: string) => {});
@@ -337,6 +354,12 @@ export default function Schematic({ project, setProject, library, selection, onS
             {t.name}
           </button>
         ))}
+        {color !== null && (
+          <button type="button" className="filter-chip active sc-color-chip" onClick={() => setColor(null)} title="Show all colors again">
+            <span className="sc-legend-swatch" style={{ background: swatchBackground(color || null) }} />
+            {color ? colorWord(color) : "no color"} ×
+          </button>
+        )}
         {keep && <span className="hint" style={{ margin: 0 }}>{model.links.length} of {project.wire_instances.length} wires</span>}
         <label>
           <input type="checkbox" checked={showAllPins} disabled={!!keep} onChange={(e) => setShowAllPins(e.currentTarget.checked)} /> Show unused pins
@@ -374,6 +397,7 @@ export default function Schematic({ project, setProject, library, selection, onS
             elementsSelectable={false}
             zoomOnDoubleClick={false}
             fitView
+            onInit={setFlow}
             proOptions={{ hideAttribution: true }}
             minZoom={0.1}
           >
@@ -383,10 +407,17 @@ export default function Schematic({ project, setProject, library, selection, onS
               <Panel position="bottom-right">
                 <details className="sc-legend" open>
                   <summary>Colors</summary>
-                  {legend.map(({ color, count, types }) => (
-                    <button key={color} type="button" onClick={() => setSearch(color)} title={color ? `Show only the ${colorWord(color)} wires` : undefined} disabled={!color}>
-                      <span className="sc-legend-swatch" style={{ background: swatchBackground(color || null) }} />
-                      <span>{color ? colorWord(color) : "no color"}</span>
+                  {legend.map(({ color: c, count, types }) => (
+                    <button
+                      key={c}
+                      type="button"
+                      className={c === color ? "active" : undefined}
+                      aria-pressed={c === color}
+                      onClick={() => setColor(c === color ? null : c)}
+                      title={c === color ? "Show all colors again" : `Show only the ${c ? colorWord(c) : "uncolored"} wires`}
+                    >
+                      <span className="sc-legend-swatch" style={{ background: swatchBackground(c || null) }} />
+                      <span>{c ? colorWord(c) : "no color"}</span>
                       <span className="sc-legend-types">{types.join(", ")}</span>
                       <span className="sc-legend-count">{count}</span>
                     </button>

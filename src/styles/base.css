@@ -20,6 +20,14 @@ html, body, #root {
   margin: 0;
 }
 
+/* Con un touchpad de precisión (la notebook), WebView2 hace "rebotar" lo que se desplaza al pasarse del
+   borde (la ventana entera o un panel, como la tabla del pinout): el contenido se corre y deja franjas en
+   blanco hasta volver. Una app de escritorio no rebota. Además, llegar al final de un panel no sigue
+   desplazando el de afuera. */
+* {
+  overscroll-behavior: none;
+}
+
 :root {
   --bg: #f4f5f7;
   --surface: #ffffff;
