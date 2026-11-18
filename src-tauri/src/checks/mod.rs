@@ -20,8 +20,8 @@ use coverings::{
     check_t_mold_assigned_does_not_fit,
 };
 use electrical::{
-    check_contact_current, check_missing_electrical_data, check_splice_currents,
-    check_voltage_drop, check_wire_current,
+    check_contact_current, check_missing_electrical_data, check_pin_currents,
+    check_splice_currents, check_voltage_drop, check_wire_current,
 };
 use loops::check_topology_has_no_loops;
 use names::{check_missing_signal_types, check_mistyped_names, check_wires_without_name};
@@ -163,6 +163,7 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
         ("Contact current", check_contact_current(data, library)),
         ("Voltage drop", check_voltage_drop(data, library)),
         ("Currents at splices", check_splice_currents(data, library)),
+        ("Currents at shared pins", check_pin_currents(data, library)),
         (
             "Electrical data missing",
             check_missing_electrical_data(data, library),

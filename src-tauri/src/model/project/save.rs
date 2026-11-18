@@ -93,9 +93,9 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
         )?;
         for cav in &c.cavities {
             tx.execute(
-                "INSERT INTO cavity_assignments (id, connector_instance_id, cavity_id, external_reference)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![cav.id, c.id, cav.cavity_id, cav.external_reference],
+                "INSERT INTO cavity_assignments (id, connector_instance_id, cavity_id, external_reference, is_source)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![cav.id, c.id, cav.cavity_id, cav.external_reference, cav.is_source as i64],
             )?;
         }
     }

@@ -159,6 +159,7 @@ export function compareProjects(before: ProjectData, after: ProjectData, library
         const out = fields([
           [`Pin ${pin}`, cx ? pinContents(before, library, cx.id) : "(no such pin)", cy ? pinContents(after, library, cy.id) : "(no such pin)"],
           [`Pin ${pin} · external reference`, cx?.external_reference, cy?.external_reference],
+          [`Pin ${pin} · source`, cx?.is_source ? "source" : null, cy?.is_source ? "source" : null],
         ]);
         return out;
       });

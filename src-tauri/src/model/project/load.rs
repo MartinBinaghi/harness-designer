@@ -122,7 +122,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
         .collect::<Result<Vec<_>>>()?;
     for connector_instance in &mut connector_instances {
         let mut cavities_stmt = conn.prepare(
-            "SELECT id, cavity_id, external_reference FROM cavity_assignments WHERE connector_instance_id = ?1 ORDER BY rowid",
+            "SELECT id, cavity_id, external_reference, is_source FROM cavity_assignments WHERE connector_instance_id = ?1 ORDER BY rowid",
         )?;
         connector_instance.cavities = cavities_stmt
             .query_map(params![connector_instance.id], |row| {
@@ -130,6 +130,7 @@ pub fn load(conn: &Connection) -> Result<ProjectData> {
                     id: row.get(0)?,
                     cavity_id: row.get(1)?,
                     external_reference: row.get(2)?,
+                    is_source: row.get::<_, i64>(3)? != 0,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;

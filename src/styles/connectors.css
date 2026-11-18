@@ -245,6 +245,11 @@ table.cn-pinout {
   color: var(--text-muted);
 }
 
+.cn-pin-source {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .cn-col-cat {
   width: 6rem;
 }

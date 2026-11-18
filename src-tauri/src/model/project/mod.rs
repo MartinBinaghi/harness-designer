@@ -106,6 +106,10 @@ pub struct CavityAssignment {
     pub id: i64,
     pub cavity_id: String,
     pub external_reference: Option<String>,
+    /// La fuente de su circuito: la corriente entra al arnés por acá (salida del
+    /// PDM, pin que trae el 12V de otro arnés), o un retorno vuelve por acá. Con
+    /// ella se sabe qué cables alimentan cada splice (ver `calc::electrical`).
+    pub is_source: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

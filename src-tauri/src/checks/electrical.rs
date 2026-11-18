@@ -150,47 +150,89 @@ pub(super) fn check_splice_currents(data: &ProjectData, library: &Library) -> Ve
             .find(|w| w.id == id)
             .map_or_else(String::new, |w| w.short_id.clone())
     };
+    let wire_list = |ids: &[i64]| {
+        ids.iter()
+            .map(|&id| wire_name(id))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
     report
         .splice_issues
         .iter()
-        .map(|issue| match issue {
-            SpliceIssue::MissingLoads {
-                splice_id,
-                wire_ids,
-            } => {
-                let wires: Vec<String> = wire_ids.iter().map(|&id| wire_name(id)).collect();
+        .map(|issue| {
+            let (splice_id, text) = match issue {
+                SpliceIssue::NoSource { splice_id } => (
+                    *splice_id,
+                    "it has loads set, but no pin of its circuit is marked as the source, so it can't tell which wires feed it; mark the pin the current comes in through, or a return goes back through (Source, in the Inspector of its wire)".to_string(),
+                ),
+                SpliceIssue::SeveralWays { splice_id } => (
+                    *splice_id,
+                    "the current reaches it from more than one side (two source pins, or a loop of wires), so how it splits can't be worked out".to_string(),
+                ),
+                SpliceIssue::MissingLoads { splice_id, wire_ids } => (
+                    *splice_id,
+                    format!(
+                        "{} {} out of it without a load: set what each one feeds draws (the wire feeding the splice then takes the sum)",
+                        wire_list(wire_ids),
+                        if wire_ids.len() == 1 { "goes" } else { "go" }
+                    ),
+                ),
+                SpliceIssue::MissingShare { splice_id, wire_ids } => (
+                    *splice_id,
+                    format!(
+                        "fed in parallel by {} with no share of the current: set the load of each (an equal share if they're the same)",
+                        wire_list(wire_ids)
+                    ),
+                ),
+                SpliceIssue::Unbalanced { splice_id, in_a, out_a } => (
+                    *splice_id,
+                    format!("{in_a:.1} A come in but {out_a:.1} A go out: the currents don't add up"),
+                ),
+            };
+            warning(format!("{}: {text}", splice_name(splice_id)))
+                .at(FindingTarget::Splice { id: splice_id })
+        })
+        .collect()
+}
+
+/// Vías con varios cables (un puente en el contacto) a las que la corriente llega
+/// por un cable sin consumo: lo que consume el equipo de esa vía no se sabe, así
+/// que ese consumo no se deduce y la caída no sigue de largo.
+pub(super) fn check_pin_currents(data: &ProjectData, library: &Library) -> Vec<Finding> {
+    let report = electrical_report(data, library);
+    let wire_name = |id: i64| {
+        data.wire_instances
+            .iter()
+            .find(|w| w.id == id)
+            .map_or_else(String::new, |w| w.short_id.clone())
+    };
+    report
+        .pin_issues
+        .iter()
+        .filter_map(|issue| {
+            let connector = data
+                .connector_instances
+                .iter()
+                .find(|c| c.cavities.iter().any(|cav| cav.id == issue.cavity_assignment_id))?;
+            let pin = connector
+                .cavities
+                .iter()
+                .find(|cav| cav.id == issue.cavity_assignment_id)
+                .map_or("?", |cav| cav.cavity_id.as_str());
+            let wires: Vec<String> = issue.wire_ids.iter().map(|&id| wire_name(id)).collect();
+            let (verb, it) = if wires.len() == 1 {
+                ("brings", "it has")
+            } else {
+                ("bring", "they have")
+            };
+            Some(
                 warning(format!(
-                    "{}: {} wires without load ({}): how the current splits can't be worked out; set their load by hand (an equal share each if they're in parallel)",
-                    splice_name(*splice_id),
-                    wires.len(),
+                    "{}:{pin}: {} {verb} the current into this pin, where it goes on through its other wires, but {it} no load: set it by hand (what this pin's device draws plus what goes on), or the voltage drop stops here",
+                    connector.short_id,
                     wires.join(", ")
                 ))
-                .at(FindingTarget::Splice { id: *splice_id })
-            }
-            SpliceIssue::Unbalanced { splice_id } => {
-                let mut loads: Vec<(f64, String)> = data
-                    .wire_instances
-                    .iter()
-                    .filter(|w| [&w.end_a, &w.end_b].iter().any(|e| e.kind == "splice" && e.splice_id == Some(*splice_id)))
-                    .filter_map(|w| {
-                        let e = report.wires.iter().find(|e| e.wire_id == w.id)?;
-                        Some((e.load_a?, w.short_id.clone()))
-                    })
-                    .collect();
-                loads.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-                let listed: Vec<String> = loads.iter().map(|(a, w)| format!("{w} {a:.1} A")).collect();
-                warning(format!(
-                    "{}: the currents don't add up ({}): no wire, nor group of wires in parallel, carries what the rest do",
-                    splice_name(*splice_id),
-                    listed.join(", ")
-                ))
-                .at(FindingTarget::Splice { id: *splice_id })
-            }
-            SpliceIssue::UnknownFeed { splice_id } => warning(format!(
-                "{}: more than one group of wires carries what the rest do, so it can't tell which feed it; set the protection (PDM channel or fuse) on the ones that do",
-                splice_name(*splice_id)
-            ))
-            .at(FindingTarget::Splice { id: *splice_id }),
+                .at(FindingTarget::Connector { id: connector.id }),
+            )
         })
         .collect()
 }
@@ -206,7 +248,8 @@ pub(super) fn check_missing_electrical_data(data: &ProjectData, library: &Librar
         missing.entry((part, what)).or_insert((0, target)).0 += 1;
     };
     for (w, e) in wires_with_report(data, &report) {
-        let has_current = e.load_a.is_some() || e.protection_a.is_some();
+        let load = e.load_a.filter(|&a| a > 0.0);
+        let has_current = load.is_some() || e.protection_a.is_some();
         if has_current && e.max_current_a.is_none() {
             note(
                 w.library_part_id,
@@ -214,7 +257,7 @@ pub(super) fn check_missing_electrical_data(data: &ProjectData, library: &Librar
                 FindingTarget::Wire { id: w.id },
             );
         }
-        if e.load_a.is_some() && e.resistance_mohm_per_m.is_none() {
+        if load.is_some() && e.resistance_mohm_per_m.is_none() {
             note(
                 w.library_part_id,
                 "resistance",
@@ -262,9 +305,11 @@ mod tests {
     use crate::checks::test_fixtures::*;
     use crate::model::library::ContactDef;
 
-    /// X1:1 -W1 (1 m)- SP1 -W2 (4 m)- X2:1. 22 AWG: 5 A, 53,15 mΩ/m; largos a mano.
+    /// X1:1 (la fuente) -W1 (1 m)- SP1 -W2 (4 m)- X2:1. 22 AWG: 5 A, 53,15 mΩ/m;
+    /// largos a mano.
     fn setup() -> (ProjectData, Library) {
         let mut data = segment_with_one_wire();
+        data.connector_instances[0].cavities[0].is_source = true;
         let template = data.wire_instances[0].clone();
         data.wire_instances = vec![
             WireInstance {
@@ -357,8 +402,57 @@ mod tests {
         assert_eq!(found[0].target, Some(FindingTarget::Splice { id: 1 }));
         assert_eq!(
             found[0].message,
-            "SP#1: the currents don't add up (W001 5.0 A, W002 2.0 A): no wire, nor group of wires in parallel, carries what the rest do"
+            "SP#1: 5.0 A come in but 2.0 A go out: the currents don't add up"
         );
+    }
+
+    #[test]
+    fn a_splice_without_a_source_and_a_load_left_empty_ask_for_them() {
+        let (mut data, library) = setup();
+        data.wire_instances[0].load_current_a = Some(2.0);
+        let found = check_splice_currents(&data, &library);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].target, Some(FindingTarget::Splice { id: 1 }));
+        assert_eq!(
+            found[0].message,
+            "SP#1: W002 goes out of it without a load: set what each one feeds draws (the wire feeding the splice then takes the sum)"
+        );
+        data.connector_instances[0].cavities[0].is_source = false;
+        let found = check_splice_currents(&data, &library);
+        assert!(
+            found[0].message.starts_with(
+                "SP#1: it has loads set, but no pin of its circuit is marked as the source"
+            ),
+            "{}",
+            found[0].message
+        );
+    }
+
+    #[test]
+    fn a_pin_the_current_goes_through_asks_for_the_load_of_its_feed() {
+        // X1:1 (fuente) -W1- X2:1 -W2- X1:3: X2:1 es un puente en el contacto.
+        let (mut data, library) = setup();
+        data.wire_instances.truncate(1);
+        data.wire_instances[0].end_b = end("cavity", Some(2), None, None, None);
+        let mut onward = data.wire_instances[0].clone();
+        onward.id = 2;
+        onward.short_id = "W002".into();
+        onward.end_a = end("cavity", Some(2), None, None, None);
+        onward.end_b = end("cavity", Some(3), None, None, None);
+        onward.load_current_a = Some(2.0);
+        data.wire_instances.push(onward);
+        let found = check_pin_currents(&data, &library);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].target, Some(FindingTarget::Connector { id: 2 }));
+        assert!(
+            found[0]
+                .message
+                .starts_with("X2:1: W001 brings the current into this pin"),
+            "{}",
+            found[0].message
+        );
+        data.wire_instances[0].load_current_a = Some(3.0);
+        assert!(check_pin_currents(&data, &library).is_empty());
     }
 
     #[test]

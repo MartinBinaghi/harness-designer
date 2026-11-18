@@ -150,6 +150,7 @@ pub(super) fn topology_with_connectors_and_a_splice() -> ProjectData {
                 id: 100,
                 cavity_id: "1".into(),
                 external_reference: None,
+                is_source: false,
             }],
         },
         ConnectorInstance {
@@ -169,6 +170,7 @@ pub(super) fn topology_with_connectors_and_a_splice() -> ProjectData {
                 id: 101,
                 cavity_id: "47".into(),
                 external_reference: None,
+                is_source: false,
             }],
         },
         ConnectorInstance {
@@ -188,6 +190,7 @@ pub(super) fn topology_with_connectors_and_a_splice() -> ProjectData {
                 id: 102,
                 cavity_id: "1".into(),
                 external_reference: None,
+                is_source: false,
             }],
         },
     ];

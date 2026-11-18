@@ -88,6 +88,9 @@ CREATE TABLE IF NOT EXISTS cavity_assignments (
     cavity_id                   TEXT NOT NULL,
     -- contacto y tapón: del connector_def de la biblioteca, no por vía
     external_reference          TEXT,
+    -- la vía es la fuente de su circuito (salida del PDM, pin que trae el 12V
+    -- de otro arnés) o donde vuelve un retorno: ver calc/electrical.rs
+    is_source                   INTEGER NOT NULL DEFAULT 0 CHECK (is_source IN (0, 1)),
     UNIQUE (connector_instance_id, cavity_id)
 );
 

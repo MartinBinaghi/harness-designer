@@ -5,7 +5,7 @@ import type { Library } from "../src/model/library.ts";
 import type { ProjectData } from "../src/model/project.ts";
 import type { PinDestinations } from "../src/model/calc.ts";
 
-const cav = (id: number, pin: string, extra = {}) => ({ id, cavity_id: pin, external_reference: null, ...extra });
+const cav = (id: number, pin: string, extra = {}) => ({ id, cavity_id: pin, external_reference: null, is_source: false, ...extra });
 const conn = (id: number, short_id: string, name: string, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name, library_part_id: 1, node_id: id, cavities });
 const end = (kind: string, ids: { cavity?: number; splice?: number; ground?: number }) => ({ kind, cavity_assignment_id: ids.cavity ?? null, splice_id: ids.splice ?? null, ground_point_id: ids.ground ?? null, component_instance_id: null });
 const wire = (id: number, part: number, name: string, a: ReturnType<typeof end>, b: ReturnType<typeof end>) => ({ id, short_id: `W00${id}`, library_part_id: part, color: "red", signal_type_id: null, specific_name: name, label: id === 1 ? "5V REF" : null, end_a: a, end_b: b });

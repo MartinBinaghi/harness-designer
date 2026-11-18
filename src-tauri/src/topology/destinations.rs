@@ -250,6 +250,7 @@ mod tests {
             id: 103,
             cavity_id: "48".into(),
             external_reference: None,
+            is_source: false,
         });
         let sp1 = wire_end("splice", None, Some(1), None, None);
         data.wire_instances = vec![

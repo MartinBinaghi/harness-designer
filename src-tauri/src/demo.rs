@@ -164,6 +164,7 @@ pub fn sample_project() -> ProjectData {
                     id: 100,
                     cavity_id: "1".into(),
                     external_reference: None,
+                    is_source: false,
                 }],
             },
             ConnectorInstance {
@@ -183,6 +184,7 @@ pub fn sample_project() -> ProjectData {
                     id: 101,
                     cavity_id: "1".into(),
                     external_reference: None,
+                    is_source: false,
                 }],
             },
             ConnectorInstance {
@@ -203,11 +205,13 @@ pub fn sample_project() -> ProjectData {
                         id: 104,
                         cavity_id: "1".into(),
                         external_reference: None,
+                        is_source: false,
                     },
                     CavityAssignment {
                         id: 105,
                         cavity_id: "2".into(),
                         external_reference: None,
+                        is_source: false,
                     },
                 ],
             },

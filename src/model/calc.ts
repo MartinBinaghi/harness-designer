@@ -167,16 +167,25 @@ export interface CavityElectrical {
   max_current_a: number | null;
 }
 
-/** Splice donde no se sabe qué cables lo alimentan (Checks lo explica). */
+/** Splice donde no se puede saber cuánto lleva cada cable (Checks lo explica). */
 export type SpliceIssue =
+  | { kind: "no_source"; splice_id: number }
+  | { kind: "several_ways"; splice_id: number }
   | { kind: "missing_loads"; splice_id: number; wire_ids: number[] }
-  | { kind: "unbalanced"; splice_id: number }
-  | { kind: "unknown_feed"; splice_id: number };
+  | { kind: "missing_share"; splice_id: number; wire_ids: number[] }
+  | { kind: "unbalanced"; splice_id: number; in_a: number; out_a: number };
+
+/** Vía con varios cables, después de la fuente, a la que llega la corriente por cables sin consumo. */
+export interface PinIssue {
+  cavity_assignment_id: number;
+  wire_ids: number[];
+}
 
 export interface ElectricalReport {
   wires: WireElectrical[];
   cavities: CavityElectrical[];
   splice_issues: SpliceIssue[];
+  pin_issues: PinIssue[];
 }
 
 /** Todo lo que el núcleo calcula para una revisión (comando `calc_results`). */

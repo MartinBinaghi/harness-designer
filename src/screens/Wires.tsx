@@ -142,7 +142,7 @@ export default function Wires({ project, setProject, library, selection, onSelec
         <thead>
           <tr>
             <th>ID</th><th>Type</th><th>Cable</th><th>Color</th><th>Category</th><th>Name</th><th>From</th><th>To</th>
-            <th title="What the load it feeds draws (A), for the voltage drop. Empty at a splice: the sum of the other wires.">Load A</th>
+            <th title="What the load it feeds draws (A), for the voltage drop. Empty on the wire feeding a splice: what goes out of it (the pin it comes from is marked as the source, in the Inspector).">Load A</th>
             <th title="Limit of the protection feeding it: PDM channel or fuse (A). The wire and its contacts must take it. Empty: the one of its circuit.">Protection A</th>
             <th title={`Voltage drop from the source of the circuit to this wire's end (limit ${limit.toFixed(2)} V, set in the harness data)`}>Drop</th>
             <th></th>

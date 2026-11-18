@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CostReport, ElectricalReport, WireCutLength } from "../model/calc";
 import { swatchBackground } from "../logic/sheets";
-import { changeConnectorPart, nextCableShortId, nextId, patchItem, setLeavesBackward, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
+import { changeConnectorPart, endLabel, nextCableShortId, nextId, patchItem, setCavitySource, setLeavesBackward, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
 import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "../model/project";
 import { partLabel, type Library } from "../model/library";
 import { EndEditor } from "../components/EndEditor";
@@ -146,12 +146,37 @@ function WireLength({ project, wire, report, projectRevision }: { project: Proje
   );
 }
 
-/** Consumo deducido por el núcleo (la suma en un splice), para mostrar en el campo vacío. */
+/**
+ * Las vías del cable que pueden ser la fuente de su circuito: de ahí sale la
+ * corriente (salida del PDM, pin que trae el 12V de otro arnés) o ahí vuelve un
+ * retorno. Con ella el núcleo sabe qué cables alimentan cada splice; las masas
+ * ya cuentan como fuente solas.
+ */
+function WireSource({ project, wire, setProject }: { project: ProjectData; wire: WireInstance; setProject: (p: ProjectData) => void }) {
+  const ends = [wire.end_a, wire.end_b].filter((e) => e.kind === "cavity" && e.cavity_assignment_id !== null);
+  const pins = ends.filter((e, i) => ends.findIndex((x) => x.cavity_assignment_id === e.cavity_assignment_id) === i);
+  if (pins.length === 0) return <span className="hint">Only a pin can be a source (a ground point counts by itself).</span>;
+  const isSource = (id: number) => project.connector_instances.some((c) => c.cavities.some((cav) => cav.id === id && cav.is_source));
+  return (
+    <div className="inspector-length">
+      {pins.map((end) => {
+        const id = end.cavity_assignment_id as number;
+        return (
+          <label key={id} className="inspector-check" title="Where the current of its circuit comes into the harness (a PDM output, a pin bringing 12V from another harness), or where a return goes back out of it (a ground through a connector). Needed to work out the currents at splices.">
+            <input type="checkbox" checked={isSource(id)} onChange={(e) => setProject(setCavitySource(project, id, e.currentTarget.checked))} /> {endLabel(project, end)} is the source (the current comes in, or a return goes back, here)
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Consumo deducido por el núcleo en el splice que alimenta, para mostrar en el campo vacío. */
 function wireLoadHint(project: ProjectData, electrical: ElectricalReport | null, wireId: number): string {
   const e = electrical?.wires.find((x) => x.wire_id === wireId);
   if (e?.load_a == null || e.load_from_splice_id === null) return "what it feeds draws";
   const splice = project.splice_instances.find((s) => s.id === e.load_from_splice_id)?.short_id ?? `SP${e.load_from_splice_id}`;
-  return `${e.load_a.toFixed(1)}: sum at ${splice}`;
+  return `${e.load_a.toFixed(1)}: from ${splice}`;
 }
 
 /** Protección que le llega de su circuito, para mostrar en el campo vacío. */
@@ -651,6 +676,7 @@ export default function Inspector({ project, setProject, library, selection, onS
           <Field label="Protection">
             <NumberInput value={w.protection_current_a} nullable positive unit="A" placeholder={wireProtectionHint(electrical, w.id)} onCommit={(v) => set({ protection_current_a: v })} />
           </Field>
+          <Field label="Source"><WireSource project={project} wire={w} setProject={setProject} /></Field>
           <Field label="Electrical"><WireElectricalInfo project={project} library={library} wireId={w.id} electrical={electrical} /></Field>
           <Field label="Twist group">
             <Select

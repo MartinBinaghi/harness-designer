@@ -23,7 +23,20 @@ export function cavitiesFromDef(project: ProjectData, connectorDefId: number, li
     id: nextCavityId++,
     cavity_id: cav.cavity_id,
     external_reference: null,
+    is_source: false,
   }));
+}
+
+/** Marca (o desmarca) una vía como la fuente de su circuito (ver calc/electrical.rs). */
+export function setCavitySource(project: ProjectData, cavityId: number, isSource: boolean): ProjectData {
+  return {
+    ...project,
+    connector_instances: project.connector_instances.map((c) =>
+      c.cavities.some((cav) => cav.id === cavityId)
+        ? { ...c, cavities: c.cavities.map((cav) => (cav.id === cavityId ? { ...cav, is_source: isSource } : cav)) }
+        : c,
+    ),
+  };
 }
 
 const DEFAULT_SEGMENT_MM = 100;
@@ -689,7 +702,9 @@ export function duplicateConnector(project: ProjectData, connectorId: number): {
   if (!source) return null;
   const id = nextId(project.connector_instances.map((c) => c.id));
   let nextCavity = nextId(project.connector_instances.flatMap((c) => c.cavities.map((cav) => cav.id)));
-  const cavities = source.cavities.map((cav) => ({ ...cav, id: nextCavity++ }));
+  // La marca de fuente no se copia: la copia sigue unida a los mismos splices y
+  // pasaría a ser otra fuente en paralelo con la original.
+  const cavities = source.cavities.map((cav) => ({ ...cav, id: nextCavity++, is_source: false }));
   const newCavity = new Map(source.cavities.map((cav, i) => [cav.id, cavities[i].id]));
   const { nodes, nodeId } = freeConnectorNode(project);
   const copy: ConnectorInstance = { ...source, id, short_id: `X${id}`, name: source.name ? `${source.name} (copy)` : "", node_id: nodeId, cavities };

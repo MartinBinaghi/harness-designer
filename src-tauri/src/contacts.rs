@@ -284,6 +284,7 @@ mod tests {
                 id: 900 + i as i64,
                 cavity_id: id.to_string(),
                 external_reference: None,
+                is_source: false,
             })
             .collect();
         data.wire_instances = vec![WireInstance {

@@ -215,6 +215,7 @@ mod tests {
                 id: 1,
                 cavity_id: "1".into(),
                 external_reference: None,
+                is_source: false,
             }],
         }];
         let pending = check_pending_connectors(&data);

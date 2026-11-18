@@ -4,7 +4,7 @@ import { anchorY, buildSchematic, endSides, matchWires, schematicLegend } from "
 import type { Library } from "../src/model/library.ts";
 import type { ProjectData } from "../src/model/project.ts";
 
-const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null });
+const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null, is_source: false });
 const conn = (id: number, short_id: string, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name: short_id, library_part_id: 1, device_connector_id: null, node_id: id, termination: null, termination_library_part_id: null, backshell_library_part_id: null, status: "complete", is_interconnect: false, mates_with: null, cavities });
 const end = (kind: string, ids: { cavity?: number; splice?: number }) => ({ kind, cavity_assignment_id: ids.cavity ?? null, splice_id: ids.splice ?? null, ground_point_id: null, component_instance_id: null });
 const wire = (id: number, name: string, a: ReturnType<typeof end>, b: ReturnType<typeof end>) => ({ id, short_id: `W${id}`, library_part_id: 1, color: "violet", signal_type_id: null, specific_name: name, manual_cut_margin_pct: null, label: null, end_a: a, end_b: b });

@@ -115,6 +115,7 @@ pub fn sample_project(library: &Library) -> ProjectData {
                         id: id * 100 + j as i64 + 1,
                         cavity_id: (*cavity_id).into(),
                         external_reference: None,
+                        is_source: false,
                     })
                     .collect(),
             }

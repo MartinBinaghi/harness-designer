@@ -143,6 +143,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
                     id: 1,
                     cavity_id: "1".into(),
                     external_reference: None,
+                    is_source: false,
                 }],
             },
             ConnectorInstance {
@@ -162,6 +163,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
                     id: 2,
                     cavity_id: "1".into(),
                     external_reference: None,
+                    is_source: false,
                 }],
             },
         ],

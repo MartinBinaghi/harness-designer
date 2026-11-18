@@ -163,11 +163,13 @@ mod tests {
             id: 3,
             cavity_id: "2".into(),
             external_reference: None,
+            is_source: false,
         });
         data.connector_instances[1].cavities.push(CavityAssignment {
             id: 4,
             cavity_id: "2".into(),
             external_reference: None,
+            is_source: false,
         });
         data.wire_instances[1].end_a = cavity_end(3);
         data.wire_instances[1].end_b = cavity_end(4);

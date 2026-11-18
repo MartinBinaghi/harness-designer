@@ -111,6 +111,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
                 id: 1,
                 cavity_id: "1".into(),
                 external_reference: None,
+                is_source: false,
             }],
         },
         ConnectorInstance {
@@ -130,6 +131,7 @@ pub(super) fn segment_with_one_wire() -> ProjectData {
                 id: 2,
                 cavity_id: "1".into(),
                 external_reference: None,
+                is_source: false,
             }],
         },
     ];

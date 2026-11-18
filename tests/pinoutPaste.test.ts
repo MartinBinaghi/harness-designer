@@ -5,7 +5,7 @@ import { parsePinout } from "../src/logic/devicePins.ts";
 import type { ProjectData } from "../src/model/project.ts";
 import type { Library } from "../src/model/library.ts";
 
-const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null });
+const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null, is_source: false });
 const conn = (id: number, short_id: string, name: string, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name, library_part_id: 1, device_connector_id: null, node_id: id, termination: null, termination_library_part_id: null, backshell_library_part_id: null, status: "complete", is_interconnect: false, mates_with: null, cavities });
 const blank = { kind: "", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null, node_id: null };
 

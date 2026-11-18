@@ -107,9 +107,9 @@ console.log("project edit: ok");
   const before = {
     ...p,
     connector_instances: [{ id: 1, library_part_id: 5, cavities: [
-      { id: 50, cavity_id: "1", external_reference: "ECU pin 12" },
-      { id: 51, cavity_id: "2", external_reference: null },
-      { id: 52, cavity_id: "B", external_reference: null },
+      { id: 50, cavity_id: "1", external_reference: "ECU pin 12", is_source: true },
+      { id: 51, cavity_id: "2", external_reference: null, is_source: false },
+      { id: 52, cavity_id: "B", external_reference: null, is_source: false },
     ] }],
   } as unknown as ProjectData;
   const after = changeConnectorPart(before, lib, 1, 7).connector_instances[0];
@@ -117,6 +117,7 @@ console.log("project edit: ok");
   assert.deepEqual(after.cavities.map((c) => c.cavity_id), ["1", "2", "3"]);
   assert.deepEqual(after.cavities.slice(0, 2).map((c) => c.id), [50, 51]); // mismos ids -> los cables siguen enganchados
   assert.equal(after.cavities[0].external_reference, "ECU pin 12");
+  assert.equal(after.cavities[0].is_source, true, "la marca de fuente sigue con la vía");
   assert.ok(![50, 51, 52].includes(after.cavities[2].id)); // la vía nueva tiene id propio
   console.log("project edit (change connector part keeps cavities): ok");
 }
@@ -131,7 +132,7 @@ console.log("project edit: ok");
     nodes: [{ id: 1, kind: "connector_end" }, { id: 2, kind: "connector_end" }],
     connector_instances: [
       { id: 1, short_id: "X1", name: "Motor", node_id: 1, cavities: [{ id: 11, cavity_id: "F" }] },
-      { id: 14, short_id: "X14", name: "Coil 1", node_id: 2, cavities: [{ id: 141, cavity_id: "1" }, { id: 143, cavity_id: "3" }] },
+      { id: 14, short_id: "X14", name: "Coil 1", node_id: 2, cavities: [{ id: 141, cavity_id: "1", is_source: true }, { id: 143, cavity_id: "3" }] },
     ],
     wire_instances: [
       { id: 5, short_id: "W005", specific_name: "12V+", end_a: end("cavity", { cavity: 141 }), end_b: end("splice", { splice: 1 }), manual_length_mm: 900 },
@@ -141,12 +142,31 @@ console.log("project edit: ok");
   const r = duplicateConnector(proj, 14)!;
   const copy = r.project.connector_instances.find((c) => c.id === r.id)!;
   assert.deepEqual([copy.short_id, copy.name, copy.node_id, copy.cavities.map((c) => c.cavity_id)], ["X15", "Coil 1 (copy)", 3, ["1", "3"]]);
+  // La copia sigue unida a SP1: si copiara la fuente, sería otra fuente en paralelo.
+  assert.equal(copy.cavities[0].is_source, false);
   const added = r.project.wire_instances.slice(2);
   assert.deepEqual(added.map((w) => [w.short_id, w.specific_name, w.end_a.cavity_assignment_id, w.end_b.kind, w.end_b.splice_id, w.end_b.cavity_assignment_id, w.manual_length_mm]), [
     ["W007", "12V+", copy.cavities[0].id, "splice", 1, null, null],
     ["W008", "SIGNAL", copy.cavities[1].id, "cavity", null, null, null],
   ]);
   console.log("project edit (duplicate connector): ok");
+}
+
+// La marca de fuente: solo la vía elegida, y desmarcarla la deja como estaba.
+{
+  const { setCavitySource } = await import("../src/logic/projectEdit.ts");
+  const proj = {
+    ...p,
+    connector_instances: [
+      { id: 1, short_id: "X1", cavities: [{ id: 11, cavity_id: "EE", is_source: false }, { id: 12, cavity_id: "FF", is_source: false }] },
+      { id: 2, short_id: "X2", cavities: [{ id: 21, cavity_id: "1", is_source: false }] },
+    ],
+  } as unknown as ProjectData;
+  const marked = setCavitySource(proj, 12, true);
+  assert.deepEqual(marked.connector_instances.flatMap((c) => c.cavities.map((cav) => [cav.id, cav.is_source])), [[11, false], [12, true], [21, false]]);
+  assert.equal(marked.connector_instances[1], proj.connector_instances[1], "los otros conectores no se copian");
+  assert.deepEqual(setCavitySource(marked, 12, false), proj);
+  console.log("project edit (source pin): ok");
 }
 
 // Pinout por conector: destinos escritos a mano, cables que salen de una vía, varios cables por vía.

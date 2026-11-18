@@ -4,7 +4,7 @@ import { compareProjects } from "../src/logic/revisionDiff.ts";
 import type { ProjectData } from "../src/model/project.ts";
 import type { Library } from "../src/model/library.ts";
 
-const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null as string | null });
+const cav = (id: number, pin: string) => ({ id, cavity_id: pin, external_reference: null as string | null, is_source: false });
 const conn = (id: number, short_id: string, name: string, node_id: number, cavities: ReturnType<typeof cav>[]) => ({ id, short_id, name, library_part_id: 1, device_connector_id: null, node_id, termination: null, termination_library_part_id: null, backshell_library_part_id: null, status: "complete", is_interconnect: false, mates_with: null, cavities });
 const blank = { kind: "cavity", cavity_assignment_id: null, splice_id: null, ground_point_id: null, component_instance_id: null, node_id: null };
 const wire = (id: number, short_id: string, name: string, a: object, b: object) => ({ id, short_id, library_part_id: 10, color: "red", signal_type_id: 5, specific_name: name, manual_cut_margin_pct: null, manual_length_mm: null, label: null, cable_instance_id: null, load_current_a: null as number | null, protection_current_a: null as number | null, end_a: { ...blank, ...a }, end_b: { ...blank, ...b } });
@@ -91,6 +91,13 @@ assert.deepEqual(electrical.find((s) => s.title === "Harness")!.items[0].changes
 assert.deepEqual(electrical.find((s) => s.title === "Wires")!.items[0].changes, [
   { field: "Load (A)", before: "—", after: "4.2" },
   { field: "Protection (A)", before: "—", after: "15" },
+]);
+
+// La marca de fuente de una vía, en su conector.
+const revD = structuredClone(revA);
+revD.connector_instances[1].cavities[0].is_source = true;
+assert.deepEqual(compareProjects(revA, revD, library).find((s) => s.title === "Connectors")!.items[0].changes, [
+  { field: "Pin EE · source", before: "—", after: "source" },
 ]);
 
 console.log("revision diff: ok");

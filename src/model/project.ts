@@ -62,6 +62,8 @@ export interface CavityAssignment {
   id: number;
   cavity_id: string;
   external_reference: string | null;
+  /** La fuente de su circuito (salida del PDM, pin que trae el 12V de otro arnés) o donde vuelve un retorno: ver calc/electrical.rs. */
+  is_source: boolean;
 }
 
 export interface ConnectorInstance {

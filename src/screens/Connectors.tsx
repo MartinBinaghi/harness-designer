@@ -343,6 +343,11 @@ function ConnectorEditor({ project, library, connector: c, report, destinations,
                     <td className="cn-col-pin">
                       {i === 0 ? cav.cavity_id : "↳"}
                       {i === 0 && pinName && <span className="cn-pin-name">{pinName}</span>}
+                      {i === 0 && cav.is_source && (
+                        <span className="cn-pin-name cn-pin-source" title="The source of its circuit: set in the Inspector of its wire">
+                          source
+                        </span>
+                      )}
                     </td>
                     <td>
                       <input

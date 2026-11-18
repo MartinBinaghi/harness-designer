@@ -17,14 +17,14 @@ use crate::model::project::WireEnd;
 /// Punto donde dos o más cables pueden estar unidos: misma cavidad (varios
 /// cables en un contacto), mismo splice, misma masa o mismo componente.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ConnectionPoint {
+pub(crate) enum ConnectionPoint {
     Cavity(i64),
     Splice(i64),
     Ground(i64),
     Component(i64),
 }
 
-fn connection_point(end: &WireEnd) -> Option<ConnectionPoint> {
+pub(crate) fn connection_point(end: &WireEnd) -> Option<ConnectionPoint> {
     match end.kind.as_str() {
         "cavity" => end.cavity_assignment_id.map(ConnectionPoint::Cavity),
         "splice" => end.splice_id.map(ConnectionPoint::Splice),

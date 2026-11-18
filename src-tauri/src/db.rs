@@ -53,6 +53,7 @@ pub const PROJECT: Format = Format {
         project_v4_to_v5,
         project_v5_to_v6,
         project_v6_to_v7,
+        project_v7_to_v8,
     ],
 };
 
@@ -219,6 +220,15 @@ fn project_v6_to_v7(tx: &Transaction) -> rusqlite::Result<()> {
         "ALTER TABLE wire_instances ADD COLUMN load_current_a REAL CHECK (load_current_a >= 0);
          ALTER TABLE wire_instances ADD COLUMN protection_current_a REAL CHECK (protection_current_a > 0);
          ALTER TABLE project ADD COLUMN voltage_drop_limit_v REAL NOT NULL DEFAULT 0.5 CHECK (voltage_drop_limit_v > 0);",
+    )
+}
+
+/// Pedido de Martin del 2026-11-18: la **fuente** se marca en la vía (la salida
+/// del PDM, el pin que trae el 12V de otro arnés), y con ella se sabe qué cables
+/// alimentan cada splice (ver `calc/electrical.rs`).
+fn project_v7_to_v8(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "ALTER TABLE cavity_assignments ADD COLUMN is_source INTEGER NOT NULL DEFAULT 0 CHECK (is_source IN (0, 1));",
     )
 }
 
@@ -648,6 +658,8 @@ mod tests {
     /// Esquema de los proyectos en el formato 5 (sin release: el esquema guardado, 2026-11-12).
     const PROJECT_SCHEMA_V5: &str = include_str!("../schema/history/project.v5.sql");
     const PROJECT_SCHEMA_V6: &str = include_str!("../schema/history/project.v6.sql");
+    /// Esquema de los proyectos en el formato 7 (carga eléctrica, sin release).
+    const PROJECT_SCHEMA_V7: &str = include_str!("../schema/history/project.v7.sql");
     const LIBRARY_SCHEMA_V3: &str = include_str!("../schema/history/library.v3.sql");
 
     /// Un proyecto como los que había antes del versionado: el esquema de
@@ -1036,6 +1048,36 @@ mod tests {
         assert_eq!(data.wire_instances[0].protection_current_a, None);
         drop(conn);
         for p in [format!("{path}.v6.bak"), path] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[test]
+    fn a_v7_project_keeps_its_pins_with_none_marked_as_source() {
+        let path = temp_path("v7.harness.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V7).unwrap();
+        conn.execute_batch(
+            "INSERT INTO project (id, name, harness_code) VALUES (1, 'Motor', 'MOT-01');
+             INSERT INTO nodes (id, kind) VALUES (1, 'connector_end');
+             INSERT INTO connector_instances (id, short_id, name, library_part_id, node_id)
+                 VALUES (1, 'X1', 'ECU', 7, 1);
+             INSERT INTO cavity_assignments (id, connector_instance_id, cavity_id, external_reference)
+                 VALUES (1, 1, 'EE', 'PDM OUT1');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 7).unwrap();
+        drop(conn);
+
+        let conn = open_project(&path).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), PROJECT.version());
+        let data = project::load(&conn).unwrap();
+        let cavity = &data.connector_instances[0].cavities[0];
+        assert_eq!(cavity.cavity_id, "EE");
+        assert_eq!(cavity.external_reference.as_deref(), Some("PDM OUT1"));
+        assert!(!cavity.is_source);
+        drop(conn);
+        for p in [format!("{path}.v7.bak"), path] {
             let _ = std::fs::remove_file(p);
         }
     }
