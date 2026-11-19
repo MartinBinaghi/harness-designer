@@ -44,6 +44,10 @@ pub struct Project {
     /// Caída de tensión máxima de un circuito (V) antes de que Checks avise.
     #[serde(default = "default_voltage_drop_limit_v")]
     pub voltage_drop_limit_v: f64,
+    /// Temperatura del aire alrededor del arnés en uso (°C): con ella se calcula
+    /// la capacidad de los cables (`calc::capacity`).
+    #[serde(default = "default_ambient_temperature_c")]
+    pub ambient_temperature_c: f64,
 }
 
 /// 0,5 V: lo que admite la FAA AC 43.13-1B (tabla 11-6) para 14 V con carga continua.
@@ -51,6 +55,14 @@ pub const DEFAULT_VOLTAGE_DROP_LIMIT_V: f64 = 0.5;
 
 fn default_voltage_drop_limit_v() -> f64 {
     DEFAULT_VOLTAGE_DROP_LIMIT_V
+}
+
+/// 70 °C: la que supone la FAA AC 43.13-1B en su tabla 11-9; Martin la usa
+/// también para el arnés de motor (ver la bitácora del 2026-11-19).
+pub const DEFAULT_AMBIENT_TEMPERATURE_C: f64 = 70.0;
+
+fn default_ambient_temperature_c() -> f64 {
+    DEFAULT_AMBIENT_TEMPERATURE_C
 }
 
 /// Dónde dejó el usuario un bloque del esquema y, si lo eligió, por qué lado
@@ -264,6 +276,7 @@ impl ProjectData {
                 cut_round_mm: None,
                 schematic_layout: Default::default(),
                 voltage_drop_limit_v: DEFAULT_VOLTAGE_DROP_LIMIT_V,
+                ambient_temperature_c: DEFAULT_AMBIENT_TEMPERATURE_C,
             },
             nodes: vec![],
             segments: vec![],

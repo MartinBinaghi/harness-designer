@@ -520,26 +520,28 @@ pub(super) const BOOTS: &[Boot] = &[
     },
 ];
 
+/// Temperatura máxima del M22759/32 (°C).
+pub(super) const M22759_32_MAX_C: f64 = 150.0;
+
 /// Cable M22759/32 (Raychem Spec 55, ETFE, 150 °C, cobre estañado), por calibre:
-/// diámetro exterior nominal (pulgadas, de la hoja de la norma), corriente
-/// máxima continua en un mazo (A) y
-/// resistencia del conductor a 20 °C (mΩ por metro).
+/// diámetro exterior nominal (pulgadas, de la hoja de la norma), corriente de
+/// un cable solo al aire (A) y resistencia del conductor a 20 °C (mΩ por metro).
 ///
-/// Corriente y resistencia: FAA AC 43.13-1B, tabla 11-9 (cobre, columna de
-/// 150 °C; resistencia de conductor estañado, convertida de Ω cada 1000 ft). La
-/// tabla supone 70 °C de ambiente y mazos de 33 cables o más: valores
-/// conservadores, que coinciden con la tabla de ProWire para M22759/32 en mazo
-/// (+35 °C). El 26 AWG no está en la tabla: resistencia de la hoja de Glenair
-/// para M22759/32 (41,3 Ω cada 1000 ft) y corriente sin dato.
-pub(super) const M22759_32: &[(u32, f64, Option<f64>, f64)] = &[
-    (26, 0.032, None, 135.50),
-    (24, 0.037, Some(4.0), 93.18),
-    (22, 0.043, Some(5.0), 53.15),
-    (20, 0.050, Some(7.0), 32.41),
-    (18, 0.060, Some(9.0), 20.44),
-    (16, 0.068, Some(11.0), 15.78),
-    (14, 0.085, Some(14.0), 10.04),
-    (12, 0.103, Some(19.0), 6.63),
+/// - Al aire: Raychem, "Wire and Cable" 10-59 (1997), 40 °C de ambiente y 60 °C
+///   de aumento; la capacidad en cada tramo se calcula con el mazo y la
+///   temperatura del arnés (`calc::capacity`).
+/// - Resistencia: FAA AC 43.13-1B, tabla 11-9 (conductor estañado, convertida de
+///   Ω cada 1000 ft); el 26 AWG no está en la tabla: la de la hoja de Glenair
+///   para M22759/32 (41,3 Ω cada 1000 ft).
+pub(super) const M22759_32: &[(u32, f64, f64, f64)] = &[
+    (26, 0.032, 5.5, 135.50),
+    (24, 0.037, 7.5, 93.18),
+    (22, 0.043, 10.0, 53.15),
+    (20, 0.050, 13.0, 32.41),
+    (18, 0.060, 17.5, 20.44),
+    (16, 0.068, 20.0, 15.78),
+    (14, 0.085, 28.0, 10.04),
+    (12, 0.103, 37.5, 6.63),
 ];
 
 /// Raychem DR-25 (2:1, sin adhesivo): medida nominal, suministrado mín.,

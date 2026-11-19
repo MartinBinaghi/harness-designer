@@ -27,7 +27,10 @@ CREATE TABLE IF NOT EXISTS project (
     schematic_layout            TEXT NOT NULL DEFAULT '{}',
     -- caída de tensión máxima de un circuito (V) antes de que Checks avise;
     -- 0,5 V para 14 V con carga continua (FAA AC 43.13-1B, tabla 11-6)
-    voltage_drop_limit_v        REAL NOT NULL DEFAULT 0.5 CHECK (voltage_drop_limit_v > 0)
+    voltage_drop_limit_v        REAL NOT NULL DEFAULT 0.5 CHECK (voltage_drop_limit_v > 0),
+    -- temperatura del aire alrededor del arnés en uso (°C), para la capacidad
+    -- de los cables: 70 °C por defecto (la de la tabla de la FAA)
+    ambient_temperature_c       REAL NOT NULL DEFAULT 70 CHECK (ambient_temperature_c > -60)
 );
 
 CREATE TABLE IF NOT EXISTS nodes (

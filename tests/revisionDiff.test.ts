@@ -12,7 +12,7 @@ const node = (id: number, kind: string) => ({ id, kind, termination: null, termi
 
 // X1 ECU (1, 2) — breakout 3 — X3 MOTOR (EE, FF); SP4 en el breakout.
 const revA = {
-  project: { name: "Motor", harness_code: "MOT-01", client: null, revision: "A", main_connector_instance_id: 1, markup_pct: 0, default_cut_margin_pct: 10, default_twist_pitch_factor: 8, fill_factor: 0.75, labor_hours: 0, labor_rate_usd: 0, cost_on_purchased: false, spare_pcts: {}, cut_round_mm: null, schematic_layout: {}, voltage_drop_limit_v: 0.5 },
+  project: { name: "Motor", harness_code: "MOT-01", client: null, revision: "A", main_connector_instance_id: 1, markup_pct: 0, default_cut_margin_pct: 10, default_twist_pitch_factor: 8, fill_factor: 0.75, labor_hours: 0, labor_rate_usd: 0, cost_on_purchased: false, spare_pcts: {}, cut_round_mm: null, schematic_layout: {}, voltage_drop_limit_v: 0.5, ambient_temperature_c: 70 },
   nodes: [node(1, "connector_end"), node(2, "connector_end"), node(3, "breakout")],
   segments: [
     { id: 1, node_a_id: 1, node_b_id: 3, length_mm: 300, twist_pitch_mm: null, covering_library_part_id: null, leaves_backward: false },
@@ -86,8 +86,12 @@ const revC = structuredClone(revA);
 revC.wire_instances[0].load_current_a = 4.2;
 revC.wire_instances[0].protection_current_a = 15;
 revC.project.voltage_drop_limit_v = 0.6;
+revC.project.ambient_temperature_c = 105;
 const electrical = compareProjects(revA, revC, library);
-assert.deepEqual(electrical.find((s) => s.title === "Harness")!.items[0].changes, [{ field: "Max. voltage drop (V)", before: "0.5", after: "0.6" }]);
+assert.deepEqual(electrical.find((s) => s.title === "Harness")!.items[0].changes, [
+  { field: "Max. voltage drop (V)", before: "0.5", after: "0.6" },
+  { field: "Ambient (°C)", before: "70", after: "105" },
+]);
 assert.deepEqual(electrical.find((s) => s.title === "Wires")!.items[0].changes, [
   { field: "Load (A)", before: "—", after: "4.2" },
   { field: "Protection (A)", before: "—", after: "15" },

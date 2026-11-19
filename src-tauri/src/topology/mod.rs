@@ -10,7 +10,10 @@ mod test_fixtures;
 
 pub use destinations::{pin_destinations, PinDestinations};
 pub use nets::{all_nets, net_of_wire};
-pub use routes::{distances_from_node, wire_route, with_route_cache};
+pub(crate) use routes::wire_end_node;
+pub use routes::{
+    distances_from_node, segment_spans, span_at_node, wire_route, with_route_cache, RouteLeg,
+};
 
 use crate::model::project::WireEnd;
 

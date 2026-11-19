@@ -55,6 +55,7 @@ pub fn sample_project() -> ProjectData {
             cut_round_mm: None,
             schematic_layout: Default::default(),
             voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
+            ambient_temperature_c: crate::model::project::DEFAULT_AMBIENT_TEMPERATURE_C,
         },
         nodes: vec![
             Node {
@@ -438,7 +439,8 @@ pub fn sample_library() -> Library {
                 color: None,
                 outer_diameter_mm: 1.5,
                 default_cut_margin_pct: None,
-                max_current_a: None,
+                free_air_current_a: None,
+                max_temperature_c: None,
                 resistance_mohm_per_m: None,
                 conductors: vec![],
             },
@@ -449,7 +451,8 @@ pub fn sample_library() -> Library {
                 color: None,
                 outer_diameter_mm: 2.2,
                 default_cut_margin_pct: Some(15.0),
-                max_current_a: None,
+                free_air_current_a: None,
+                max_temperature_c: None,
                 resistance_mohm_per_m: None,
                 conductors: vec![],
             },

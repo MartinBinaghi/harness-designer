@@ -503,7 +503,10 @@ fn with_project<R>(state: &AppState, f: impl FnOnce(&ProjectData) -> R) -> Resul
 }
 
 #[tauri::command]
-fn wire_route(wire_id: i64, state: State<AppState>) -> Result<Option<Vec<i64>>, String> {
+fn wire_route(
+    wire_id: i64,
+    state: State<AppState>,
+) -> Result<Option<Vec<topology::RouteLeg>>, String> {
     with_project(&state, |p| topology::wire_route(p, wire_id))
 }
 

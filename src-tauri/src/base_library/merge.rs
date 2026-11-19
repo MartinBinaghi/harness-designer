@@ -87,7 +87,8 @@ pub fn merge_base_library(library: &Library) -> Library {
             .iter_mut()
             .find(|d| d.part_id == id_map[&def.part_id])
         {
-            existing.max_current_a = existing.max_current_a.or(def.max_current_a);
+            existing.free_air_current_a = existing.free_air_current_a.or(def.free_air_current_a);
+            existing.max_temperature_c = existing.max_temperature_c.or(def.max_temperature_c);
             existing.resistance_mohm_per_m =
                 existing.resistance_mohm_per_m.or(def.resistance_mohm_per_m);
         }
@@ -294,10 +295,11 @@ mod tests {
         };
         let (w22, w20, socket) = (id("M22759/32-22"), id("M22759/32-20"), id("0462-201-20141"));
         for d in &mut library.wire_defs {
-            d.max_current_a = None;
+            d.free_air_current_a = None;
+            d.max_temperature_c = None;
             d.resistance_mohm_per_m = None;
             if d.part_id == w20 {
-                d.max_current_a = Some(6.0);
+                d.free_air_current_a = Some(12.0);
             }
         }
         for d in &mut library.contact_defs {
@@ -306,11 +308,12 @@ mod tests {
 
         let merged = merge_base_library(&library);
         let wire = |pid: i64| merged.wire_defs.iter().find(|d| d.part_id == pid).unwrap();
-        assert_eq!(wire(w22).max_current_a, Some(5.0));
+        assert_eq!(wire(w22).free_air_current_a, Some(10.0));
+        assert_eq!(wire(w22).max_temperature_c, Some(150.0));
         assert_eq!(wire(w22).resistance_mohm_per_m, Some(53.15));
         assert_eq!(
-            wire(w20).max_current_a,
-            Some(6.0),
+            wire(w20).free_air_current_a,
+            Some(12.0),
             "lo cargado por el usuario no se pisa"
         );
         assert_eq!(wire(w20).resistance_mohm_per_m, Some(32.41));
@@ -349,7 +352,8 @@ mod tests {
             color: None,
             outer_diameter_mm: 2.2,
             default_cut_margin_pct: None,
-            max_current_a: None,
+            free_air_current_a: None,
+            max_temperature_c: None,
             resistance_mohm_per_m: None,
             conductors: [3, 4]
                 .map(|id| WireDefConductor {

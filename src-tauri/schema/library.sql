@@ -93,9 +93,12 @@ CREATE TABLE IF NOT EXISTS wire_defs (
     color                   TEXT,
     outer_diameter_mm       REAL NOT NULL,
     default_cut_margin_pct  REAL,
-    -- por conductor: corriente máxima continua en un mazo (A) y resistencia a
-    -- 20 °C (mΩ por metro), para la carga eléctrica
-    max_current_a           REAL CHECK (max_current_a > 0),
+    -- para la carga eléctrica, por conductor: corriente de un cable solo al
+    -- aire con 40 °C de ambiente y 60 °C de aumento (A, como la da Raychem),
+    -- temperatura máxima del cable (°C) y resistencia a 20 °C (mΩ por metro);
+    -- la capacidad en cada tramo se calcula con el mazo (calc/capacity.rs)
+    free_air_current_a      REAL CHECK (free_air_current_a > 0),
+    max_temperature_c       REAL CHECK (max_temperature_c > 0),
     resistance_mohm_per_m   REAL CHECK (resistance_mohm_per_m > 0)
 );
 

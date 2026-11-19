@@ -21,11 +21,14 @@ use coverings::{
 };
 use electrical::{
     check_contact_current, check_missing_electrical_data, check_pin_currents,
-    check_splice_currents, check_voltage_drop, check_wire_current,
+    check_splice_currents, check_unloaded_power_wires, check_voltage_drop, check_wire_current,
+    check_wire_temperature,
 };
 use loops::check_topology_has_no_loops;
 use names::{check_missing_signal_types, check_mistyped_names, check_wires_without_name};
-use splices::{check_gauge_within_splice_range, check_splices_within_capacity};
+use splices::{
+    check_gauge_within_splice_range, check_placement_on_segment, check_splices_within_capacity,
+};
 use wires::{
     check_bought_cables, check_cut_margin_below_twist_minimum, check_same_net_different_function,
     check_wires_have_valid_endpoints,
@@ -120,6 +123,7 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
             "Splice gauge range",
             check_gauge_within_splice_range(data, library),
         ),
+        ("Placement on a segment", check_placement_on_segment(data)),
         ("Main connector", check_main_connector(data)),
         ("Pending connectors", check_pending_connectors(data)),
         (
@@ -164,6 +168,11 @@ pub fn run_checks(data: &ProjectData, library: &Library) -> Vec<Finding> {
         ("Voltage drop", check_voltage_drop(data, library)),
         ("Currents at splices", check_splice_currents(data, library)),
         ("Currents at shared pins", check_pin_currents(data, library)),
+        ("Wire temperature", check_wire_temperature(data, library)),
+        (
+            "Power wires without load",
+            check_unloaded_power_wires(data, library),
+        ),
         (
             "Electrical data missing",
             check_missing_electrical_data(data, library),

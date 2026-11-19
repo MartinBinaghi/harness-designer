@@ -1,6 +1,6 @@
 //! Chequeos de splices: cantidad de cables y calibre combinado (plan 12).
 
-use super::{error, Finding, FindingTarget};
+use super::{error, warning, Finding, FindingTarget};
 use crate::model::library::Library;
 use crate::model::project::ProjectData;
 use std::collections::HashMap;
@@ -98,12 +98,106 @@ pub(super) fn check_gauge_within_splice_range(
     findings
 }
 
+/// Splices y componentes sobre un segmento con una ubicación que no cierra: a
+/// más distancia que el largo del tramo (o negativa), que el largo de corte
+/// toma en la punta, o sin el nodo desde el que se mide o medida desde uno que
+/// no es punta del tramo, que dejan sus cables sin recorrido.
+pub(super) fn check_placement_on_segment(data: &ProjectData) -> Vec<Finding> {
+    let placed = data
+        .splice_instances
+        .iter()
+        .map(|s| {
+            (
+                format!("Splice {}", s.short_id),
+                Some(FindingTarget::Splice { id: s.id }),
+                s.node_id,
+                s.segment_id,
+                s.offset_from_end_mm,
+                s.offset_from_node_id,
+            )
+        })
+        .chain(data.component_instances.iter().map(|c| {
+            (
+                format!("Component {}", c.short_id),
+                None,
+                c.node_id,
+                c.segment_id,
+                c.offset_from_end_mm,
+                c.offset_from_node_id,
+            )
+        }));
+    let mut findings = Vec::new();
+    for (who, target, node, segment_id, offset, from) in placed {
+        let Some(segment) = data
+            .segments
+            .iter()
+            .find(|s| node.is_none() && Some(s.id) == segment_id)
+        else {
+            continue;
+        };
+        let offset = offset.unwrap_or(0.0);
+        let finding = match from {
+            None => warning(format!(
+                "{who} is on S{} but has no node it's measured from: its wires have no route",
+                segment.id
+            )),
+            Some(from) if from != segment.node_a_id && from != segment.node_b_id => {
+                warning(format!(
+                    "{who} is measured from node {from}, which isn't an end of S{}: its wires have no route",
+                    segment.id
+                ))
+            }
+            Some(from) if offset < 0.0 || offset > segment.length_mm => warning(format!(
+                "{who} is {offset} mm from node {from} on S{}, which is {} mm long: its wires are cut as if it were at the end",
+                segment.id, segment.length_mm
+            )),
+            Some(_) => continue,
+        };
+        findings.push(match target {
+            Some(t) => finding.at(t),
+            None => finding,
+        });
+    }
+    findings
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::checks::test_fixtures::*;
     use crate::model::library::{Library, Part, SpliceDef};
     use crate::model::project::{ProjectData, SpliceInstance, WireInstance};
+
+    #[test]
+    fn flags_a_splice_placed_beyond_its_segment() {
+        let mut data = segment_with_one_wire(); // S1 de 500 mm, nodos 1 y 2
+        data.splice_instances = vec![SpliceInstance {
+            id: 1,
+            short_id: "SP1".into(),
+            name: String::new(),
+            library_part_id: 1,
+            node_id: None,
+            segment_id: Some(1),
+            offset_from_end_mm: Some(40.0),
+            offset_from_node_id: Some(1),
+        }];
+        assert!(check_placement_on_segment(&data).is_empty());
+        data.splice_instances[0].offset_from_end_mm = Some(600.0);
+        let findings = check_placement_on_segment(&data);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].message.contains("600 mm from node 1 on S1"));
+        data.splice_instances[0].offset_from_end_mm = Some(40.0);
+        data.splice_instances[0].offset_from_node_id = Some(7);
+        assert!(check_placement_on_segment(&data)[0]
+            .message
+            .contains("isn't an end of S1"));
+        data.splice_instances[0].offset_from_node_id = None;
+        let findings = check_placement_on_segment(&data);
+        assert!(findings[0]
+            .message
+            .contains("has no node it's measured from"));
+        assert_eq!(findings[0].target, Some(FindingTarget::Splice { id: 1 }));
+    }
 
     #[test]
     fn flags_a_splice_over_its_wire_capacity() {

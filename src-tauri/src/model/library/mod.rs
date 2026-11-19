@@ -135,9 +135,14 @@ pub struct WireDef {
     pub color: Option<String>,
     pub outer_diameter_mm: f64,
     pub default_cut_margin_pct: Option<f64>,
-    /// Por conductor: corriente máxima continua en un mazo (A).
+    /// Por conductor: corriente de un cable solo al aire con 40 °C de ambiente y
+    /// 60 °C de aumento (A), como la da Raychem. La capacidad en cada tramo se
+    /// calcula con el mazo y la temperatura del arnés (`calc::capacity`).
     #[serde(default)]
-    pub max_current_a: Option<f64>,
+    pub free_air_current_a: Option<f64>,
+    /// Temperatura máxima del cable (°C; 150 para el M22759/32).
+    #[serde(default)]
+    pub max_temperature_c: Option<f64>,
     /// Por conductor: resistencia a 20 °C (mΩ por metro).
     #[serde(default)]
     pub resistance_mohm_per_m: Option<f64>,

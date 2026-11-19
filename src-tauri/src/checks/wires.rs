@@ -266,7 +266,8 @@ mod tests {
             color: None,
             outer_diameter_mm: 2.0,
             default_cut_margin_pct: None,
-            max_current_a: None,
+            free_air_current_a: None,
+            max_temperature_c: None,
             resistance_mohm_per_m: None,
             conductors: vec![conductor(1), conductor(2)],
         });

@@ -133,6 +133,7 @@ export function compareProjects(before: ProjectData, after: ProjectData, library
     ["Labor rate (USD/h)", a.labor_rate_usd, b.labor_rate_usd],
     ["Markup %", a.markup_pct, b.markup_pct],
     ["Max. voltage drop (V)", a.voltage_drop_limit_v, b.voltage_drop_limit_v],
+    ["Ambient (°C)", a.ambient_temperature_c, b.ambient_temperature_c],
     ["Materials cost on", a.cost_on_purchased ? "purchased" : "used", b.cost_on_purchased ? "purchased" : "used"],
     ["Spare", spares(before), spares(after)],
   ]);

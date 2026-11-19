@@ -7,6 +7,7 @@
 //! ya pide usar mientras no haya construcción concéntrica cargada.
 
 mod bom;
+mod capacity;
 mod covering_cuts;
 mod cut_length;
 mod diameter;
@@ -17,6 +18,7 @@ mod splice_gauges;
 mod test_fixtures;
 
 pub use bom::*;
+pub use capacity::{BundleAt, CapacityLimit};
 pub use covering_cuts::*;
 pub use cut_length::*;
 pub use diameter::*;
@@ -26,17 +28,15 @@ pub use splice_gauges::*;
 
 use crate::model::library::{Library, WireDef};
 use crate::model::project::{ProjectData, WireInstance};
-use crate::topology::wire_route;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-/// Lo que se repite muchas veces en una pasada (diámetro de cada tramo y
-/// cuántos elementos pasan por él), recordado mientras dura (ver `with_cache`).
+/// Lo que se repite muchas veces en una pasada (el mazo de cada pedazo de
+/// tramo), recordado mientras dura (ver `with_cache`).
 #[derive(Default)]
 struct PassCache {
-    bundle: HashMap<i64, f64>,
-    elements_in_segment: Option<HashMap<i64, usize>>,
+    bundle_spans: Option<HashMap<i64, Vec<BundleSpan>>>,
     electrical: Option<ElectricalReport>,
 }
 
@@ -67,33 +67,6 @@ fn element_of(wire: &WireInstance) -> Element {
         Some(cable_id) => Element::Cable(cable_id),
         None => Element::Wire(wire.id),
     }
-}
-
-/// Cuántos elementos del mazo pasan por cada tramo (un cable comprado cuenta uno).
-fn elements_in_segment(data: &ProjectData, segment_id: i64) -> usize {
-    let count = |data: &ProjectData| {
-        let mut elements: HashMap<i64, HashSet<Element>> = HashMap::new();
-        for w in &data.wire_instances {
-            for s in wire_route(data, w.id).unwrap_or_default() {
-                elements.entry(s).or_default().insert(element_of(w));
-            }
-        }
-        elements
-            .into_iter()
-            .map(|(s, set)| (s, set.len()))
-            .collect::<HashMap<i64, usize>>()
-    };
-    let cached = PASS.with(|c| {
-        let mut c = c.borrow_mut();
-        let pass = c.as_mut()?;
-        if pass.elements_in_segment.is_none() {
-            pass.elements_in_segment = Some(count(data));
-        }
-        pass.elements_in_segment
-            .as_ref()
-            .map(|m| m.get(&segment_id).copied().unwrap_or(0))
-    });
-    cached.unwrap_or_else(|| count(data).get(&segment_id).copied().unwrap_or(0))
 }
 
 fn wire_def_of<'a>(library: &'a Library, wire: &WireInstance) -> Option<&'a WireDef> {

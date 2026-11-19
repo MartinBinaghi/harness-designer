@@ -27,8 +27,8 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
 
     let p = &data.project;
     tx.execute(
-        "INSERT INTO project (id, name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm, schematic_layout, voltage_drop_limit_v)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+        "INSERT INTO project (id, name, harness_code, client, revision, main_connector_instance_id, markup_pct, default_cut_margin_pct, default_twist_pitch_factor, fill_factor, labor_hours, labor_rate_usd, cost_on_purchased, spare_pcts, cut_round_mm, schematic_layout, voltage_drop_limit_v, ambient_temperature_c)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             p.name,
             p.harness_code,
@@ -46,6 +46,7 @@ pub fn save(conn: &mut Connection, data: &ProjectData) -> Result<()> {
             p.cut_round_mm,
             serde_json::to_string(&p.schematic_layout).expect("un mapa de números siempre se serializa"),
             p.voltage_drop_limit_v,
+            p.ambient_temperature_c,
         ],
     )?;
 

@@ -9,10 +9,11 @@
 //! evitar, pero no quiere decir que se queme en uso normal.
 
 use super::{error, warning, Finding, FindingTarget};
-use crate::calc::{electrical_report, ElectricalReport, SpliceIssue};
+use crate::calc::{electrical_report, BundleAt, CapacityLimit, ElectricalReport, SpliceIssue};
 use crate::model::library::Library;
 use crate::model::project::{ProjectData, WireInstance};
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 /// Margen para comparar corrientes y tensiones cargadas con decimales.
 const EPS: f64 = 1e-9;
@@ -37,6 +38,26 @@ fn part_number(library: &Library, part_id: i64) -> String {
         .map_or_else(|| format!("part #{part_id}"), |p| p.part_number.clone())
 }
 
+/// Dónde tiene el cable su capacidad, para los mensajes: "in S3 (21 wires, 4
+/// with current) at 70 °C", o "in 40 mm of S1 (…)" si un splice parte el tramo.
+fn where_it_runs(data: &ProjectData, e: &crate::calc::WireElectrical) -> String {
+    let ambient = data.project.ambient_temperature_c;
+    match &e.bundle {
+        Some(BundleAt {
+            segment_id: Some(segment),
+            piece_mm,
+            wires,
+            loaded,
+            ..
+        }) => format!(
+            "in {}S{segment} ({wires} {}, {loaded} with current) at {ambient:.0} °C",
+            piece_mm.map_or(String::new(), |mm| format!("{mm:.0} mm of ")),
+            if *wires == 1 { "wire" } else { "wires" }
+        ),
+        _ => format!("on its own at {ambient:.0} °C"),
+    }
+}
+
 fn wires_with_report<'a>(
     data: &'a ProjectData,
     report: &'a ElectricalReport,
@@ -59,16 +80,18 @@ pub(super) fn check_wire_current(data: &ProjectData, library: &Library) -> Vec<F
         if let Some(load) = e.load_a.filter(|&a| a > max + EPS) {
             findings.push(
                 error(format!(
-                    "{} carries {load:.1} A but {wire_type} takes {max:.1} A in a bundle",
-                    wire_label(w)
+                    "{} carries {load:.1} A but {wire_type} takes {max:.1} A {}",
+                    wire_label(w),
+                    where_it_runs(data, e)
                 ))
                 .at(FindingTarget::Wire { id: w.id }),
             );
         } else if let Some(protection) = e.protection_a.filter(|&a| a > max + EPS) {
             findings.push(
                 warning(format!(
-                    "{} is fed through a {protection:.1} A protection but {wire_type} takes {max:.1} A: the protection doesn't cover this wire",
-                    wire_label(w)
+                    "{} is fed through a {protection:.1} A protection but {wire_type} takes {max:.1} A {}: the protection doesn't cover this wire",
+                    wire_label(w),
+                    where_it_runs(data, e)
                 ))
                 .at(FindingTarget::Wire { id: w.id }),
             );
@@ -237,6 +260,125 @@ pub(super) fn check_pin_currents(data: &ProjectData, library: &Library) -> Vec<F
         .collect()
 }
 
+/// Tipos de cable con corriente que no aguantan la temperatura del arnés (un
+/// error) o a los que les queda menos margen del que cubren las curvas de la
+/// FAA (un aviso: no se pueden chequear). Un aviso por tipo de cable.
+pub(super) fn check_wire_temperature(data: &ProjectData, library: &Library) -> Vec<Finding> {
+    let report = electrical_report(data, library);
+    let ambient = data.project.ambient_temperature_c;
+    // (tipo de cable, límite) -> (cuántos, el primero)
+    let mut by_part: BTreeMap<(i64, bool), (usize, i64)> = BTreeMap::new();
+    for (w, e) in wires_with_report(data, &report) {
+        let has_current = e.load_a.is_some_and(|a| a > 0.0) || e.protection_a.is_some();
+        let too_hot = match e.capacity_limit {
+            Some(CapacityLimit::TooHot) => true,
+            Some(CapacityLimit::BeyondCurves) => false,
+            _ => continue,
+        };
+        if has_current {
+            by_part
+                .entry((w.library_part_id, too_hot))
+                .or_insert((0, w.id))
+                .0 += 1;
+        }
+    }
+    by_part
+        .into_iter()
+        .map(|((part, too_hot), (count, first))| {
+            let max = library
+                .wire_defs
+                .iter()
+                .find(|d| d.part_id == part)
+                .and_then(|d| d.max_temperature_c)
+                .unwrap_or(f64::NAN);
+            let wires = if count == 1 { "1 wire" } else { "wires" };
+            let pn = part_number(library, part);
+            let finding = if too_hot {
+                error(format!(
+                    "{pn} takes up to {max:.0} °C and the harness ambient is {ambient:.0} °C: {} with current can't run there (keep them away from the heat, or use a wire rated hotter)",
+                    if count == 1 { wires.to_string() } else { format!("{count} {wires}") }
+                ))
+            } else {
+                warning(format!(
+                    "{pn} takes up to {max:.0} °C, only {:.0} °C above the harness ambient ({ambient:.0} °C): the derating curves need 30 °C or more, so {} with current can't be checked",
+                    max - ambient,
+                    if count == 1 { wires.to_string() } else { format!("{count} {wires}") }
+                ))
+            };
+            finding.at(FindingTarget::Wire { id: first })
+        })
+        .collect()
+}
+
+/// Palabras enteras que dicen que un cable es de potencia (alimentación o
+/// masa); "12 V" separado también cuenta.
+const POWER_WORDS: [&str; 10] = [
+    "12V", "14V", "GND", "BAT", "BATT", "POWER", "PWR", "POSITIVO", "MASA", "BATTERY",
+];
+/// Palabras que dicen que no lo es aunque tenga una de las de arriba: la masa
+/// de un sensor ("SIGNAL GND") casi no lleva corriente.
+const SIGNAL_WORDS: [&str; 5] = ["SIGNAL", "SIG", "SENSOR", "SENS", "SHIELD"];
+
+/// Si un nombre parece de potencia, por palabras enteras: "SGND" o "BATCH" no.
+fn sounds_like_power(text: &str) -> bool {
+    let upper = text.to_uppercase();
+    let words: Vec<&str> = upper
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let joined = words.windows(2).map(|p| format!("{}{}", p[0], p[1]));
+    let mut all = words.iter().map(|w| w.to_string()).chain(joined);
+    !words.iter().any(|w| SIGNAL_WORDS.contains(w))
+        && all.any(|w| POWER_WORDS.contains(&w.as_str()))
+}
+
+/// Cables que parecen de potencia (por su tipo de señal o su nombre) pero no
+/// tienen consumo, en un mazo donde otros sí: cuentan como señales para el
+/// factor del mazo, y si llevan corriente la capacidad sale optimista (decisión
+/// de Martin del 2026-11-19: contarlos como señales, avisando). Un solo aviso.
+pub(super) fn check_unloaded_power_wires(data: &ProjectData, library: &Library) -> Vec<Finding> {
+    let report = electrical_report(data, library);
+    let looks_like_power = |w: &WireInstance| {
+        let signal = w
+            .signal_type_id
+            .and_then(|id| library.signal_types.iter().find(|s| s.id == id))
+            .map(|s| s.name.as_str());
+        [signal, w.specific_name.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(sounds_like_power)
+    };
+    let flagged: Vec<&WireInstance> = wires_with_report(data, &report)
+        .filter(|(w, e)| {
+            e.load_a.is_none()
+                && e.bundle.as_ref().is_some_and(|b| b.loaded > 0)
+                && looks_like_power(w)
+        })
+        .map(|(w, _)| w)
+        .collect();
+    let Some(first) = flagged.first() else {
+        return Vec::new();
+    };
+    let mut listed = flagged
+        .iter()
+        .take(8)
+        .map(|w| w.short_id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if flagged.len() > 8 {
+        let _ = write!(listed, " and {} more", flagged.len() - 8);
+    }
+    vec![warning(format!(
+        "{} {} like power but {} no load, so {} as signals in {} bundle: {listed} (set their load, or leave it if they carry almost nothing)",
+        flagged.len(),
+        if flagged.len() == 1 { "wire looks" } else { "wires look" },
+        if flagged.len() == 1 { "has" } else { "have" },
+        if flagged.len() == 1 { "it counts" } else { "they count" },
+        if flagged.len() == 1 { "its" } else { "their" },
+    ))
+    .at(FindingTarget::Wire { id: first.id })]
+}
+
 /// Partes de la biblioteca sin el dato que hace falta para chequear un cable o
 /// contacto que tiene corriente: un aviso por parte, apuntando al primer cable
 /// o conector afectado (sin esto, el chequeo pasaría callado).
@@ -250,10 +392,10 @@ pub(super) fn check_missing_electrical_data(data: &ProjectData, library: &Librar
     for (w, e) in wires_with_report(data, &report) {
         let load = e.load_a.filter(|&a| a > 0.0);
         let has_current = load.is_some() || e.protection_a.is_some();
-        if has_current && e.max_current_a.is_none() {
+        if has_current && e.capacity_limit == Some(CapacityLimit::NoLibraryData) {
             note(
                 w.library_part_id,
-                "max current",
+                "free-air current or max. temperature",
                 FindingTarget::Wire { id: w.id },
             );
         }
@@ -305,11 +447,24 @@ mod tests {
     use crate::checks::test_fixtures::*;
     use crate::model::library::ContactDef;
 
-    /// X1:1 (la fuente) -W1 (1 m)- SP1 -W2 (4 m)- X2:1. 22 AWG: 5 A, 53,15 mΩ/m;
-    /// largos a mano.
+    /// X1:1 (la fuente) -W1 (1 m)- SP1 -W2 (4 m)- X2:1, con SP1 en el nodo de X2:
+    /// W1 va por el único tramo y W2 toma ese mazo (no tiene tramos). 22 AWG,
+    /// 53,15 mΩ/m; largos a mano. Al aire 5 A con 60 °C de margen (130 °C de
+    /// máxima y el ambiente por defecto, 70 °C): solo en su tramo, 5 A.
     fn setup() -> (ProjectData, Library) {
         let mut data = segment_with_one_wire();
         data.connector_instances[0].cavities[0].is_source = true;
+        data.splice_instances
+            .push(crate::model::project::SpliceInstance {
+                id: 1,
+                short_id: "SP1".into(),
+                name: String::new(),
+                library_part_id: 300,
+                node_id: Some(data.connector_instances[1].node_id),
+                segment_id: None,
+                offset_from_end_mm: None,
+                offset_from_node_id: None,
+            });
         let template = data.wire_instances[0].clone();
         data.wire_instances = vec![
             WireInstance {
@@ -332,7 +487,8 @@ mod tests {
             },
         ];
         let mut library = library_with_wire_def(1.1);
-        library.wire_defs[0].max_current_a = Some(5.0);
+        library.wire_defs[0].free_air_current_a = Some(5.0);
+        library.wire_defs[0].max_temperature_c = Some(130.0);
         library.wire_defs[0].resistance_mohm_per_m = Some(53.15);
         library.parts.push(crate::model::library::Part {
             id: 100,
@@ -402,7 +558,7 @@ mod tests {
         assert_eq!(found[0].target, Some(FindingTarget::Splice { id: 1 }));
         assert_eq!(
             found[0].message,
-            "SP#1: 5.0 A come in but 2.0 A go out: the currents don't add up"
+            "SP1: 5.0 A come in but 2.0 A go out: the currents don't add up"
         );
     }
 
@@ -415,13 +571,13 @@ mod tests {
         assert_eq!(found[0].target, Some(FindingTarget::Splice { id: 1 }));
         assert_eq!(
             found[0].message,
-            "SP#1: W002 goes out of it without a load: set what each one feeds draws (the wire feeding the splice then takes the sum)"
+            "SP1: W002 goes out of it without a load: set what each one feeds draws (the wire feeding the splice then takes the sum)"
         );
         data.connector_instances[0].cavities[0].is_source = false;
         let found = check_splice_currents(&data, &library);
         assert!(
             found[0].message.starts_with(
-                "SP#1: it has loads set, but no pin of its circuit is marked as the source"
+                "SP1: it has loads set, but no pin of its circuit is marked as the source"
             ),
             "{}",
             found[0].message
@@ -453,6 +609,99 @@ mod tests {
         );
         data.wire_instances[0].load_current_a = Some(3.0);
         assert!(check_pin_currents(&data, &library).is_empty());
+    }
+
+    #[test]
+    fn the_capacity_message_says_where_the_wire_runs() {
+        let (mut data, library) = setup();
+        data.wire_instances[1].load_current_a = Some(6.0);
+        let found = check_wire_current(&data, &library);
+        assert!(
+            found[1]
+                .message
+                .ends_with("takes 5.0 A in S1 (1 wire, 1 with current) at 70 °C"),
+            "{}",
+            found[1].message
+        );
+    }
+
+    #[test]
+    fn an_ambient_at_the_wire_rating_is_an_error_and_near_it_a_warning() {
+        let (mut data, library) = setup();
+        data.wire_instances[1].load_current_a = Some(2.0);
+        data.project.ambient_temperature_c = 130.0;
+        let found = check_wire_temperature(&data, &library);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].severity, "error");
+        assert!(
+            found[0].message.starts_with(
+                "M22759/32-22 takes up to 130 °C and the harness ambient is 130 °C: 2 wires"
+            ),
+            "{}",
+            found[0].message
+        );
+        assert!(
+            check_wire_current(&data, &library).is_empty(),
+            "sin capacidad no se compara"
+        );
+        data.project.ambient_temperature_c = 110.0; // 20 °C de margen
+        let found = check_wire_temperature(&data, &library);
+        assert_eq!(found[0].severity, "warning");
+        assert!(
+            found[0].message.contains("only 20 °C above"),
+            "{}",
+            found[0].message
+        );
+        data.project.ambient_temperature_c = 100.0; // 30 °C: dentro de las curvas
+        assert!(check_wire_temperature(&data, &library).is_empty());
+    }
+
+    #[test]
+    fn power_looking_wires_without_load_next_to_loaded_ones_are_listed() {
+        let (mut data, library) = setup();
+        // W1 lleva corriente; W2 ("Coil 1") no parece de potencia.
+        data.wire_instances[0].load_current_a = Some(2.0);
+        data.connector_instances[0].cavities[0].is_source = false;
+        assert!(check_unloaded_power_wires(&data, &library).is_empty());
+        data.wire_instances[1].specific_name = Some("GND - CHASSIS".into());
+        let found = check_unloaded_power_wires(&data, &library);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0]
+                .message
+                .starts_with("1 wire looks like power but has no load"),
+            "{}",
+            found[0].message
+        );
+        assert_eq!(found[0].target, Some(FindingTarget::Wire { id: 2 }));
+        // Si nadie del mazo lleva corriente, el factor no cambia: no se avisa.
+        data.wire_instances[0].load_current_a = None;
+        assert!(check_unloaded_power_wires(&data, &library).is_empty());
+    }
+
+    #[test]
+    fn power_names_are_whole_words_and_sensor_grounds_are_left_out() {
+        // Nombres del externo de Martin.
+        for name in [
+            "12V+",
+            "12v+ COILS",
+            "GND - CHASSIS",
+            "GND COILS",
+            "12 V BAT",
+        ] {
+            assert!(sounds_like_power(name), "{name}");
+        }
+        for name in [
+            "SIGNAL GND",
+            "SGND",
+            "BATCH",
+            "5V+",
+            "0V",
+            "LP +",
+            "MAP TEMP",
+        ] {
+            assert!(!sounds_like_power(name), "{name}");
+        }
     }
 
     #[test]
@@ -497,7 +746,7 @@ mod tests {
 
         // Sin el dato de la biblioteca, no se chequea, pero se avisa una vez por parte.
         library.contact_defs[0].max_current_a = None;
-        library.wire_defs[0].max_current_a = None;
+        library.wire_defs[0].free_air_current_a = None;
         assert!(check_contact_current(&data, &library).is_empty());
         let missing = check_missing_electrical_data(&data, &library);
         assert_eq!(missing.len(), 2, "{missing:?}");

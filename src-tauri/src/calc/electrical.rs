@@ -42,6 +42,7 @@
 //! Las masas no unen circuitos (cada cable a un ojal es su propio retorno) y los
 //! componentes tampoco: una resistencia de terminación no es un empalme.
 
+use super::capacity::{segment_loads, wire_capacity, BundleAt, CapacityLimit};
 use super::{cut_list, wire_def_of, PASS};
 use crate::contacts::{cavity_contact, wires_in_cavity};
 use crate::model::library::Library;
@@ -61,8 +62,13 @@ pub struct WireElectrical {
     pub protection_a: Option<f64>,
     /// La protección no se cargó en este cable: es la de su circuito.
     pub protection_from_circuit: bool,
-    /// De su tipo de cable (por conductor).
+    /// Capacidad donde pasa (A): la de su tipo de cable al aire, con la
+    /// temperatura del arnés y el mazo más exigente de su recorrido
+    /// (`calc::capacity`); `None` con `capacity_limit` diciendo por qué.
     pub max_current_a: Option<f64>,
+    pub capacity_limit: Option<CapacityLimit>,
+    /// El mazo que limita la capacidad.
+    pub bundle: Option<BundleAt>,
     pub resistance_mohm_per_m: Option<f64>,
     /// Caída de tensión en este cable (V).
     pub drop_v: Option<f64>,
@@ -591,11 +597,14 @@ fn compute_electrical_report(data: &ProjectData, library: &Library) -> Electrica
     };
     let mut memo = HashMap::new();
 
+    // Un cable lleva corriente en su mazo si tiene consumo (cargado o deducido).
+    let loads_by_segment = segment_loads(data, |w| load.get(&w).is_some_and(|&a| a > 0.0));
     let wires = data
         .wire_instances
         .iter()
         .map(|w| {
             let d = def(w);
+            let (capacity, bundle) = wire_capacity(data, d, w, &loads_by_segment);
             let feeds_a_splice =
                 matches!(flow.get(&w.id), Some((_, Some(ConnectionPoint::Splice(_)))));
             WireElectrical {
@@ -607,7 +616,9 @@ fn compute_electrical_report(data: &ProjectData, library: &Library) -> Electrica
                     .or_else(|| circuit_protection.get(&circuit[&w.id]).copied()),
                 protection_from_circuit: w.protection_current_a.is_none()
                     && circuit_protection.contains_key(&circuit[&w.id]),
-                max_current_a: d.and_then(|d| d.max_current_a),
+                max_current_a: capacity.ok(),
+                capacity_limit: capacity.err(),
+                bundle,
                 resistance_mohm_per_m: d.and_then(|d| d.resistance_mohm_per_m),
                 drop_v: drop[&w.id],
                 circuit_drop_v: circuit_drop_v(w.id, &up, &mut memo),
@@ -716,7 +727,8 @@ mod tests {
         source(&mut data, 1);
         let mut library = Library::default();
         library.wire_defs.push(crate::model::library::WireDef {
-            max_current_a: Some(5.0),
+            free_air_current_a: Some(10.0),
+            max_temperature_c: Some(150.0),
             resistance_mohm_per_m: Some(53.15),
             ..wire_def(100, 1.1, None)
         });

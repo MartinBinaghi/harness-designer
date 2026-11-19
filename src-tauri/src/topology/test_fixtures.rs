@@ -41,6 +41,7 @@ pub(super) fn empty_project() -> Project {
         cut_round_mm: None,
         schematic_layout: Default::default(),
         voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
+        ambient_temperature_c: crate::model::project::DEFAULT_AMBIENT_TEMPERATURE_C,
     }
 }
 

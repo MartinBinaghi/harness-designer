@@ -17,7 +17,8 @@ pub(super) fn wire_def(
         color: None,
         outer_diameter_mm,
         default_cut_margin_pct,
-        max_current_a: None,
+        free_air_current_a: None,
+        max_temperature_c: None,
         resistance_mohm_per_m: None,
         conductors: vec![],
     }
@@ -93,6 +94,7 @@ pub(super) fn one_segment_project(length_mm: f64, twist_pitch_mm: Option<f64>) -
             cut_round_mm: None,
             schematic_layout: Default::default(),
             voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
+            ambient_temperature_c: crate::model::project::DEFAULT_AMBIENT_TEMPERATURE_C,
         },
         nodes: vec![
             Node {
@@ -259,4 +261,40 @@ pub(super) fn t_mold(part_id: i64, legs: &[(f64, f64)]) -> crate::model::library
             })
             .collect(),
     }
+}
+
+/// Como SP1 del TC2000: X1 —500 mm— X2, con SP1 sobre el tramo a 40 mm de X1.
+/// W001 va de X1 a SP1, W002 de SP1 a X2 y W003 de X1 a X2 (recorre todo el
+/// tramo, para que cada pedazo lleve dos cables y se trence).
+pub(super) fn splice_40_mm_from_x1() -> ProjectData {
+    let mut data = one_segment_project(500.0, None);
+    data.splice_instances = vec![crate::model::project::SpliceInstance {
+        id: 1,
+        short_id: "SP1".into(),
+        name: String::new(),
+        library_part_id: 1,
+        node_id: None,
+        segment_id: Some(1),
+        offset_from_end_mm: Some(40.0),
+        offset_from_node_id: Some(1),
+    }];
+    let base = data.wire_instances[0].clone();
+    data.wire_instances = vec![
+        WireInstance {
+            end_b: splice_end(1),
+            ..base.clone()
+        },
+        WireInstance {
+            id: 2,
+            short_id: "W002".into(),
+            end_a: splice_end(1),
+            ..base.clone()
+        },
+        WireInstance {
+            id: 3,
+            short_id: "W003".into(),
+            ..base
+        },
+    ];
+    data
 }

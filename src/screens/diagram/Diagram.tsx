@@ -8,7 +8,7 @@ import { BLOCK_SIZE, POINT_SIZE, autoLayout, isBlock, rootNodeId } from "../../l
 import { addBranch, assignConnector, connectNodes, deleteNode, deleteSegment, newNode, setSegmentLength, splitSegment } from "../../logic/projectEdit";
 import type { Finding, ProjectData, Selection } from "../../model/project";
 import type { Library } from "../../model/library";
-import type { CostReport } from "../../model/calc";
+import type { CostReport, RouteLeg } from "../../model/calc";
 import { NodePanel } from "./NodePanel";
 import { edgeTypes, nodeTypes } from "./elements";
 import { issuesByElement, nodeData, segmentData, type HarnessNodeData, type SegmentEdgeData } from "./flowData";
@@ -98,7 +98,7 @@ export default function Diagram({ project, setProject, library, findings, select
     void (async () => {
       const netIds = await invoke<number[]>("wire_net", { wireId });
       const ids = netIds.includes(wireId) ? netIds : [wireId, ...netIds];
-      const routes = await Promise.all(ids.map((id) => invoke<number[] | null>("wire_route", { wireId: id })));
+      const routes = await Promise.all(ids.map((id) => invoke<RouteLeg[] | null>("wire_route", { wireId: id }).then((r) => r?.map((l) => l.segment_id) ?? null)));
       if (cancelled) return;
       const net = new Set(routes.flatMap((r) => r ?? []));
       const wire = new Set(routes[ids.indexOf(wireId)] ?? []);

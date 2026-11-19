@@ -54,6 +54,7 @@ pub const PROJECT: Format = Format {
         project_v5_to_v6,
         project_v6_to_v7,
         project_v7_to_v8,
+        project_v8_to_v9,
     ],
 };
 
@@ -66,6 +67,7 @@ pub const LIBRARY: Format = Format {
         library_v1_to_v2,
         library_v2_to_v3,
         library_v3_to_v4,
+        library_v4_to_v5,
     ],
 };
 
@@ -232,6 +234,14 @@ fn project_v7_to_v8(tx: &Transaction) -> rusqlite::Result<()> {
     )
 }
 
+/// Temperatura del aire alrededor del arnés, para la capacidad de los cables
+/// según el mazo (ver `library_v4_to_v5`).
+fn project_v8_to_v9(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "ALTER TABLE project ADD COLUMN ambient_temperature_c REAL NOT NULL DEFAULT 70 CHECK (ambient_temperature_c > -60);",
+    )
+}
+
 /// Ver `project_v0_to_v1`. Los grupos de pines de dispositivos se sacaron el
 /// 8/10 (el mismo nombre en dos vías ya indica pines en paralelo).
 fn library_v0_to_v1(tx: &Transaction) -> rusqlite::Result<()> {
@@ -286,6 +296,25 @@ fn library_v3_to_v4(tx: &Transaction) -> rusqlite::Result<()> {
          ALTER TABLE wire_defs ADD COLUMN max_current_a REAL CHECK (max_current_a > 0);
          ALTER TABLE wire_defs ADD COLUMN resistance_mohm_per_m REAL CHECK (resistance_mohm_per_m > 0);",
     )
+}
+
+/// Capacidad de los cables según el mazo (pedido de Martin del 2026-11-19): en
+/// vez de una corriente fija "en mazo" (la de la FAA, para 33 cables, 70 °C y
+/// 60.000 ft), cada tipo de cable guarda su corriente solo al aire y su
+/// temperatura máxima, y la capacidad se calcula en cada tramo con la cantidad
+/// de cables y cuántos llevan corriente (`calc::capacity`). El dato viejo era
+/// de otro criterio y no se puede convertir sin saber la temperatura del cable:
+/// se quita; "Add standard parts" vuelve a cargar los de la base (la versión 4
+/// no salió, así que no hay bibliotecas reales con datos propios ahí).
+fn library_v4_to_v5(tx: &Transaction) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        "ALTER TABLE wire_defs DROP COLUMN max_current_a;
+         ALTER TABLE wire_defs ADD COLUMN free_air_current_a REAL CHECK (free_air_current_a > 0);
+         ALTER TABLE wire_defs ADD COLUMN max_temperature_c REAL CHECK (max_temperature_c > 0);",
+    )?;
+    // En el archivo migrado las columnas nuevas quedan después de
+    // `resistance_mohm_per_m`; el orden no importa (se leen por nombre).
+    Ok(())
 }
 
 /// Solo para la migración de base (los archivos de la versión 0 vienen en
@@ -660,6 +689,10 @@ mod tests {
     const PROJECT_SCHEMA_V6: &str = include_str!("../schema/history/project.v6.sql");
     /// Esquema de los proyectos en el formato 7 (carga eléctrica, sin release).
     const PROJECT_SCHEMA_V7: &str = include_str!("../schema/history/project.v7.sql");
+    /// Esquema de los proyectos en el formato 8 (fuente por vía, sin release).
+    const PROJECT_SCHEMA_V8: &str = include_str!("../schema/history/project.v8.sql");
+    /// Esquema de las bibliotecas en el formato 4 (carga eléctrica, sin release).
+    const LIBRARY_SCHEMA_V4: &str = include_str!("../schema/history/library.v4.sql");
     const LIBRARY_SCHEMA_V3: &str = include_str!("../schema/history/library.v3.sql");
 
     /// Un proyecto como los que había antes del versionado: el esquema de
@@ -1083,6 +1116,59 @@ mod tests {
     }
 
     #[test]
+    fn a_v4_library_drops_the_bundled_rating_and_keeps_the_rest() {
+        let path = temp_path("v4-library.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(LIBRARY_SCHEMA_V4).unwrap();
+        conn.execute_batch(
+            "INSERT INTO parts (id, part_number, category, purchase_unit) VALUES (1, 'M22759/32-18', 'wire', 'meter');
+             INSERT INTO wire_defs (part_id, gauge, outer_diameter_mm, max_current_a, resistance_mohm_per_m)
+                 VALUES (1, '18 AWG', 1.52, 9.0, 20.44);",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 4).unwrap();
+        drop(conn);
+
+        let conn = open_library(&path).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), LIBRARY.version());
+        let library = crate::model::library::load(&conn).unwrap();
+        let wire = &library.wire_defs[0];
+        assert_eq!(wire.resistance_mohm_per_m, Some(20.44));
+        assert_eq!(wire.outer_diameter_mm, 1.52);
+        // El dato en mazo de la FAA no se convierte: "Add standard parts" carga el nuevo.
+        assert_eq!(
+            (wire.free_air_current_a, wire.max_temperature_c),
+            (None, None)
+        );
+        drop(conn);
+        for p in [format!("{path}.v4.bak"), path] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[test]
+    fn a_v8_project_gets_the_default_ambient() {
+        let path = temp_path("v8.harness.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(PROJECT_SCHEMA_V8).unwrap();
+        conn.execute_batch(
+            "INSERT INTO project (id, name, harness_code) VALUES (1, 'Motor', 'MOT-01');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 8).unwrap();
+        drop(conn);
+
+        let conn = open_project(&path).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), PROJECT.version());
+        let data = project::load(&conn).unwrap();
+        assert_eq!(data.project.ambient_temperature_c, 70.0);
+        drop(conn);
+        for p in [format!("{path}.v8.bak"), path] {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    #[test]
     fn a_v3_library_gets_empty_electrical_data() {
         let path = temp_path("v3-library.db");
         let conn = Connection::open(&path).unwrap();
@@ -1100,7 +1186,8 @@ mod tests {
         let conn = open_library(&path).unwrap();
         assert_eq!(user_version(&conn).unwrap(), LIBRARY.version());
         let library = crate::model::library::load(&conn).unwrap();
-        assert_eq!(library.wire_defs[0].max_current_a, None);
+        assert_eq!(library.wire_defs[0].free_air_current_a, None);
+        assert_eq!(library.wire_defs[0].max_temperature_c, None);
         assert_eq!(library.wire_defs[0].resistance_mohm_per_m, None);
         assert_eq!(library.contact_defs[0].max_current_a, None);
         drop(conn);

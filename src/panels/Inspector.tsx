@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CostReport, ElectricalReport, WireCutLength } from "../model/calc";
+import type { CostReport, ElectricalReport, RouteLeg, WireCutLength, WireElectrical } from "../model/calc";
 import { swatchBackground } from "../logic/sheets";
 import { changeConnectorPart, endLabel, nextCableShortId, nextId, patchItem, setCavitySource, setLeavesBackward, setWireCable, setWireType, usedCavities, wireCategoryPatch } from "../logic/projectEdit";
 import type { ComponentInstance, ConnectorInstance, Finding, Node, ProjectData, Selection, SpliceInstance, WireInstance } from "../model/project";
@@ -114,11 +114,11 @@ function Select<T extends string | number>({ value, options, onChange, empty }: 
  * Recorrido y largo de un cable: los segmentos por los que pasa, el largo con
  * trenzado, el margen y el de corte (o el puesto a mano). Lo calcula el backend.
  */
-function WireLength({ project, wire, report, projectRevision }: { project: ProjectData; wire: WireInstance; report: CostReport | null; projectRevision: number }) {
-  const [route, setRoute] = useState<number[] | null | undefined>(undefined);
+function WireLength({ wire, report, projectRevision }: { wire: WireInstance; report: CostReport | null; projectRevision: number }) {
+  const [route, setRoute] = useState<RouteLeg[] | null | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
-    void invoke<number[] | null>("wire_route", { wireId: wire.id }).then((r) => {
+    void invoke<RouteLeg[] | null>("wire_route", { wireId: wire.id }).then((r) => {
       if (!cancelled) setRoute(r);
     });
     return () => {
@@ -126,14 +126,17 @@ function WireLength({ project, wire, report, projectRevision }: { project: Proje
     };
   }, [projectRevision, wire.id]);
   if (route === undefined || !report) return <span className="hint">…</span>;
-  const info: { route: number[] | null; cut: WireCutLength | undefined } = { route, cut: report.cut_list.find((c) => c.wire_id === wire.id) };
-  const segments = (info.route ?? []).map((id) => project.segments.find((s) => s.id === id)).filter((s) => s !== undefined);
+  const info: { route: RouteLeg[] | null; cut: WireCutLength | undefined } = { route, cut: report.cut_list.find((c) => c.wire_id === wire.id) };
+  const legs = info.route ?? [];
   return (
     <div className="inspector-length">
       {info.route === null ? (
         <span className="hint">No route: both ends need a place in the topology.</span>
       ) : (
-        <span>{segments.map((s) => `S${s.id} ${s.length_mm.toFixed(0)}`).join(" → ") || "same node"} = {segments.reduce((t, s) => t + s.length_mm, 0).toFixed(0)} mm</span>
+        <span>
+          {legs.map((l) => `S${l.segment_id} ${(l.end_mm - l.start_mm).toFixed(0)}${l.straight ? " straight" : ""}`).join(" → ") || "same node"} ={" "}
+          {legs.reduce((t, l) => t + l.end_mm - l.start_mm, 0).toFixed(0)} mm
+        </span>
       )}
       {info.cut && (
         <span>
@@ -185,6 +188,21 @@ function wireProtectionHint(electrical: ElectricalReport | null, wireId: number)
   return e?.protection_a != null && e.protection_from_circuit ? `${e.protection_a.toFixed(1)}: from its circuit` : "PDM channel or fuse";
 }
 
+/** Por qué no hay capacidad para un cable (`calc/capacity.rs`). */
+const CAPACITY_LIMIT_TEXT: Record<NonNullable<WireElectrical["capacity_limit"]>, string> = {
+  no_library_data: "no free-air current or max. temperature in the library",
+  too_hot: "the harness ambient is at or above its max. temperature",
+  beyond_curves: "less than 30 °C above the harness ambient: out of the derating curves",
+  no_route: "no route yet, so no bundle to work out its capacity",
+};
+
+/** Dónde tiene el cable su capacidad: "in S3 (21 wires, 4 with current) at 70 °C", o "in 40 mm of S1 (…)" si un splice parte el tramo. */
+function bundleText(bundle: WireElectrical["bundle"], ambientC: number): string {
+  if (!bundle || bundle.segment_id === null) return `on its own at ${ambientC} °C`;
+  const piece = bundle.piece_mm === null ? "" : `${bundle.piece_mm.toFixed(0)} mm of `;
+  return `in ${piece}S${bundle.segment_id} (${bundle.wires} ${bundle.wires === 1 ? "wire" : "wires"}, ${bundle.loaded} with current) at ${ambientC} °C`;
+}
+
 /**
  * Lo que calcula el núcleo de la carga eléctrica de un cable: la capacidad de su
  * tipo de cable y la caída de tensión (la suya y desde la fuente del circuito).
@@ -199,7 +217,9 @@ function WireElectricalInfo({ project, library, wireId, electrical }: { project:
   return (
     <div className="inspector-length">
       <span className={e.max_current_a !== null && current > e.max_current_a ? "over-limit" : undefined}>
-        {e.max_current_a === null ? `${typeName}: no max current in the library` : `${typeName} takes ${formatAmps(e.max_current_a)} in a bundle`}
+        {e.max_current_a === null
+          ? `${typeName}: ${CAPACITY_LIMIT_TEXT[e.capacity_limit ?? "no_route"]}`
+          : `${typeName} takes ${formatAmps(e.max_current_a)} ${bundleText(e.bundle, project.project.ambient_temperature_c)}`}
       </span>
       {e.load_a !== null &&
         (e.drop_v === null ? (
@@ -355,6 +375,10 @@ export default function Inspector({ project, setProject, library, selection, onS
         <Field label="Max. voltage drop">
           <NumberInput value={p.voltage_drop_limit_v} positive unit="V" onCommit={(v) => v !== null && set({ voltage_drop_limit_v: v })} />
           <span className="hint">From the source to each load. 0.5 V is what FAA AC 43.13-1B allows on 14 V with a continuous load.</span>
+        </Field>
+        <Field label="Ambient">
+          <NumberInput value={p.ambient_temperature_c} min={-40} unit="°C" onCommit={(v) => v !== null && set({ ambient_temperature_c: v })} />
+          <span className="hint">Air around the harness in use, for the capacity of its wires. 70 °C is what FAA AC 43.13-1B assumes; raise it for a harness that runs hotter.</span>
         </Field>
         <Field label="Materials cost">
           <Select
@@ -663,7 +687,7 @@ export default function Inspector({ project, setProject, library, selection, onS
           </Field>
           <Field label="From"><EndEditor end={w.end_a} project={project} onChange={(end_a) => set({ end_a })} /></Field>
           <Field label="To"><EndEditor end={w.end_b} project={project} onChange={(end_b) => set({ end_b })} /></Field>
-          <Field label="Length"><WireLength project={project} wire={w} report={report} projectRevision={projectRevision} /></Field>
+          <Field label="Length"><WireLength wire={w} report={report} projectRevision={projectRevision} /></Field>
           <Field label="Cut length by hand">
             <NumberInput value={w.manual_length_mm} nullable unit="mm" placeholder="from the route" onCommit={(v) => set({ manual_length_mm: v })} />
           </Field>

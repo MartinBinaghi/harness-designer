@@ -142,7 +142,8 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
         <thead>
           <tr>
             <th>Part number</th><th>Manufacturer</th><th>USD</th><th>Gauge</th><th>Spec</th><th>Color</th><th>OD (mm)</th><th>Cut margin %</th>
-            <th title="Maximum continuous current per conductor inside a bundle (the base library uses FAA AC 43.13-1B, table 11-9: conservative)">Max. A</th>
+            <th title="Current of a single wire in free air, 40 °C ambient and 60 °C rise, per conductor (the base library uses Raychem's). The capacity where it runs is worked out from the bundle and the harness ambient.">Free air A</th>
+            <th title="Maximum temperature the wire takes (°C; 150 for M22759/32)">Max. °C</th>
             <th title="Conductor resistance at 20 °C, per conductor">mΩ/m</th>
             <th title="More than 1: a bought multi-conductor cable (twisted pair, multicore). In the harness its conductors are the wires of one cable (WC), cut and bought once; OD is the whole cable's.">Conductors</th>
             <th></th>
@@ -174,7 +175,10 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
                   />
                 </td>
                 <td>
-                  <OptionalNumberInput value={wd.max_current_a} positive placeholder="—" onCommit={(v) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { max_current_a: v }))} />
+                  <OptionalNumberInput value={wd.free_air_current_a} positive placeholder="—" onCommit={(v) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { free_air_current_a: v }))} />
+                </td>
+                <td>
+                  <OptionalNumberInput value={wd.max_temperature_c} positive placeholder="—" onCommit={(v) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { max_temperature_c: v }))} />
                 </td>
                 <td>
                   <OptionalNumberInput value={wd.resistance_mohm_per_m} positive placeholder="—" onCommit={(v) => setLibrary(updateSubtype<"wire_defs", WireDef>(library, "wire_defs", wd.part_id, { resistance_mohm_per_m: v }))} />
@@ -208,7 +212,8 @@ export function WireDefsTab({ library, setLibrary, partById }: TabProps) {
               color: null,
               outer_diameter_mm: 1,
               default_cut_margin_pct: null,
-              max_current_a: null,
+              free_air_current_a: null,
+              max_temperature_c: null,
               resistance_mohm_per_m: null,
               conductors: [],
             })),

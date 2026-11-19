@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Node, ProjectData, Segment, Selection } from "../model/project";
+import type { RouteLeg } from "../model/calc";
 import { NODE_KINDS, NODE_KIND_LABELS, NODE_TERMINATIONS, NODE_TERMINATION_LABELS } from "../logic/nodeLabels";
 import { partLabel, type Library } from "../model/library";
 import { buildTreeText } from "../logic/tree";
@@ -31,7 +32,7 @@ interface Props {
 export default function Topology({ project, setProject, loadProject, cancelProjectEdits, flushProjectEdits, confirmDiscard, afterSave, filePath, setFilePath, library, selection, onSelect }: Props) {
   const [status, setStatus] = useState("");
   const [selectedWireId, setSelectedWireId] = useState<number | null>(null);
-  const [route, setRoute] = useState<number[] | null>(null);
+  const [route, setRoute] = useState<RouteLeg[] | null>(null);
   const [net, setNet] = useState<number[] | null>(null);
 
   const treeText = useMemo(() => {
@@ -173,7 +174,7 @@ export default function Topology({ project, setProject, loadProject, cancelProje
     if (!project || selectedWireId === null) return;
     await flushProjectEdits(); // la consulta se hace sobre lo que tiene el backend
     const [routeResult, netResult] = await Promise.all([
-      invoke<number[] | null>("wire_route", { wireId: selectedWireId }),
+      invoke<RouteLeg[] | null>("wire_route", { wireId: selectedWireId }),
       invoke<number[]>("wire_net", { wireId: selectedWireId }),
     ]);
     setRoute(routeResult);
@@ -359,12 +360,7 @@ export default function Topology({ project, setProject, loadProject, cancelProje
                     ? "no resolvable physical location at one of its ends"
                     : route.length === 0
                       ? "same node at both ends (zero length)"
-                      : route
-                          .map((segId) => {
-                            const seg = project.segments.find((s) => s.id === segId);
-                            return seg ? `S${segId} (${seg.length_mm}mm)` : `S${segId}`;
-                          })
-                          .join(" → ")}
+                      : route.map((l) => `S${l.segment_id} (${(l.end_mm - l.start_mm).toFixed(0)}mm${l.straight ? ", straight" : ""})`).join(" → ")}
                 </p>
                 <p>
                   <strong>Net:</strong>{" "}

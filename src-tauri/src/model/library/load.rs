@@ -133,7 +133,7 @@ pub fn load(conn: &Connection) -> Result<Library> {
         .collect::<Result<Vec<_>>>()?;
 
     let mut wire_defs_stmt = conn.prepare(
-        "SELECT part_id, gauge, spec, color, outer_diameter_mm, default_cut_margin_pct, max_current_a, resistance_mohm_per_m FROM wire_defs",
+        "SELECT part_id, gauge, spec, color, outer_diameter_mm, default_cut_margin_pct, free_air_current_a, max_temperature_c, resistance_mohm_per_m FROM wire_defs",
     )?;
     let mut wire_defs = wire_defs_stmt
         .query_map([], |row| {
@@ -144,8 +144,9 @@ pub fn load(conn: &Connection) -> Result<Library> {
                 color: row.get(3)?,
                 outer_diameter_mm: row.get(4)?,
                 default_cut_margin_pct: row.get(5)?,
-                max_current_a: row.get(6)?,
-                resistance_mohm_per_m: row.get(7)?,
+                free_air_current_a: row.get(6)?,
+                max_temperature_c: row.get(7)?,
+                resistance_mohm_per_m: row.get(8)?,
                 conductors: Vec::new(),
             })
         })?

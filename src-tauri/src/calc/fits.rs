@@ -1,6 +1,6 @@
 //! Qué termo, boot o molde en T sirve en cada tramo, conector y breakout (plan 9).
 
-use super::{bundle_diameter_mm, segment_final_diameter_mm};
+use super::{bundle_diameter_at_node_mm, bundle_diameter_mm, final_diameter_at_node_mm};
 use crate::model::library::{Library, TMoldDef, TMoldLeg};
 use crate::model::project::{ConnectorInstance, ProjectData};
 use serde::{Deserialize, Serialize};
@@ -74,8 +74,8 @@ pub struct BootFit {
     pub fits: bool,
 }
 
-/// Diámetro de bundle a la salida de un conector: el del segmento conectado a
-/// su nodo (un `connector_end` tiene un solo segmento). `0.0` si no hay ninguno.
+/// Diámetro de bundle a la salida de un conector: el del pedazo del segmento
+/// que llega a su nodo (un `connector_end` tiene un solo segmento). `0.0` si no hay ninguno.
 fn connector_outlet_diameter_mm(
     data: &ProjectData,
     library: &Library,
@@ -84,7 +84,7 @@ fn connector_outlet_diameter_mm(
     data.segments
         .iter()
         .find(|s| s.node_a_id == connector.node_id || s.node_b_id == connector.node_id)
-        .map(|s| bundle_diameter_mm(data, library, s.id))
+        .map(|s| bundle_diameter_at_node_mm(data, library, s.id, connector.node_id))
         .unwrap_or(0.0)
 }
 
@@ -156,7 +156,7 @@ pub fn boots_for_breakout(data: &ProjectData, library: &Library, node_id: i64) -
     let diameter = (!chosen.is_empty()).then(|| {
         chosen
             .iter()
-            .map(|&id| bundle_diameter_mm(data, library, id).powi(2))
+            .map(|&id| bundle_diameter_at_node_mm(data, library, id, node_id).powi(2))
             .sum::<f64>()
             .sqrt()
     });
@@ -206,7 +206,12 @@ pub(super) fn node_segments_by_diameter(
         .segments
         .iter()
         .filter(|s| s.node_a_id == node_id || s.node_b_id == node_id)
-        .map(|s| (s.id, segment_final_diameter_mm(data, library, s.id)))
+        .map(|s| {
+            (
+                s.id,
+                final_diameter_at_node_mm(data, library, s.id, node_id),
+            )
+        })
         .collect();
     segment_diameters.sort_by(|a, b| b.1.total_cmp(&a.1));
     segment_diameters
@@ -310,6 +315,7 @@ pub fn breakout_terminations(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calc::segment_final_diameter_mm;
     use crate::calc::test_fixtures::*;
     use crate::model::library::CoveringDef;
     use crate::model::project::{Node, Segment};

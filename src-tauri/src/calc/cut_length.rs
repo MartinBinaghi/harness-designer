@@ -1,6 +1,6 @@
 //! Largo de corte de cada cable: recorrido, trenzado, margen y redondeo (plan 5.1).
 
-use super::{bundle_diameter_mm, elements_in_segment, wire_def_of};
+use super::{bundle_spans, wire_def_of};
 use crate::model::library::Library;
 use crate::model::project::{Project, ProjectData};
 use crate::topology::wire_route;
@@ -33,8 +33,9 @@ pub struct WireCutLength {
     pub manual: bool,
 }
 
-/// Largo del recorrido con el factor de trenzado de cada segmento, y el peor
-/// factor del recorrido. `None` si el cable no tiene recorrido resoluble.
+/// Largo del recorrido con el factor de trenzado de cada pedazo de tramo que
+/// recorre (con un splice o componente sobre el tramo, solo hasta ahí), y el
+/// peor factor del recorrido. `None` si el cable no tiene recorrido resoluble.
 fn route_length_with_twist(
     data: &ProjectData,
     library: &Library,
@@ -42,22 +43,30 @@ fn route_length_with_twist(
 ) -> Option<(f64, f64)> {
     let mut length_with_twist_mm = 0.0;
     let mut worst_factor: f64 = 1.0;
-    for segment_id in &wire_route(data, wire_id)? {
-        let segment = data.segments.iter().find(|s| s.id == *segment_id)?;
-        let d_bundle = bundle_diameter_mm(data, library, *segment_id);
-        let pitch = effective_pitch_mm(&data.project, segment.twist_pitch_mm, d_bundle);
-        // Un cable solo en el tramo no se trenza con nada: va derecho. (Un par
-        // trenzado en el taller solo sí: sus cables siguen la hélice. Un cable
-        // comprado solo, no: sus conductores ya vienen trenzados adentro y se
-        // miden sobre el cable.)
-        let alone = elements_in_segment(data, *segment_id) <= 1;
-        let factor = if alone {
-            1.0
-        } else {
-            twist_factor(d_bundle, pitch)
-        };
-        length_with_twist_mm += segment.length_mm * factor;
-        worst_factor = worst_factor.max(factor);
+    for leg in &wire_route(data, wire_id)? {
+        // Del splice a su nodo de referencia va derecho (bajo el boot).
+        if leg.straight {
+            length_with_twist_mm += leg.length_mm();
+            continue;
+        }
+        let segment = data.segments.iter().find(|s| s.id == leg.segment_id)?;
+        for span in bundle_spans(data, library, leg.segment_id)
+            .iter()
+            .filter(|s| leg.covers(s.start_mm, s.end_mm))
+        {
+            let pitch = effective_pitch_mm(&data.project, segment.twist_pitch_mm, span.diameter_mm);
+            // Un cable solo en el pedazo no se trenza con nada: va derecho. (Un
+            // par trenzado en el taller solo sí: sus cables siguen la hélice. Un
+            // cable comprado solo, no: sus conductores ya vienen trenzados
+            // adentro y se miden sobre el cable.)
+            let factor = if span.elements <= 1 {
+                1.0
+            } else {
+                twist_factor(span.diameter_mm, pitch)
+            };
+            length_with_twist_mm += (span.end_mm - span.start_mm) * factor;
+            worst_factor = worst_factor.max(factor);
+        }
     }
     Some((length_with_twist_mm, worst_factor))
 }
@@ -236,6 +245,25 @@ mod tests {
         let cut = wire_cut_length(&data, &library, 1).unwrap();
         assert_eq!(cut.length_with_twist_mm, 500.0);
         assert_eq!(cut.twist_min_margin_pct, 0.0);
+    }
+
+    #[test]
+    fn a_splice_40_mm_from_a_connector_gives_each_side_its_real_length() {
+        let data = splice_40_mm_from_x1();
+        let mut library = Library::default();
+        library.wire_defs.push(wire_def(100, 2.0, None));
+        // Paso por defecto 8 × D: factor de la capa exterior, sea cual sea D.
+        let twist = twist_factor(1.0, 8.0);
+        let length = |id| wire_cut_length(&data, &library, id).unwrap();
+
+        // De X1 a SP1: los 40 mm, derechos (bajo el boot), más el 10 %.
+        assert!((length(1).length_with_twist_mm - 40.0).abs() < 1e-9);
+        assert!((length(1).cut_length_mm - 44.0).abs() < 1e-9);
+        assert_eq!(length(1).twist_min_margin_pct, 0.0);
+        // De SP1 a X2: el resto del tramo, trenzado con W003.
+        assert!((length(2).length_with_twist_mm - 460.0 * twist).abs() < 1e-9);
+        // W003 recorre los dos pedazos, trenzado en los dos.
+        assert!((length(3).length_with_twist_mm - 500.0 * twist).abs() < 1e-9);
     }
 
     #[test]

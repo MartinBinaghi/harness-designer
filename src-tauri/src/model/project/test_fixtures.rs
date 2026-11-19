@@ -30,6 +30,7 @@ pub(crate) fn sample() -> ProjectData {
             )]
             .into(),
             voltage_drop_limit_v: crate::model::project::DEFAULT_VOLTAGE_DROP_LIMIT_V,
+            ambient_temperature_c: crate::model::project::DEFAULT_AMBIENT_TEMPERATURE_C,
         },
         nodes: vec![
             Node {

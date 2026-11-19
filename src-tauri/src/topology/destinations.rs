@@ -230,7 +230,10 @@ mod tests {
         };
         data.wire_instances = vec![wire(1, cavity(100), loose.clone())];
         assert_eq!(destinations_of(&data, 100), (vec![loose], vec![]));
-        assert_eq!(crate::topology::wire_route(&data, 1), Some(vec![1, 3]));
+        assert_eq!(
+            crate::topology::wire_route(&data, 1).map(|r| r.iter().map(|l| l.segment_id).collect()),
+            Some(vec![1, 3])
+        );
         assert!(crate::checks::run_checks(&data, &Default::default())
             .iter()
             .all(|f| f.group != "Wire ends"));

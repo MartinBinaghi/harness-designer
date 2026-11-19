@@ -100,8 +100,10 @@ export interface WireDef {
   color: string | null;
   outer_diameter_mm: number;
   default_cut_margin_pct: number | null;
-  /** Por conductor: corriente máxima continua en un mazo (A). */
-  max_current_a: number | null;
+  /** Por conductor: corriente de un cable solo al aire, 40 °C de ambiente y 60 °C de aumento (A, como la da Raychem). */
+  free_air_current_a: number | null;
+  /** Temperatura máxima del cable (°C). */
+  max_temperature_c: number | null;
   /** Por conductor: resistencia a 20 °C (mΩ por metro). */
   resistance_mohm_per_m: number | null;
   conductors: WireDefConductor[];

@@ -22,6 +22,8 @@ export interface Project {
   schematic_layout: Record<string, SchematicPlace>;
   /** Caída de tensión máxima de un circuito (V) antes de que Checks avise; 0,5 por defecto. */
   voltage_drop_limit_v: number;
+  /** Temperatura del aire alrededor del arnés en uso (°C), para la capacidad de los cables; 70 por defecto. */
+  ambient_temperature_c: number;
 }
 
 /** Dónde dejó el usuario un bloque del esquema y, si lo eligió, por qué lado salen sus cables. */

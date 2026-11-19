@@ -114,7 +114,7 @@ Cada tipo de parte extiende `Part`:
 - calibre (mm² o AWG), norma/tipo (ej. M22759/32), color
 - **diámetro exterior** (indispensable para diámetros y trenzado)
 - margen de corte por defecto de este tipo de cable (opcional; ej. ethernet con más margen)
-- **corriente máxima en un mazo** (A, por conductor) y **resistencia del conductor** (mΩ/m a 20 °C), opcionales (ver 5.5)
+- **corriente solo al aire** (A, por conductor, con 40 °C de ambiente y 60 °C de aumento, como la da Raychem), **temperatura máxima** (°C) y **resistencia del conductor** (mΩ/m a 20 °C), opcionales (ver 5.5); la capacidad donde pasa la calcula el programa con el mazo (formato 5 de biblioteca)
 - conductores: 1 para cable simple; para multiconductor comprado (par trenzado, apantallado), lista de conductores internos + malla/drenaje. En la biblioteca se carga la cantidad de conductores; el diámetro exterior es el del cable entero
 
 **SpliceDef**
@@ -144,6 +144,7 @@ Cada tipo de parte extiende `Part`:
 - configuración: markup, margen de corte global (por defecto 10%), paso de trenzado por defecto, factor de llenado, **repuesto por categoría de parte** (%) y costo de materiales **sobre lo usado o sobre lo comprado**. Se edita en el Inspector haciendo clic en el nombre del arnés en el árbol; un proyecto nuevo arranca con los valores por defecto
 - mano de obra: horas estimadas × valor hora
 - **caída de tensión máxima** desde la fuente hasta cada carga (V; 0,5 por defecto, ver 5.5)
+- **temperatura ambiente** del aire alrededor del arnés en uso (°C; 70 por defecto, el de la FAA, también para el arnés de motor de Martin; formato 9), para la capacidad de los cables (5.5)
 
 
 **Node** — punto de la topología
@@ -174,7 +175,7 @@ Cada tipo de parte extiende `Part`:
 
 **SpliceInstance** (ej. "SP1 · Bobinas pin 2")
 - ID corto, **nombre** (opcional, para reconocerlo; se ve en la lista de Splices, el árbol, el esquemático y en "Termina en": "(vía SP1 · Bobinas pin 2)"), SpliceDef
-- ubicación: **en un nodo**, o **sobre un segmento a X mm de uno de sus extremos** (ej. unión de 5 cables a 2 cm del conector, de donde sale un cable corto al pin)
+- ubicación: **en un nodo**, o **sobre un segmento a X mm de uno de sus extremos** (ej. unión de 5 cables a 2 cm del conector, de donde sale un cable corto al pin). Sobre un segmento, el recorrido y el largo usan la posición real: hacia el extremo desde el que se mide, X mm derechos (sin trenzado: es el pedazo bajo el boot); hacia el otro, el resto del tramo. El splice parte el tramo en dos pedazos (ver 4.3). Una distancia fuera del tramo se toma en la punta y Checks avisa. Lo mismo para un componente sobre un segmento
 
 **ComponentInstance** (ej. "R1 · Terminación CAN 100Ω")
 - ComponentDef, conectado entre dos extremos (pines/cables)
@@ -208,10 +209,10 @@ Cada tipo de parte extiende `Part`:
 
 ### 4.3 Datos calculados (no se guardan)
 
-- **Recorrido de cada cable**: como la topología es un árbol, entre dos nodos hay un único camino; se calcula automáticamente.
+- **Recorrido de cada cable**: como la topología es un árbol, entre dos nodos hay un único camino; se calcula automáticamente. Es lo que recorre de cada segmento: entero, o hasta un splice o componente sobre el segmento.
 - **Nets**: se arman recorriendo la conectividad (cable → splice → cable…, cables que comparten cavidad, componentes). Se detienen en conectores de interconexión, referencias externas y **masas** (un ojal es donde termina el cable, no une circuitos: los cables al mismo ojal no forman una net).
 - **"Termina en"** de cada pin: destino final, aunque haya splices en el medio (ej. "X9 C185 · 5V · pin 28 (vía SP2)"). Del otro lado de un splice solo se muestra lo que está **del otro lado**: se ocultan los pines que llegan al splice por la misma rama de la topología que el pin consultado (desde una bobina no se ven las otras bobinas, solo los pines del conector de motor; desde el motor se ven todas). Lo que está en el nodo del splice se ve siempre; si no quedara ningún destino, se muestran todos. **No sigue por las masas**: un pin que va a G1 termina en "G1 · GND", no en todo lo atornillado al mismo ojal.
-- **Cables por segmento**: base para diámetro, trenzado, concéntrico y consulta inversa.
+- **Cables por segmento**, por **pedazo**: un splice o componente sobre un segmento lo parte en pedazos (los cables que le entran y los que salen no van juntos en el mazo). Base para diámetro, trenzado, capacidad, concéntrico y consulta inversa.
 - **Largo de corte** de cada cable (ver 5.1).
 - **Diámetro estimado del bundle** por segmento.
 - **BOM, lista de corte, costo total, lista de etiquetas.**
@@ -224,9 +225,11 @@ Cada tipo de parte extiende `Part`:
 ### 5.1 Largo de corte
 
 ```
-largo_con_trenzado = Σ (largo_segmento × factor_trenzado_del_cable_en_ese_segmento)
+largo_con_trenzado = Σ (largo_recorrido_del_pedazo × factor_trenzado_del_pedazo)
 largo_de_corte     = largo_con_trenzado × (1 + margen_de_seguridad)
 ```
+
+Los pedazos son los tramos enteros que recorre el cable y, si una punta está en un splice o componente **sobre un segmento**, solo la parte de ese segmento hasta ahí (ver 4.2 y 4.3). Ejemplo: SP1 a 40 mm de X1 sobre un tramo de 500 mm; el cable de X1 a SP1 recorre 40 mm **derechos** (factor 1: va bajo el boot), corte 44 mm con el 10 %; el de SP1 hacia el otro extremo, 460 mm con el factor de trenzado de ese pedazo, más lo que siga. Entre dos splices del mismo tramo, la distancia entre ellos.
 
 Si el cable tiene **largo de corte a mano**, ese es el largo de corte (no se aplica margen).
 
@@ -250,7 +253,7 @@ Ejemplo: bundle de 10 mm, paso 120 mm, cable en capa exterior (D ≈ 9 mm) → f
 - Si se usa el módulo concéntrico, `D` sale de la capa real de cada cable.
 - Si no, se estima con el peor caso (capa exterior del diámetro estimado del bundle): resultado conservador.
 - Si el margen configurado es menor que el mínimo por trenzado, el programa avisa.
-- Un **cable solo** en un tramo no se trenza con nada: factor 1 (un par trenzado en el taller solo sí se trenza; un cable comprado solo, no: cuenta como un cable).
+- Un **cable solo** en un pedazo de tramo no se trenza con nada: factor 1 (un par trenzado en el taller solo sí se trenza; un cable comprado solo, no: cuenta como un cable).
 
 **Paso de trenzado por defecto**: en el taller se trenza a ojo, sin un paso fijo. Por eso el paso por defecto se expresa como **múltiplo del diámetro del bundle** (configurable), con un valor conservador (paso corto = más largo de cable):
 - Referencia orientativa: paso entre 8 y 16 veces el diámetro del bundle.
@@ -268,7 +271,7 @@ D_bundle = √( Σ dᵢ² / f )
 - `dᵢ`: diámetro exterior de cada elemento del segmento (cables sueltos; grupos de trenzado y multiconductores como un solo elemento con su propio diámetro)
 - `f`: factor de llenado, configurable. **Valor inicial 0,75**, pendiente de calibrar midiendo bundles reales.
 - Diámetro final del segmento = D_bundle + 2 × espesor de pared contraído por cada capa de cobertura.
-- Donde hay un splice sobre el segmento, el diámetro crece localmente: se marca como el punto más grueso del tramo.
+- Donde hay un splice sobre el segmento, el tramo se parte ahí y vale el **pedazo más grueso**, sin sumar los cables que entran y los que salen: el termo no pasa por el splice, que se hace con los termos ya pasados (Martin, 2026-11-19). Un boot o un molde mide el pedazo que llega a su nodo.
 
 Detalle de selección de coberturas y moldes en la sección 9.
 
@@ -302,7 +305,8 @@ Decidido con Martin el 2026-11-16 (fuentes en la bitácora). Lógica en `calc/el
 - **Cable suelto** (de repuesto, "suelto en un nodo"): cuenta 0 A sin cargarlo, así no frena la suma de su splice.
 - **Caída de tensión** = consumo × resistencia × largo de corte; en cada carga, la suma de los cables desde la fuente (con varios en paralelo, el peor camino). Sigue también por una **vía con varios cables** que no es la fuente (un puente en el contacto que pasa la corriente a otro equipo); lo que consume el equipo de esa vía no se sabe, así que el consumo del cable que llega se carga a mano (no se deduce) y, si falta, se avisa. Límite por arnés, **0,5 V por defecto** (FAA AC 43.13-1B para 14 V continuo).
 - **Contacto:** su corriente es la suma de los cables de su vía; su protección, la mayor.
-- **Valores de la base:** M22759/32 de la FAA AC 43.13-1B, tabla 11-9 (en mazo, conservador); contactos de las hojas del fabricante. Sin dato confiable, quedan vacíos y Checks lo avisa.
+- **Capacidad de un cable donde pasa** (`calc/capacity.rs`, decidido con Martin el 2026-11-19; fuentes en la bitácora): corriente solo al aire × factor del mazo, el método de la FAA AC 43.13-1B (párr. 11-69) y de la SAE AS50881. Al aire: la del tipo de cable con 60 °C de aumento, escalada por (ΔT/60)^0,57, con ΔT = temperatura máxima del cable − ambiente del arnés (las curvas de la FAA cubren ΔT de 30 a 300 °C: con menos margen no hay dato, y si el ambiente llega a la temperatura del cable, es un error). Factor del mazo: la figura 4 de la AS50881 (1 a 45 cables, 20–100 % de carga) con el % de los cables del tramo que llevan corriente; en cada tramo del recorrido, vale el más exigente. Un cable sin tramos (las dos puntas en el mismo nodo) toma el tramo con más cables de su nodo. Al nivel del mar (la tabla 11-9 de la FAA es para 60.000 ft). Los cables sin consumo cuentan como señales; Checks avisa los que parecen de potencia.
+- **Valores de la base:** M22759/32 al aire de Raychem (Wire and Cable 10-59), 150 °C, y resistencia de la FAA AC 43.13-1B, tabla 11-9; contactos de las hojas del fabricante. Sin dato confiable, quedan vacíos y Checks lo avisa.
 
 ---
 
@@ -486,7 +490,8 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Splice con más cables o calibre fuera de lo que admite su SpliceDef.
 - Cables sin extremo o sin recorrido posible.
 - Pines duplicados.
-- Consumo mayor que la corriente máxima del cable o del contacto (5.5).
+- Consumo mayor que la capacidad del cable donde pasa o que la corriente máxima del contacto (5.5).
+- Ambiente del arnés igual o mayor que la temperatura máxima de un cable con corriente (5.5).
 - Intento de crear un lazo en la topología (se rechaza).
 
 **Advertencias**
@@ -495,12 +500,13 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 - Cables de una misma net con distinta función.
 - **Datos que parecen errores de carga**: en un mismo circuito, un nombre igual a otro salvo por un número ("13V+ WG" entre los "12V+ WG": el que menos se repite, o con empate el que no es del primer cable); cable sin nombre; cable sin tipo de señal cuando se puede sugerir uno (el de los cables con el mismo nombre, si no el del resto de su circuito, si no el que aparece en su nombre). Los que no se pueden adivinar no se avisan.
 - Margen de corte menor al mínimo por trenzado.
+- Splice o componente sobre un segmento a más distancia que el largo del tramo (o negativa), o medido desde un nodo que no es punta del tramo.
 - Pin con varios destinos → **sugerir splice** (o validar que entren en el contacto).
 - Conectores o dispositivos en estado **pendiente**.
 - Arnés con conectores pero sin **conector principal** elegido (las hojas de armado no saben dónde arranca ni miden distancias).
 - Ningún termo, boot o molde de la biblioteca sirve para un segmento, conector o breakout; boot recto de breakout sin tramos elegidos para su punta chica.
 - Conector con termo con adhesivo sin diámetro trasero cargado en el ConnectorDef.
-- **Carga eléctrica** (5.5): protección mayor que la capacidad del cable o del contacto; caída de tensión en una carga mayor que el límite del arnés; en un splice con consumo: sin fuente marcada en su circuito, corriente que le llega por dos lados, cables que salen sin consumo, paralelos sin su parte, o corrientes que no cierran; vía con varios cables a la que la corriente llega por un cable sin consumo; parte de la biblioteca sin corriente máxima o resistencia cuando hace falta para chequear (un aviso por parte).
+- **Carga eléctrica** (5.5): protección mayor que la capacidad del cable o del contacto; caída de tensión en una carga mayor que el límite del arnés; en un splice con consumo: sin fuente marcada en su circuito, corriente que le llega por dos lados, cables que salen sin consumo, paralelos sin su parte, o corrientes que no cierran; vía con varios cables a la que la corriente llega por un cable sin consumo; tipo de cable con menos de 30 °C de margen sobre el ambiente (fuera de las curvas); cables que parecen de potencia sin consumo en un mazo con corriente (un solo aviso); parte de la biblioteca sin corriente al aire, temperatura máxima o resistencia cuando hace falta para chequear (un aviso por parte).
 
 ---
 
@@ -512,7 +518,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 | Topología | Solo árbol en la primera versión. Se valida al conectar segmentos. El modelo de nodos/segmentos es general, así que se podrían admitir lazos a futuro. |
 | Función del cable | Tipo de señal (con color sugerido configurable) + nombre específico. Por cable, con aviso si cables de la misma net difieren. |
 | Colores | Configurables por tipo de señal; sin norma. Modificables cable por cable. |
-| Splices | En un nodo o sobre un segmento a X mm de un extremo. |
+| Splices | En un nodo o sobre un segmento a X mm de un extremo. Sobre un segmento: largo real (derecho hacia el extremo de referencia) y el tramo partido en pedazos para diámetro, trenzado y capacidad; decidido con Martin el 2026-11-19. |
 | Varios cables por cavidad | Permitido, validando sección total contra el contacto. |
 | Nomenclatura | ID corto automático (X, W, SP, G, R/D, S) + nombre descriptivo; prefijos configurables. |
 | Género del conector | Dato del ConnectorDef, fuera del ID, siempre visible; en el editor gráfico se dibuja distinto. |
@@ -540,7 +546,7 @@ El arnés se arma sobre una mesa a partir de un diagrama con medidas (hoy hecho 
 | Concéntrico | Opcional, con y sin fillers. |
 | Precios desactualizados | Sin umbral automático por días: se muestra la fecha del precio y Martin decide cuándo recotizar. |
 | Revisiones | Dentro del archivo del arnés (copia entera por revisión, formato 6), con comparación contra una revisión, el arnés abierto u otro archivo; solo en pantalla por ahora. Elegido por Martin el 2026-11-12 sobre "un archivo por revisión". |
-| Carga eléctrica | Consumo y protección por cable, la suma en los splices la hace el programa, capacidades por defecto investigadas (FAA AC 43.13-1B y hojas de fabricante), caída máxima 0,5 V configurable por arnés. Decidido con Martin el 2026-11-16. El sentido de la corriente sale de la **fuente marcada por vía** (las masas cuentan solas), no se deduce: elegido por Martin el 2026-11-18. |
+| Carga eléctrica | Consumo y protección por cable, la suma en los splices la hace el programa, capacidades por defecto investigadas (FAA AC 43.13-1B y hojas de fabricante), caída máxima 0,5 V configurable por arnés. Decidido con Martin el 2026-11-16. El sentido de la corriente sale de la **fuente marcada por vía** (las masas cuentan solas), no se deduce: elegido por Martin el 2026-11-18. La capacidad de cada cable se calcula **según su mazo y la temperatura del arnés** (FAA / AS50881), con el % de carga por cantidad de cables con corriente: 2026-11-19. |
 | Calibre mínimo de salida de un splice | Suma de la sección (mm²) de los cables que entran, redondeada al calibre más fino del catálogo de cables que la cubre (no una fórmula AWG abstracta: solo calibres que existen en la biblioteca). |
 
 ---

@@ -1,8 +1,8 @@
 //! Arma la biblioteca base a partir del catálogo.
 
 use super::catalog::{
-    ATUM, BOOTS, BOOT_OVERLAP_MM, DR_25, FAMILIES, M22759_32, MATED_HOUSINGS, OTHER_HOUSINGS,
-    SRG_LOOM, SUPERSEAL_10, SUPERSEAL_10_CAVITY_PLUG, SUPERSEAL_10_SOCKETS,
+    ATUM, BOOTS, BOOT_OVERLAP_MM, DR_25, FAMILIES, M22759_32, M22759_32_MAX_C, MATED_HOUSINGS,
+    OTHER_HOUSINGS, SRG_LOOM, SUPERSEAL_10, SUPERSEAL_10_CAVITY_PLUG, SUPERSEAL_10_SOCKETS,
 };
 use crate::model::library::{
     AccessoryDef, AccessoryDefConnectorMatch, ConnectorDef, ConnectorDefCavity, ContactDef,
@@ -374,7 +374,7 @@ pub fn base_library() -> Library {
                 .collect(),
         });
     }
-    for &(awg, od_in, max_current_a, resistance_mohm_per_m) in M22759_32 {
+    for &(awg, od_in, free_air_current_a, resistance_mohm_per_m) in M22759_32 {
         let id = library.parts.len() as i64 + 1;
         library.parts.push(Part {
             id,
@@ -390,7 +390,8 @@ pub fn base_library() -> Library {
             price_date: None,
         });
         library.wire_defs.push(WireDef {
-            max_current_a,
+            free_air_current_a: Some(free_air_current_a),
+            max_temperature_c: Some(M22759_32_MAX_C),
             resistance_mohm_per_m: Some(resistance_mohm_per_m),
             part_id: id,
             gauge: format!("{awg} AWG"),
@@ -422,7 +423,8 @@ pub fn base_library() -> Library {
         color: None,
         outer_diameter_mm: 2.0,
         default_cut_margin_pct: None,
-        max_current_a: None,
+        free_air_current_a: None,
+        max_temperature_c: None,
         resistance_mohm_per_m: None,
         conductors: (1..=2)
             .map(|id| WireDefConductor {

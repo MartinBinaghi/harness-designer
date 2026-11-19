@@ -1,5 +1,17 @@
 // Espejo de los structs serde en src-tauri/src/calc.rs.
 
+/**
+ * Lo que un cable recorre de un segmento (`topology::RouteLeg`): de `start_mm`
+ * a `end_mm`, medidos desde su nodo A. Menos que el segmento entero si el cable
+ * termina en un splice o componente sobre él; `straight`: ese pedazo va derecho.
+ */
+export interface RouteLeg {
+  segment_id: number;
+  start_mm: number;
+  end_mm: number;
+  straight: boolean;
+}
+
 export interface WireCutLength {
   wire_id: number;
   length_with_twist_mm: number;
@@ -148,7 +160,19 @@ export interface WireElectrical {
   /** Límite de la protección que lo alimenta (A): el cargado o el de su circuito. */
   protection_a: number | null;
   protection_from_circuit: boolean;
+  /** Capacidad donde pasa (A): al aire, con la temperatura del arnés y el mazo más exigente (calc/capacity.rs). */
   max_current_a: number | null;
+  /** Por qué no hay capacidad. */
+  capacity_limit: "no_library_data" | "too_hot" | "beyond_curves" | "no_route" | null;
+  /** El mazo que limita la capacidad; segment_id null = va solo, al aire. */
+  bundle: {
+    segment_id: number | null;
+    /** Largo del pedazo (mm) si un splice o componente parte el tramo; null: el tramo entero. */
+    piece_mm: number | null;
+    wires: number;
+    loaded: number;
+    factor: number;
+  } | null;
   resistance_mohm_per_m: number | null;
   /** Caída en este cable (V). */
   drop_v: number | null;
